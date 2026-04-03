@@ -86,23 +86,83 @@ html::-webkit-scrollbar-thumb:hover {
 }
 
 /*
- * Blockly’s toolbox div uses overflow-y: auto — the native category scrollbar can
- * leave a gutter/thumb “ghost” after the flyout closes. Keep overflow sane and
- * style the native bar so it doesn’t read as a stray strip.
+ * Toolbox category list — base overflow. When `ollie-blockly--hide-toolbox-scrollbar`
+ * is on the host (see blocklyUiOptions.ts), native scrollbars are removed; wheel
+ * still scrolls the list.
  */
 .injectionDiv .blocklyToolbox {
   overflow-x: hidden;
   overflow-y: auto;
-  scrollbar-gutter: auto;
+  box-sizing: border-box;
+}
+
+/* Seam: category list (toolbox) | flyout — both are white in theme, so HTML border reads clearly. */
+.injectionDiv:not(.blocklyRTL) .blocklyToolbox {
+  border-right: 1px solid #cbd5e1;
+}
+
+.injectionDiv.blocklyRTL .blocklyToolbox {
+  border-left: 1px solid #cbd5e1;
+}
+
+.ollie-blockly-host.ollie-blockly--hide-toolbox-scrollbar .injectionDiv .blocklyToolbox {
+  scrollbar-width: none;
+}
+
+.ollie-blockly-host.ollie-blockly--hide-toolbox-scrollbar .injectionDiv .blocklyToolbox::-webkit-scrollbar {
+  width: 0 !important;
+  height: 0 !important;
+  background: transparent;
+}
+
+/* Visible thin bar when toolbox scrollbar is not hidden */
+.ollie-blockly-host:not(.ollie-blockly--hide-toolbox-scrollbar) .injectionDiv .blocklyToolbox {
   scrollbar-width: thin;
   scrollbar-color: #cbd5e1 transparent;
 }
 
-.injectionDiv .blocklyToolbox::-webkit-scrollbar {
+.ollie-blockly-host:not(.ollie-blockly--hide-toolbox-scrollbar) .injectionDiv .blocklyToolbox::-webkit-scrollbar {
   width: 6px;
 }
 
-.injectionDiv .blocklyToolbox::-webkit-scrollbar-thumb {
+.ollie-blockly-host:not(.ollie-blockly--hide-toolbox-scrollbar) .injectionDiv .blocklyToolbox::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
   border-radius: 4px;
+}
+
+/*
+ * Flyout shape outline — must read against white (fill) and workspace (#E9F1FB); light grays disappear there.
+ */
+.ollie-blockly-host .injectionDiv path.blocklyFlyoutBackground {
+  stroke: #94a3b8;
+  stroke-width: 1.5px;
+  paint-order: stroke fill;
+  vector-effect: non-scaling-stroke;
+}
+
+/*
+ * Flyout scrollbars: Blockly sets class "blocklyScrollbarVertical blocklyFlyoutScrollbar"
+ * (not blocklyFlyoutScrollbarVertical — that class does not exist). Toggle via blocklyUiOptions.ts.
+ * Wheel still scrolls the flyout.
+ */
+.ollie-blockly-host.ollie-blockly--hide-flyout-scrollbar .injectionDiv svg.blocklyFlyoutScrollbar {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
+}
+
+/*
+ * Main workspace scrollbars: "blocklyScrollbarVertical blocklyMainWorkspaceScrollbar".
+ * Optional; see HIDE_MAIN_WORKSPACE_SCROLLBAR_VISUAL in blocklyUiOptions.ts.
+ */
+.ollie-blockly-host.ollie-blockly--hide-main-scrollbar .injectionDiv svg.blocklyMainWorkspaceScrollbar {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  opacity: 0 !important;
 }

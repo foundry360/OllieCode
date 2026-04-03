@@ -1,11 +1,16 @@
 import * as Blockly from "blockly/core";
+import {
+  costumeDropdownOptions,
+  sceneDropdownOptions,
+} from "@/lib/canvas/stageAssets";
 
 /**
  * Ollie blocks use Scratch 3–style `style` keys (see `ollieTheme.ts` — Motion green, Looks purple, etc.).
  */
-export const OLLIE_BLOCK_DEFINITIONS: Parameters<
+export function getOllieBlockDefinitions(): Parameters<
   typeof Blockly.common.defineBlocksWithJsonArray
->[0] = [
+>[0] {
+  return [
   {
     type: "ollie_start",
     message0: "When %1 clicked",
@@ -234,17 +239,28 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
       {
         type: "field_dropdown",
         name: "COSTUME",
-        options: [
-          ["cat", "cat"],
-          ["square", "square"],
-          ["ball", "ball"],
-        ],
+        options: costumeDropdownOptions(),
       },
     ],
     previousStatement: null,
     nextStatement: null,
     style: "scratch_looks",
     tooltip: "Change how the sprite looks on the stage.",
+  },
+  {
+    type: "ollie_switch_scene",
+    message0: "switch scene to %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "SCENE",
+        options: sceneDropdownOptions(),
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Change the stage scene (same choices as under the canvas).",
   },
   {
     type: "ollie_play_sound",
@@ -327,8 +343,9 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
     style: "scratch_control",
     tooltip: "Repeat the blocks inside (like Scratch’s repeat loop).",
   },
-];
+  ];
+}
 
 export function registerOllieBlocks() {
-  Blockly.common.defineBlocksWithJsonArray(OLLIE_BLOCK_DEFINITIONS);
+  Blockly.common.defineBlocksWithJsonArray(getOllieBlockDefinitions());
 }

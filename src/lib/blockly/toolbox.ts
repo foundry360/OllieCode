@@ -43,6 +43,7 @@ export const OLLIE_TOOLBOX = {
         B("ollie_say"),
         B("ollie_think"),
         B("ollie_switch_costume"),
+        B("ollie_switch_scene"),
       ],
     },
     {

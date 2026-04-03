@@ -75,7 +75,8 @@ export const ollieBlocklyTheme = Theme.defineTheme("ollie", {
   componentStyles: {
     workspaceBackgroundColour: "#E9F1FB",
     toolboxBackgroundColour: "#FFFFFF",
-    flyoutBackgroundColour: "#F7FBFF",
+    flyoutBackgroundColour: "#FFFFFF",
+    flyoutOpacity: 1,
     toolboxForegroundColour: "#575E75",
     flyoutForegroundColour: "#575E75",
     scrollbarColour: "#cbd5e1",

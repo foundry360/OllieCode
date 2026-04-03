@@ -1,5 +1,10 @@
 import * as Blockly from "blockly/core";
-import type { OllieAction, OllieCostume } from "@/types/ollie";
+import { serialization } from "blockly/core";
+import {
+  isOllieSceneId,
+  isOllieSpriteCostumeId,
+} from "@/lib/canvas/stageAssets";
+import type { OllieAction } from "@/types/ollie";
 
 /**
  * Run only interprets blocks chained under `ollie_start` (Ollie canvas actions).
@@ -14,10 +19,6 @@ const MAX_REPEAT_UNROLL = 2_000;
 
 function isSoundId(s: string): s is "pop" | "boing" | "cheer" {
   return s === "pop" || s === "boing" || s === "cheer";
-}
-
-function isCostumeId(s: string): s is OllieCostume {
-  return s === "cat" || s === "square" || s === "ball";
 }
 
 function walkStatementChain(
@@ -99,7 +100,12 @@ function walkStatementChain(
       }
       case "ollie_switch_costume": {
         const id = String(current.getFieldValue("COSTUME"));
-        if (isCostumeId(id)) actions.push({ type: "costume", id });
+        if (isOllieSpriteCostumeId(id)) actions.push({ type: "costume", id });
+        break;
+      }
+      case "ollie_switch_scene": {
+        const id = String(current.getFieldValue("SCENE"));
+        if (isOllieSceneId(id)) actions.push({ type: "scene", id });
         break;
       }
       case "ollie_play_sound": {
@@ -154,4 +160,19 @@ export function executeWorkspace(workspace: Blockly.Workspace): OllieAction[] {
 
   walkStatementChain(start.getNextBlock(), actions);
   return actions;
+}
+
+/**
+ * Run the same block walker on a serialized workspace (no SVG) — for multi-sprite Run.
+ */
+export function executeWorkspaceFromSave(
+  state: Record<string, unknown>,
+): OllieAction[] {
+  const temp = new Blockly.Workspace();
+  try {
+    serialization.workspaces.load(state, temp);
+    return executeWorkspace(temp);
+  } finally {
+    temp.dispose();
+  }
 }
