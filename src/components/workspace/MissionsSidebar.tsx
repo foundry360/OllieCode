@@ -5,9 +5,22 @@
  * Optional: use Interact.js to make mission cards draggable for reordering (see Interact.js docs).
  */
 const STEPS = [
-  { n: 1, title: "Meet the turtle", detail: "Stack move and turn blocks under When Run." },
-  { n: 2, title: "Add a sound", detail: "Try the play sound block after a move." },
-  { n: 3, title: "Loops", detail: "Wrap repeats around a pattern to draw a square." },
+  {
+    n: 1,
+    title: "Events & Motion",
+    detail:
+      "Under Events, snap When Run clicked, then try Motion blocks (move, turn, glide) like Scratch’s Getting Started.",
+  },
+  {
+    n: 2,
+    title: "Looks & Sound",
+    detail: "Use say or think bubbles, switch costume, and play sounds from the Sound category.",
+  },
+  {
+    n: 3,
+    title: "Control",
+    detail: "Use wait and repeat loops to choreograph your animation on the stage.",
+  },
 ];
 
 export function MissionsSidebar() {

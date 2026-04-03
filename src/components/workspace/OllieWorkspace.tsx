@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Block,
   Events,
+  Scrollbar,
   Xml,
   common,
   inject,
@@ -11,7 +12,10 @@ import {
   utils,
 } from "blockly/core";
 import type { WorkspaceSvg } from "blockly/core";
+import { initBlocklyLocale } from "@/lib/blockly/initBlocklyLocale";
+import { loadBlocklyLibraryBlocks } from "@/lib/blockly/registerLibraryBlocks";
 import { registerOllieBlocks } from "@/lib/blockly/ollieBlocks";
+import { ollieBlocklyTheme } from "@/lib/blockly/ollieTheme";
 import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
 import { executeWorkspace } from "@/lib/blockly/executeBlocks";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
@@ -33,48 +37,77 @@ export function OllieWorkspace() {
   const p5Ref = useRef<P5CanvasHandle>(null);
   const [status, setStatus] = useState<string>("");
   const [missionsOpen, setMissionsOpen] = useState(true);
-
-  const initWorkspace = useCallback(() => {
-    if (!blocklyDiv.current || workspaceRef.current) return;
-    registerOllieBlocks();
-
-    const ws = inject(blocklyDiv.current, {
-      toolbox: OLLIE_TOOLBOX,
-      renderer: "zelos",
-      trashcan: true,
-      zoom: {
-        controls: true,
-        wheel: true,
-        pinch: true,
-        startScale: 0.92,
-        maxScale: 1.6,
-        minScale: 0.5,
-      },
-      grid: {
-        spacing: 20,
-        length: 2,
-        colour: "#e5e7eb",
-        snap: true,
-      },
-      move: {
-        scrollbars: true,
-        drag: true,
-        wheel: true,
-      },
-    });
-
-    workspaceRef.current = ws;
-    const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
-    Xml.clearWorkspaceAndLoadFromXml(xml, ws);
-  }, []);
+  const [blocklyInjectKey, setBlocklyInjectKey] = useState(0);
+  const [initError, setInitError] = useState<string | null>(null);
 
   useEffect(() => {
-    initWorkspace();
+    let cancelled = false;
+
+    void (async () => {
+      setInitError(null);
+      try {
+        initBlocklyLocale();
+        await loadBlocklyLibraryBlocks();
+        if (cancelled || !blocklyDiv.current || workspaceRef.current) {
+          return;
+        }
+
+        registerOllieBlocks();
+
+        /** Blockly SVG scrollbars — slightly narrower than default 15px. */
+        Scrollbar.scrollbarThickness = 11;
+
+        const ws = inject(blocklyDiv.current, {
+          toolbox: OLLIE_TOOLBOX,
+          theme: ollieBlocklyTheme,
+          renderer: "zelos",
+          trashcan: true,
+          zoom: {
+            controls: true,
+            wheel: true,
+            pinch: true,
+            startScale: 0.92,
+            maxScale: 1.6,
+            minScale: 0.5,
+          },
+          grid: {
+            spacing: 20,
+            length: 2,
+            colour: "#e5e7eb",
+            snap: true,
+          },
+          move: {
+            /** Vertical only — avoids a persistent bottom “strip” after toolbox/flyout closes (Blockly forces scrollbars visible). */
+            scrollbars: { horizontal: false, vertical: true },
+            drag: true,
+            wheel: true,
+          },
+        });
+
+        if (cancelled) {
+          ws.dispose();
+          return;
+        }
+
+        workspaceRef.current = ws;
+
+        const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
+        Xml.clearWorkspaceAndLoadFromXml(xml, ws);
+      } catch (err) {
+        if (!cancelled) {
+          setInitError(
+            err instanceof Error ? err.message : "Something went wrong starting Blockly.",
+          );
+        }
+      }
+    })();
+
     return () => {
+      cancelled = true;
       workspaceRef.current?.dispose();
       workspaceRef.current = null;
     };
-  }, [initWorkspace]);
+  }, [blocklyInjectKey]);
 
   const handleRun = useCallback(async () => {
     const ws = workspaceRef.current;
@@ -272,9 +305,26 @@ export function OllieWorkspace() {
         ) : null}
       </header>
 
+      {initError ? (
+        <div
+          className="border-b border-red-200 bg-red-50 px-4 py-3 text-sm text-red-950"
+          role="alert"
+        >
+          <p className="font-semibold">Couldn’t start the block editor</p>
+          <p className="mt-1 opacity-90">{initError}</p>
+          <button
+            type="button"
+            onClick={() => setBlocklyInjectKey((k) => k + 1)}
+            className="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-bold text-red-900 shadow-sm hover:bg-red-50"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+
       <div className="flex flex-1 flex-col lg:flex-row">
         <aside
-          className={`border-[#e5e7eb] bg-white lg:w-72 lg:border-r ${missionsOpen ? "flex" : "hidden lg:flex"}`}
+          className={`min-h-0 overflow-y-auto ollie-scroll border-[#e5e7eb] bg-white lg:w-72 lg:border-r ${missionsOpen ? "flex" : "hidden lg:flex"}`}
         >
           <MissionsSidebar />
         </aside>
@@ -284,20 +334,21 @@ export function OllieWorkspace() {
             <div className="rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
               Code blocks
             </div>
-            <div ref={blocklyDiv} className="min-h-[420px] flex-1" />
+            <div
+              key={blocklyInjectKey}
+              ref={blocklyDiv}
+              className="min-h-[420px] flex-1"
+            />
           </div>
 
-          <div className="flex w-full flex-col gap-3 lg:w-[420px] lg:max-w-[42vw]">
-            <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-2xl border border-[#c5d4b8] bg-[#e2ecdc] shadow-sm">
-              <div className="flex items-center justify-between border-b border-[#b8c9a8] bg-[#d8e8d0] px-4 py-2 text-sm font-semibold text-[#365314]">
-                <span>Canvas</span>
-                <span className="text-xs font-normal text-[#4d6b2f]">
-                  p5.js preview
-                </span>
+          <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[420px] lg:max-w-[42vw]">
+            <div className="flex min-h-[240px] flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
+              <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
+                Canvas
               </div>
               <P5Canvas
                 ref={p5Ref}
-                className="h-[min(50vh,360px)] w-full min-h-[200px] lg:h-[360px]"
+                className="w-full min-h-0 flex-1"
               />
             </div>
             <GamificationPanel />

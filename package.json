@@ -3,12 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --webpack",
+    "dev:reset": "sh -c 'lsof -ti :3000 | xargs kill -9 2>/dev/null || true; next dev --webpack -p 3000'",
+    "dev:turbo": "next dev --turbopack",
+    "dev:webpack": "next dev --webpack",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
+    "@blockly/field-colour": "^6.0.11",
     "@supabase/supabase-js": "^2.101.1",
     "blockly": "^12.5.1",
     "gsap": "^3.14.2",

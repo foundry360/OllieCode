@@ -1,11 +1,7 @@
-import type { Metadata } from "next";
-import { WorkspaceGate } from "@/components/workspace/WorkspaceGate";
+"use client";
 
-export const metadata: Metadata = {
-  title: "Workspace | Ollie Code",
-  description: "Build games and code with blocks.",
-};
+import { OllieWorkspace } from "@/components/workspace/OllieWorkspace";
 
 export default function WorkspacePage() {
-  return <WorkspaceGate />;
+  return <OllieWorkspace />;
 }

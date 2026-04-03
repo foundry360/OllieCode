@@ -26,7 +26,7 @@ Connect this repo to [Vercel](https://vercel.com), set the same `NEXT_PUBLIC_*` 
 - `src/app/` — routes: landing (`/`), workspace (`/workspace`), auth placeholder (`/auth/login`)
 - `src/components/landing/` — marketing sections
 - `src/components/workspace/` — Blockly UI, p5 canvas, missions, gamification placeholders
-- `src/lib/blockly/` — custom blocks, toolbox, execution
+- `src/lib/blockly/` — Scratch-style blocks (unique hue per Ollie block in `blockHues.ts`), bright Zelos theme in `ollieTheme.ts`, plus Blockly library blocks; `@blockly/field-colour` supplies Blockly’s color blocks (not in core `blockly/blocks`)
 - `src/lib/supabase/` — browser client and storage helpers
 - `public/placeholders/` — SVG placeholders for hero, features, avatars
 - `public/sounds/` — add `pop.mp3`, `boing.mp3`, `cheer.mp3` for Howler (fallback beeps work without files)

@@ -1,15 +1,14 @@
 import * as Blockly from "blockly/core";
 
 /**
- * Ollie custom blocks — add new block JSON here, then extend executeBlocks.ts and toolbox.ts.
- * Future: block-to-block transforms, custom mutators, or Blockly plugins can plug in here.
+ * Ollie blocks use Scratch 3–style `style` keys (see `ollieTheme.ts` — Motion green, Looks purple, etc.).
  */
 export const OLLIE_BLOCK_DEFINITIONS: Parameters<
   typeof Blockly.common.defineBlocksWithJsonArray
 >[0] = [
   {
     type: "ollie_start",
-    message0: "When %1",
+    message0: "When %1 clicked",
     args0: [
       {
         type: "field_label_serializable",
@@ -18,28 +17,28 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
       },
     ],
     nextStatement: true,
-    colour: 72,
-    tooltip: "Stack blocks below — they run when you tap Run.",
+    style: "scratch_events",
+    tooltip: "Like Scratch’s green flag — stack blocks below, then tap Run.",
     helpUrl: "",
     hat: "cap",
   },
   {
     type: "ollie_move_forward",
-    message0: "move forward %1 steps",
+    message0: "move %1 steps",
     args0: [
       {
         type: "field_number",
         name: "STEPS",
-        value: 2,
+        value: 10,
         min: 0.25,
-        max: 20,
+        max: 50,
         precision: 2,
       },
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 192,
-    tooltip: "Move the sprite on the canvas.",
+    style: "scratch_motion",
+    tooltip: "Move in the direction the sprite is facing.",
   },
   {
     type: "ollie_turn",
@@ -56,12 +55,200 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 192,
-    tooltip: "Rotate the sprite.",
+    style: "scratch_motion",
+    tooltip: "Turn clockwise (positive) or counter-clockwise (negative).",
+  },
+  {
+    type: "ollie_turn_left",
+    message0: "turn left %1 degrees",
+    args0: [
+      {
+        type: "field_number",
+        name: "ANGLE",
+        value: 15,
+        min: 1,
+        max: 180,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "Turn counter-clockwise (Scratch-style).",
+  },
+  {
+    type: "ollie_turn_right",
+    message0: "turn right %1 degrees",
+    args0: [
+      {
+        type: "field_number",
+        name: "ANGLE",
+        value: 15,
+        min: 1,
+        max: 180,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "Turn clockwise (Scratch-style).",
+  },
+  {
+    type: "ollie_point_in_direction",
+    message0: "point in direction %1",
+    args0: [
+      {
+        type: "field_number",
+        name: "ANGLE",
+        value: 90,
+        min: -180,
+        max: 180,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "0° = up, 90° = right (like Scratch stage).",
+  },
+  {
+    type: "ollie_go_to_xy",
+    message0: "go to x: %1 y: %2 (0–100)",
+    args0: [
+      {
+        type: "field_number",
+        name: "XPCT",
+        value: 50,
+        min: 0,
+        max: 100,
+        precision: 0,
+      },
+      {
+        type: "field_number",
+        name: "YPCT",
+        value: 50,
+        min: 0,
+        max: 100,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "Jump to a position (0–100% of the stage width and height).",
+  },
+  {
+    type: "ollie_glide_to",
+    message0: "glide %1 secs to x: %2 y: %3",
+    args0: [
+      {
+        type: "field_number",
+        name: "SECS",
+        value: 1,
+        min: 0.1,
+        max: 15,
+        precision: 1,
+      },
+      {
+        type: "field_number",
+        name: "XPCT",
+        value: 50,
+        min: 0,
+        max: 100,
+        precision: 0,
+      },
+      {
+        type: "field_number",
+        name: "YPCT",
+        value: 50,
+        min: 0,
+        max: 100,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "Smoothly glide to a position over time.",
+  },
+  {
+    type: "ollie_if_on_edge_bounce",
+    message0: "if on edge, bounce",
+    args0: [],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "If touching the edge of the stage, turn around.",
+  },
+  {
+    type: "ollie_say",
+    message0: "say %1 for %2 seconds",
+    args0: [
+      {
+        type: "field_input",
+        name: "TEXT",
+        text: "Hello!",
+      },
+      {
+        type: "field_number",
+        name: "SECS",
+        value: 2,
+        min: 0.1,
+        max: 10,
+        precision: 1,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Show a speech bubble (Scratch-style).",
+  },
+  {
+    type: "ollie_think",
+    message0: "think %1 for %2 seconds",
+    args0: [
+      {
+        type: "field_input",
+        name: "TEXT",
+        text: "Hmm…",
+      },
+      {
+        type: "field_number",
+        name: "SECS",
+        value: 2,
+        min: 0.1,
+        max: 10,
+        precision: 1,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Show a thought bubble.",
+  },
+  {
+    type: "ollie_switch_costume",
+    message0: "switch costume to %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "COSTUME",
+        options: [
+          ["cat", "cat"],
+          ["square", "square"],
+          ["ball", "ball"],
+        ],
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Change how the sprite looks on the stage.",
   },
   {
     type: "ollie_play_sound",
-    message0: "play %1 sound",
+    message0: "start sound %1",
     args0: [
       {
         type: "field_dropdown",
@@ -75,8 +262,27 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 288,
-    tooltip: "Play a fun sound (Howler.js).",
+    style: "scratch_sound",
+    tooltip: "Play a sound (does not wait for it to finish).",
+  },
+  {
+    type: "ollie_play_sound_until_done",
+    message0: "play sound %1 until done",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "SOUND",
+        options: [
+          ["pop", "pop"],
+          ["boing", "boing"],
+          ["cheer", "cheer"],
+        ],
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_sound",
+    tooltip: "Play a sound and wait (Scratch-style).",
   },
   {
     type: "ollie_wait",
@@ -85,7 +291,7 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
       {
         type: "field_number",
         name: "SECS",
-        value: 0.5,
+        value: 1,
         min: 0,
         max: 10,
         precision: 1,
@@ -93,7 +299,7 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 48,
+    style: "scratch_control",
     tooltip: "Pause before the next block.",
   },
   {
@@ -103,7 +309,7 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
       {
         type: "field_number",
         name: "TIMES",
-        value: 4,
+        value: 10,
         min: 1,
         max: 50,
         precision: 0,
@@ -118,8 +324,8 @@ export const OLLIE_BLOCK_DEFINITIONS: Parameters<
     ],
     previousStatement: null,
     nextStatement: null,
-    colour: 132,
-    tooltip: "Run the nested blocks multiple times.",
+    style: "scratch_control",
+    tooltip: "Repeat the blocks inside (like Scratch’s repeat loop).",
   },
 ];
 
