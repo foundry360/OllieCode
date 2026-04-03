@@ -1,36 +1,39 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ollie Code
 
-## Getting Started
+Front-end scaffold for a kids coding platform (ages 7–13): Next.js, Blockly, p5.js, Howler.js, optional GSAP and Interact.js, and Supabase hooks for auth and project storage.
 
-First, run the development server:
+## Quick start
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000) for the landing page and `/workspace` for the Blockly + canvas.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Copy `.env.example` to `.env.local` and add your Supabase URL and anon key. Without them, **Save** still writes to `localStorage`; cloud save and auth need Supabase.
 
-## Learn More
+Create a Storage bucket named `projects` (or change the name in `src/lib/supabase/projectStorage.ts`) and configure RLS for your use case.
 
-To learn more about Next.js, take a look at the following resources:
+## Deploy (Vercel)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Connect this repo to [Vercel](https://vercel.com), set the same `NEXT_PUBLIC_*` env vars, and deploy. No extra config is required for a standard Next.js app.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Project layout
 
-## Deploy on Vercel
+- `src/app/` — routes: landing (`/`), workspace (`/workspace`), auth placeholder (`/auth/login`)
+- `src/components/landing/` — marketing sections
+- `src/components/workspace/` — Blockly UI, p5 canvas, missions, gamification placeholders
+- `src/lib/blockly/` — custom blocks, toolbox, execution
+- `src/lib/supabase/` — browser client and storage helpers
+- `public/placeholders/` — SVG placeholders for hero, features, avatars
+- `public/sounds/` — add `pop.mp3`, `boing.mp3`, `cheer.mp3` for Howler (fallback beeps work without files)
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `npm run dev` — development server
+- `npm run build` — production build
+- `npm run start` — run production build locally
+- `npm run lint` — ESLint

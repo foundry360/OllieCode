@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600" fill="none">
+  <rect width="800" height="600" fill="#ecfccb"/>
+  <circle cx="200" cy="420" r="120" fill="#fde68a" opacity="0.6"/>
+  <circle cx="620" cy="380" r="100" fill="#a7f3d0" opacity="0.7"/>
+  <rect x="120" y="180" width="560" height="320" rx="24" fill="#fff" stroke="#84c126" stroke-width="6"/>
+  <rect x="160" y="220" width="120" height="80" rx="8" fill="#84c126" opacity="0.3"/>
+  <rect x="300" y="220" width="120" height="80" rx="8" fill="#fde047" opacity="0.5"/>
+  <rect x="440" y="220" width="120" height="80" rx="8" fill="#93c5fd" opacity="0.5"/>
+  <path d="M200 420 L280 360 L360 400 L440 340 L520 380" stroke="#111827" stroke-width="8" stroke-linecap="round" fill="none"/>
+  <circle cx="200" cy="420" r="28" fill="#84c126"/>
+  <circle cx="520" cy="380" r="28" fill="#111827"/>
+  <text x="400" y="520" text-anchor="middle" font-family="system-ui,sans-serif" font-size="28" font-weight="700" fill="#365314">Code &amp; play</text>
+</svg>
