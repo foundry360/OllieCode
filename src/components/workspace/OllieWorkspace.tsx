@@ -571,12 +571,20 @@ export function OllieWorkspace() {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-[#111827]">
       <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="flex items-center gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/"
-            className="font-display text-xl font-bold tracking-tight text-[#111827]"
+            className="block shrink-0"
+            aria-label="Ollie Code home"
           >
-            Ollie Code
+            <Image
+              src="/images/logo.png"
+              alt=""
+              width={434}
+              height={91}
+              className="h-7 w-auto sm:h-8"
+              priority
+            />
           </Link>
           <span className="hidden rounded-full bg-[#ecfccb] px-3 py-1 text-xs font-semibold text-[#3f6212] sm:inline">
             Learn &amp; play
