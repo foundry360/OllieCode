@@ -2,8 +2,8 @@ import Link from "next/link";
 
 const FOOTER_LINKS = [
   { href: "#features", label: "Programs" },
-  { href: "/workspace", label: "Workspace" },
-  { href: "/auth/login", label: "Sign in" },
+  { href: "/auth/login?next=/workspace", label: "Workspace" },
+  { href: "/auth/login?next=/workspace", label: "Sign in" },
 ];
 
 export function Footer() {

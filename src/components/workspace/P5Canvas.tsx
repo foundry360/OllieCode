@@ -49,6 +49,51 @@ type Sprite = {
 const MOVE_FRAMES = 18;
 const CANVAS_MAX_PX = 4096;
 
+/**
+ * p5 `loadImage` often leaves SVGs with `width === 0`, which triggers the green
+ * triangle fallback in `drawSpriteForCostume`. Rasterize via DOM Image + Graphics.
+ */
+async function loadSvgOrRasterViaDom(
+  p: p5Types,
+  url: string,
+): Promise<p5Types.Image | null> {
+  return new Promise((resolve) => {
+    const el = new Image();
+    el.crossOrigin = "anonymous";
+    el.onload = () => {
+      const w = Math.max(1, el.naturalWidth || el.width);
+      const h = Math.max(1, el.naturalHeight || el.height);
+      const g = p.createGraphics(w, h);
+      g.pixelDensity(1);
+      const ctx = g.drawingContext as CanvasRenderingContext2D;
+      ctx.drawImage(el, 0, 0, w, h);
+      const pimg = g.get(0, 0, w, h);
+      g.remove();
+      resolve(pimg.width > 0 ? pimg : null);
+    };
+    el.onerror = () => resolve(null);
+    el.src = url;
+  });
+}
+
+async function loadStageImage(
+  p: p5Types,
+  url: string,
+  stageImages: Map<string, p5Types.Image>,
+) {
+  try {
+    const img = await p.loadImage(url);
+    if (img && img.width > 0) {
+      stageImages.set(url, img);
+      return;
+    }
+  } catch {
+    /* try DOM path */
+  }
+  const fallback = await loadSvgOrRasterViaDom(p, url);
+  if (fallback) stageImages.set(url, fallback);
+}
+
 function normHeading(deg: number) {
   return ((deg % 360) + 360) % 360;
 }
@@ -62,6 +107,21 @@ function layoutSlot(
   if (total <= 1) return { x: w / 2, y: h / 2 };
   const t = (index + 1) / (total + 1);
   return { x: w * t, y: h * 0.52 };
+}
+
+/** Scratch-style −100…100: x left→right, y up (+) → down (−); maps to canvas pixels (origin top-left). */
+function scratchStageToPixel(
+  xStage: number,
+  yStage: number,
+  cw: number,
+  ch: number,
+): { x: number; y: number } {
+  const x = Math.min(100, Math.max(-100, xStage));
+  const y = Math.min(100, Math.max(-100, yStage));
+  return {
+    x: ((x + 100) / 200) * cw,
+    y: ((100 - y) / 200) * ch,
+  };
 }
 
 function drawSceneLayer(
@@ -197,11 +257,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           const dy = -Math.cos(rad) * a.distance;
           await animateMove(s, s.x + dx, s.y + dy, MOVE_FRAMES);
         } else if (a.type === "goTo") {
-          s.x = (a.xPct / 100) * cw;
-          s.y = (a.yPct / 100) * ch;
+          const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
+          s.x = pos.x;
+          s.y = pos.y;
         } else if (a.type === "glideTo") {
-          const tx = (a.xPct / 100) * cw;
-          const ty = (a.yPct / 100) * ch;
+          const { x: tx, y: ty } = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
           await animateMove(
             s,
             tx,
@@ -309,14 +369,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             p.angleMode(p.DEGREES);
             const urls = collectStageImageUrls();
             await Promise.all(
-              urls.map(async (url) => {
-                try {
-                  const img = await p.loadImage(url);
-                  if (img && img.width > 0) stageImages.set(url, img);
-                } catch {
-                  /* fallbacks in draw */
-                }
-              }),
+              urls.map((url) => loadStageImage(p, url, stageImages)),
             );
             currentSceneRef.current = latestSceneIdRef.current;
             const map = spritesByIdRef.current;
@@ -338,7 +391,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             const sceneMeta = getSceneById(sid) ?? getSceneById(DEFAULT_SCENE_ID)!;
             drawSceneLayer(p, sid, stageImages);
             if (sceneMeta.grid) {
-              drawGrid(p);
+              drawDotsBackground(p);
             }
             const order = actorsRef.current.map((a) => a.id);
             for (const id of order) {
@@ -460,7 +513,8 @@ function drawBubble(
   p.pop();
 }
 
-function drawGrid(p: p5Types) {
+/** Light dot pattern on solid backdrops (Scratch-style stage). */
+function drawDotsBackground(p: p5Types) {
   const step = 40;
   const maxSpan = CANVAS_MAX_PX;
   const gw = Math.min(p.width, maxSpan);

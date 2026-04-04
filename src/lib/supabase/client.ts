@@ -1,17 +1,12 @@
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { getSupabaseEnv } from "@/lib/supabase/env";
 
 /**
- * Browser Supabase client — uses NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.
- * For cookie-based server components, add `@supabase/ssr` and follow Supabase Next.js guide.
+ * Browser Supabase client — cookie-backed session (pairs with middleware + `/auth/callback`).
  */
-let browserClient: SupabaseClient | null = null;
-
 export function getSupabaseBrowserClient(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return null;
-  if (!browserClient) {
-    browserClient = createClient(url, key);
-  }
-  return browserClient;
+  const env = getSupabaseEnv();
+  if (!env) return null;
+  return createBrowserClient(env.url, env.key);
 }

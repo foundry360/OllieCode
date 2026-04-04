@@ -5,8 +5,8 @@
 
 export const OLLIE_SCENES = [
   {
-    id: "white_grid",
-    label: "White grid",
+    id: "white_dots",
+    label: "White dots",
     kind: "solid" as const,
     rgb: [255, 255, 255] as const,
     grid: true,
@@ -33,6 +33,14 @@ export const OLLIE_SCENES = [
     grid: false,
     fallbackRgb: [134, 239, 172] as const,
   },
+  {
+    id: "path",
+    label: "Path",
+    kind: "image" as const,
+    src: "/images/backdrops/path.png",
+    grid: false,
+    fallbackRgb: [220, 230, 210] as const,
+  },
 ] as const;
 
 export const OLLIE_SPRITE_COSTUMES = [
@@ -42,6 +50,13 @@ export const OLLIE_SPRITE_COSTUMES = [
     kind: "image" as const,
     src: "/images/ollie.png",
     width: 88,
+  },
+  {
+    id: "robot",
+    label: "Robot",
+    kind: "image" as const,
+    src: "/images/sprites/bot.svg",
+    width: 104,
   },
   {
     id: "star",
@@ -70,11 +85,21 @@ export type OllieSpriteCostumeId = (typeof OLLIE_SPRITE_COSTUMES)[number]["id"];
 export type SceneDef = (typeof OLLIE_SCENES)[number];
 export type CostumeDef = (typeof OLLIE_SPRITE_COSTUMES)[number];
 
-export const DEFAULT_SCENE_ID: OllieSceneId = "white_grid";
-export const DEFAULT_COSTUME_ID: OllieSpriteCostumeId = "cat";
+export const DEFAULT_SCENE_ID: OllieSceneId = "white_dots";
+export const DEFAULT_COSTUME_ID: OllieSpriteCostumeId = "robot";
 
 export function getSceneById(id: string): SceneDef | undefined {
-  return OLLIE_SCENES.find((b) => b.id === id);
+  const canonical = id === "white_grid" ? "white_dots" : id;
+  return OLLIE_SCENES.find((b) => b.id === canonical);
+}
+
+/** Normalize scene id from saved projects (legacy ids). */
+export function migrateSceneIdFromStorage(
+  id: string | undefined | null,
+): OllieSceneId {
+  if (id === "white_grid") return "white_dots";
+  if (id && isOllieSceneId(id)) return id;
+  return DEFAULT_SCENE_ID;
 }
 
 export function getCostumeById(id: string): CostumeDef | undefined {

@@ -54,24 +54,24 @@ function walkStatementChain(
         break;
       }
       case "ollie_go_to_xy": {
-        const x = Number(current.getFieldValue("XPCT")) ?? 50;
-        const y = Number(current.getFieldValue("YPCT")) ?? 50;
+        const x = Number(current.getFieldValue("XPCT")) ?? 0;
+        const y = Number(current.getFieldValue("YPCT")) ?? 0;
         actions.push({
           type: "goTo",
-          xPct: Math.min(100, Math.max(0, x)),
-          yPct: Math.min(100, Math.max(0, y)),
+          xPct: Math.min(100, Math.max(-100, x)),
+          yPct: Math.min(100, Math.max(-100, y)),
         });
         break;
       }
       case "ollie_glide_to": {
         const secs = Number(current.getFieldValue("SECS")) || 1;
-        const x = Number(current.getFieldValue("XPCT")) ?? 50;
-        const y = Number(current.getFieldValue("YPCT")) ?? 50;
+        const x = Number(current.getFieldValue("XPCT")) ?? 0;
+        const y = Number(current.getFieldValue("YPCT")) ?? 0;
         actions.push({
           type: "glideTo",
           secs: Math.min(15, Math.max(0.1, secs)),
-          xPct: Math.min(100, Math.max(0, x)),
-          yPct: Math.min(100, Math.max(0, y)),
+          xPct: Math.min(100, Math.max(-100, x)),
+          yPct: Math.min(100, Math.max(-100, y)),
         });
         break;
       }

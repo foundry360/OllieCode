@@ -119,21 +119,21 @@ export function getOllieBlockDefinitions(): Parameters<
   },
   {
     type: "ollie_go_to_xy",
-    message0: "go to x: %1 y: %2 (0–100)",
+    message0: "go to x: %1 y: %2 (−100–100)",
     args0: [
       {
         type: "field_number",
         name: "XPCT",
-        value: 50,
-        min: 0,
+        value: 0,
+        min: -100,
         max: 100,
         precision: 0,
       },
       {
         type: "field_number",
         name: "YPCT",
-        value: 50,
-        min: 0,
+        value: 0,
+        min: -100,
         max: 100,
         precision: 0,
       },
@@ -141,7 +141,8 @@ export function getOllieBlockDefinitions(): Parameters<
     previousStatement: null,
     nextStatement: null,
     style: "scratch_motion",
-    tooltip: "Jump to a position (0–100% of the stage width and height).",
+    tooltip:
+      "Scratch-style position: x is left (−100) to right (+100); y is up (+100) to down (−100). Center is 0, 0.",
   },
   {
     type: "ollie_glide_to",
@@ -158,16 +159,16 @@ export function getOllieBlockDefinitions(): Parameters<
       {
         type: "field_number",
         name: "XPCT",
-        value: 50,
-        min: 0,
+        value: 0,
+        min: -100,
         max: 100,
         precision: 0,
       },
       {
         type: "field_number",
         name: "YPCT",
-        value: 50,
-        min: 0,
+        value: 0,
+        min: -100,
         max: 100,
         precision: 0,
       },
@@ -175,7 +176,8 @@ export function getOllieBlockDefinitions(): Parameters<
     previousStatement: null,
     nextStatement: null,
     style: "scratch_motion",
-    tooltip: "Smoothly glide to a position over time.",
+    tooltip:
+      "Glide to a Scratch-style position: x left (−100) to right (+100); y up (+100) to down (−100).",
   },
   {
     type: "ollie_if_on_edge_bounce",

@@ -7,9 +7,21 @@ import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAsset
 /** One character on stage — each has its own Blockly script (like Scratch sprites). */
 export type StageActor = {
   id: string;
-  name: string;
+  /** Sprite label shown in the UI — not a person’s real name. */
+  label: string;
   costumeId: OllieSpriteCostumeId;
 };
+
+/** Legacy saves used `name` for sprite label; map to {@link StageActor.label}. */
+export function normalizeStageActor(
+  raw: { id: string; costumeId: OllieSpriteCostumeId } & {
+    label?: string;
+    name?: string;
+  },
+): StageActor {
+  const label = raw.label ?? raw.name ?? "Sprite";
+  return { id: raw.id, label, costumeId: raw.costumeId };
+}
 
 /** @deprecated Use OllieSpriteCostumeId */
 export type OllieCostume = OllieSpriteCostumeId;
@@ -18,6 +30,10 @@ export type OllieAction =
   | { type: "move"; distance: number }
   | { type: "rotate"; degrees: number }
   | { type: "setHeading"; degrees: number }
+  /**
+   * goTo / glideTo: xPct, yPct are Scratch-style stage coords in −100…100
+   * (center 0,0; +y toward top, −y toward bottom).
+   */
   | { type: "goTo"; xPct: number; yPct: number }
   | { type: "glideTo"; secs: number; xPct: number; yPct: number }
   | { type: "bounceEdge" }
@@ -34,8 +50,10 @@ export type ProjectPayload = {
   workspace: Record<string, unknown>;
   /** Per-sprite scripts (Scratch-style) */
   workspacesByActorId?: Record<string, Record<string, unknown>>;
+  /** Actors may contain legacy `name` instead of `label` — normalize on load. */
   actors?: StageActor[];
   sceneId?: OllieSceneId;
+  /** Project title (not a user’s real name). */
   name: string;
   updatedAt: string;
 };
