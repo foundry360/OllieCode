@@ -43,7 +43,22 @@ export type OllieAction =
   | { type: "scene"; id: OllieSceneId }
   | { type: "sound"; id: "pop" | "boing" | "cheer" }
   | { type: "soundWait"; id: "pop" | "boing" | "cheer"; ms: number }
-  | { type: "wait"; ms: number };
+  | { type: "wait"; ms: number }
+  /** Scratch-style message — handled by the stage runtime, not queued as sprite motion. */
+  | { type: "broadcast"; message: string }
+  | { type: "broadcastWait"; message: string };
+
+/**
+ * One sprite’s Blockly workspace compiled into runnable scripts (multiple event hats).
+ */
+export type SpriteScriptPlan = {
+  /** Each `when Run clicked` stack (multiple hats allowed, Scratch-style). */
+  runScripts: OllieAction[][];
+  keyScripts: { keyId: string; actions: OllieAction[] }[];
+  stageClickScripts: OllieAction[][];
+  backdropScripts: { sceneId: OllieSceneId; actions: OllieAction[] }[];
+  broadcastScripts: { message: string; actions: OllieAction[] }[];
+};
 
 /** Missions the user has saved work for (merged across saves / devices via project JSON). */
 export type SavedMissionProgressEntry = {

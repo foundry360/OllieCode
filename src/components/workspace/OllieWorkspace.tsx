@@ -31,7 +31,7 @@ import {
   HIDE_TOOLBOX_SCROLLBAR_VISUAL,
 } from "@/lib/blockly/blocklyUiOptions";
 import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
-import { executeWorkspaceFromSave } from "@/lib/blockly/executeBlocks";
+import { extractSpriteScriptPlanFromSave } from "@/lib/blockly/executeBlocks";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
@@ -79,7 +79,7 @@ import {
 } from "@/lib/supabase/savedMissionProgress";
 import {
   normalizeStageActor,
-  type OllieAction,
+  type SpriteScriptPlan,
   type ProjectPayload,
   type SavedMissionProgressEntry,
   type StageActor,
@@ -476,20 +476,27 @@ export function OllieWorkspace() {
     setStatus("Running…");
     spriteWorkspacesRef.current[activeActorId] =
       serialization.workspaces.save(ws) as Record<string, unknown>;
+    const emptyPlan = (): SpriteScriptPlan => ({
+      runScripts: [],
+      keyScripts: [],
+      stageClickScripts: [],
+      backdropScripts: [],
+      broadcastScripts: [],
+    });
     const bundles = actors.map((actor) => {
       const raw = spriteWorkspacesRef.current[actor.id];
-      let actions: OllieAction[] = [];
+      let plan: SpriteScriptPlan = emptyPlan();
       if (raw && Object.keys(raw).length > 0) {
         try {
-          actions = executeWorkspaceFromSave(raw);
+          plan = extractSpriteScriptPlanFromSave(raw);
         } catch {
-          actions = [];
+          plan = emptyPlan();
         }
       }
-      return { spriteId: actor.id, actions };
+      return { spriteId: actor.id, plan };
     });
     p5.resetSprite();
-    await p5.runParallel(bundles);
+    await p5.runProjectPlans(bundles);
     setStatus("Done!");
     setTimeout(() => setStatus(""), 2000);
 

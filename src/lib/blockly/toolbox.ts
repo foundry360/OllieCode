@@ -18,7 +18,15 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Events",
       colour: scratchToolboxCategoryColour.events,
-      contents: [B("ollie_start")],
+      contents: [
+        B("ollie_start"),
+        B("ollie_event_key_pressed"),
+        B("ollie_event_stage_clicked"),
+        B("ollie_event_backdrop_switches"),
+        B("ollie_event_broadcast_received"),
+        B("ollie_broadcast"),
+        B("ollie_broadcast_and_wait"),
+      ],
     },
     {
       kind: "category",

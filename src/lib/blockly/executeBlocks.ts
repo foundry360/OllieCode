@@ -4,11 +4,11 @@ import {
   isOllieSceneId,
   isOllieSpriteCostumeId,
 } from "@/lib/canvas/stageAssets";
-import type { OllieAction } from "@/types/ollie";
+import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
 
 /**
- * Run only interprets blocks chained under `ollie_start` (Ollie canvas actions).
- * Standard Blockly blocks are available for building logic; use code generation later to execute them.
+ * Interprets Ollie stack blocks (Motion / Looks / Sound / Control / Events).
+ * Logic/Math blocks are for structure only unless expanded later.
  */
 
 const BASE_STEP_PX = 2.4;
@@ -129,6 +129,16 @@ function walkStatementChain(
         actions.push({ type: "wait", ms: Math.max(0, secs * 1000) });
         break;
       }
+      case "ollie_broadcast": {
+        const msg = String(current.getFieldValue("MESSAGE") ?? "message1");
+        actions.push({ type: "broadcast", message: msg });
+        break;
+      }
+      case "ollie_broadcast_and_wait": {
+        const msg = String(current.getFieldValue("MESSAGE") ?? "message1");
+        actions.push({ type: "broadcastWait", message: msg });
+        break;
+      }
       case "ollie_repeat": {
         const raw = Math.floor(Number(current.getFieldValue("TIMES")) || 1);
         const times = Math.min(
@@ -149,30 +159,106 @@ function walkStatementChain(
   }
 }
 
-/**
- * Walk the workspace from the `ollie_start` block and collect canvas + sound actions.
- */
-export function executeWorkspace(workspace: Blockly.Workspace): OllieAction[] {
+function collectChainActions(start: Blockly.Block | null): OllieAction[] {
   const actions: OllieAction[] = [];
-  const tops = workspace.getTopBlocks(true);
-  const start = tops.find((b) => b.type === "ollie_start");
-  if (!start) return actions;
-
-  walkStatementChain(start.getNextBlock(), actions);
+  walkStatementChain(start, actions);
   return actions;
 }
 
+function emptyPlan(): SpriteScriptPlan {
+  return {
+    runScripts: [],
+    keyScripts: [],
+    stageClickScripts: [],
+    backdropScripts: [],
+    broadcastScripts: [],
+  };
+}
+
 /**
- * Run the same block walker on a serialized workspace (no SVG) — for multi-sprite Run.
+ * All event hat types that start a script stack.
+ */
+const HAT_TYPES = new Set([
+  "ollie_start",
+  "ollie_event_key_pressed",
+  "ollie_event_stage_clicked",
+  "ollie_event_backdrop_switches",
+  "ollie_event_broadcast_received",
+]);
+
+/**
+ * Compile one sprite workspace into separate scripts (multiple hats, Scratch-style).
+ */
+export function extractSpriteScriptPlan(
+  workspace: Blockly.Workspace,
+): SpriteScriptPlan {
+  const plan = emptyPlan();
+  const tops = workspace.getTopBlocks(true);
+
+  for (const block of tops) {
+    if (!HAT_TYPES.has(block.type)) continue;
+
+    const chain = collectChainActions(block.getNextBlock());
+
+    switch (block.type) {
+      case "ollie_start":
+        plan.runScripts.push(chain);
+        break;
+      case "ollie_event_key_pressed": {
+        const keyId = String(block.getFieldValue("KEY") ?? "space");
+        plan.keyScripts.push({ keyId, actions: chain });
+        break;
+      }
+      case "ollie_event_stage_clicked":
+        plan.stageClickScripts.push(chain);
+        break;
+      case "ollie_event_backdrop_switches": {
+        const sid = String(block.getFieldValue("SCENE") ?? "");
+        if (isOllieSceneId(sid)) {
+          plan.backdropScripts.push({ sceneId: sid, actions: chain });
+        }
+        break;
+      }
+      case "ollie_event_broadcast_received": {
+        const msg = String(block.getFieldValue("MESSAGE") ?? "message1");
+        plan.broadcastScripts.push({ message: msg, actions: chain });
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  return plan;
+}
+
+export function extractSpriteScriptPlanFromSave(
+  state: Record<string, unknown>,
+): SpriteScriptPlan {
+  const temp = new Blockly.Workspace();
+  try {
+    serialization.workspaces.load(state, temp);
+    return extractSpriteScriptPlan(temp);
+  } finally {
+    temp.dispose();
+  }
+}
+
+/**
+ * @deprecated Prefer {@link extractSpriteScriptPlan} — kept for any legacy callers.
+ * Returns only the first “when Run clicked” chain.
+ */
+export function executeWorkspace(workspace: Blockly.Workspace): OllieAction[] {
+  const plan = extractSpriteScriptPlan(workspace);
+  return plan.runScripts[0] ?? [];
+}
+
+/**
+ * @deprecated Prefer {@link extractSpriteScriptPlanFromSave}.
  */
 export function executeWorkspaceFromSave(
   state: Record<string, unknown>,
 ): OllieAction[] {
-  const temp = new Blockly.Workspace();
-  try {
-    serialization.workspaces.load(state, temp);
-    return executeWorkspace(temp);
-  } finally {
-    temp.dispose();
-  }
+  const plan = extractSpriteScriptPlanFromSave(state);
+  return plan.runScripts[0] ?? [];
 }

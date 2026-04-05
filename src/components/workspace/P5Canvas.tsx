@@ -7,7 +7,7 @@ import {
   useRef,
 } from "react";
 import type p5Types from "p5";
-import type { OllieAction } from "@/types/ollie";
+import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
 import {
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
@@ -21,8 +21,9 @@ import { playOllieSound } from "@/lib/sounds/ollieSounds";
 export type StageActorPaint = { id: string; costumeId: OllieSpriteCostumeId };
 
 export type P5CanvasHandle = {
-  runParallel: (
-    bundles: { spriteId: string; actions: OllieAction[] }[],
+  /** Run green-flag scripts, then keep key / stage / backdrop / broadcast handlers until the next run. */
+  runProjectPlans: (
+    plans: { spriteId: string; plan: SpriteScriptPlan }[],
   ) => Promise<void>;
   resetSprite: () => void;
 };
@@ -147,6 +148,26 @@ function drawSceneLayer(
   }
 }
 
+/** Matches Blockly event key dropdown values (`ollie_event_key_pressed`). */
+function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
+  switch (keyId) {
+    case "space":
+      return e.code === "Space" || e.key === " ";
+    case "up":
+      return e.key === "ArrowUp";
+    case "down":
+      return e.key === "ArrowDown";
+    case "left":
+      return e.key === "ArrowLeft";
+    case "right":
+      return e.key === "ArrowRight";
+    default:
+      return (
+        e.key.length === 1 && e.key.toLowerCase() === keyId.toLowerCase()
+      );
+  }
+}
+
 function drawSpriteForCostume(
   p: p5Types,
   costumeId: OllieSpriteCostumeId,
@@ -201,8 +222,32 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     const latestSceneIdRef = useRef(sceneId);
     latestSceneIdRef.current = sceneId;
 
+    /** After Run, scene-change scripts use this; cleared on the next Run. */
+    const sessionActiveRef = useRef(false);
+    const backdropPackRef = useRef<{
+      plans: { spriteId: string; plan: SpriteScriptPlan }[];
+      runSequence: (spriteId: string, actions: OllieAction[]) => Promise<void>;
+    } | null>(null);
+    const stageClickHandlerRef = useRef<(() => void) | null>(null);
+    const keyDownHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(
+      null,
+    );
+
     useEffect(() => {
       currentSceneRef.current = sceneId;
+    }, [sceneId]);
+
+    /** Scratch-style “when scene switches to …” — fires when `sceneId` prop changes after a Run. */
+    useEffect(() => {
+      const pack = backdropPackRef.current;
+      if (!sessionActiveRef.current || !pack) return;
+      for (const { spriteId, plan } of pack.plans) {
+        for (const bd of plan.backdropScripts) {
+          if (bd.sceneId === sceneId) {
+            void pack.runSequence(spriteId, bd.actions);
+          }
+        }
+      }
     }, [sceneId]);
 
     useEffect(() => {
@@ -236,91 +281,160 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       });
     }, [actors]);
 
-    async function runSequenceForSprite(
-      spriteId: string,
-      actions: OllieAction[],
-    ): Promise<void> {
-      const s = spritesByIdRef.current.get(spriteId);
-      if (!s) return;
-      const box = containerRef.current?.getBoundingClientRect();
-      const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
-      const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
-
-      for (const a of actions) {
-        if (a.type === "rotate") {
-          s.heading = normHeading(s.heading + a.degrees);
-        } else if (a.type === "setHeading") {
-          s.heading = normHeading(a.degrees);
-        } else if (a.type === "move") {
-          const rad = (s.heading * Math.PI) / 180;
-          const dx = Math.sin(rad) * a.distance;
-          const dy = -Math.cos(rad) * a.distance;
-          await animateMove(s, s.x + dx, s.y + dy, MOVE_FRAMES);
-        } else if (a.type === "goTo") {
-          const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
-          s.x = pos.x;
-          s.y = pos.y;
-        } else if (a.type === "glideTo") {
-          const { x: tx, y: ty } = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
-          await animateMove(
-            s,
-            tx,
-            ty,
-            Math.max(8, Math.round((a.secs * 1000) / 16)),
-          );
-        } else if (a.type === "bounceEdge") {
-          const m = 14;
-          if (
-            s.x <= m ||
-            s.x >= cw - m ||
-            s.y <= m ||
-            s.y >= ch - m
-          ) {
-            s.heading = normHeading(s.heading + 180);
-          }
-        } else if (a.type === "say") {
-          s.bubble = {
-            text: a.text,
-            kind: "say",
-            until: Date.now() + a.ms,
-          };
-          await waitMs(a.ms);
-          s.bubble = undefined;
-        } else if (a.type === "think") {
-          s.bubble = {
-            text: a.text,
-            kind: "think",
-            until: Date.now() + a.ms,
-          };
-          await waitMs(a.ms);
-          s.bubble = undefined;
-        } else if (a.type === "costume") {
-          s.costume = a.id;
-          onActorCostumeChangeRef.current(spriteId, a.id);
-        } else if (a.type === "scene") {
-          currentSceneRef.current = a.id;
-          onSceneChangeRef.current(a.id);
-        } else if (a.type === "sound") {
-          playOllieSound(a.id);
-        } else if (a.type === "soundWait") {
-          playOllieSound(a.id);
-          await waitMs(a.ms);
-        } else if (a.type === "wait") {
-          await waitMs(a.ms);
-        }
-      }
-    }
-
     useImperativeHandle(ref, () => ({
-      async runParallel(bundles: { spriteId: string; actions: OllieAction[] }[]) {
+      async runProjectPlans(
+        plans: { spriteId: string; plan: SpriteScriptPlan }[],
+      ) {
         if (runningRef.current) return;
+        if (keyDownHandlerRef.current) {
+          window.removeEventListener("keydown", keyDownHandlerRef.current);
+          keyDownHandlerRef.current = null;
+        }
+        sessionActiveRef.current = false;
+        backdropPackRef.current = null;
+        stageClickHandlerRef.current = null;
+
         runningRef.current = true;
+        let broadcastDepth = 0;
+
+        async function dispatchBroadcast(
+          message: string,
+          wait: boolean,
+        ): Promise<void> {
+          if (broadcastDepth > 24) return;
+          broadcastDepth += 1;
+          try {
+            const runners: Promise<void>[] = [];
+            for (const { spriteId: sid, plan } of plans) {
+              for (const bc of plan.broadcastScripts) {
+                if (bc.message === message) {
+                  runners.push(runSequenceForSprite(sid, bc.actions));
+                }
+              }
+            }
+            if (wait) await Promise.all(runners);
+            else void Promise.all(runners);
+          } finally {
+            broadcastDepth -= 1;
+          }
+        }
+
+        async function runSequenceForSprite(
+          spriteId: string,
+          actions: OllieAction[],
+        ): Promise<void> {
+          const s = spritesByIdRef.current.get(spriteId);
+          if (!s) return;
+          const box = containerRef.current?.getBoundingClientRect();
+          const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
+          const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
+
+          for (const a of actions) {
+            if (a.type === "rotate") {
+              s.heading = normHeading(s.heading + a.degrees);
+            } else if (a.type === "setHeading") {
+              s.heading = normHeading(a.degrees);
+            } else if (a.type === "move") {
+              const rad = (s.heading * Math.PI) / 180;
+              const dx = Math.sin(rad) * a.distance;
+              const dy = -Math.cos(rad) * a.distance;
+              await animateMove(s, s.x + dx, s.y + dy, MOVE_FRAMES);
+            } else if (a.type === "goTo") {
+              const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
+              s.x = pos.x;
+              s.y = pos.y;
+            } else if (a.type === "glideTo") {
+              const { x: tx, y: ty } = scratchStageToPixel(
+                a.xPct,
+                a.yPct,
+                cw,
+                ch,
+              );
+              await animateMove(
+                s,
+                tx,
+                ty,
+                Math.max(8, Math.round((a.secs * 1000) / 16)),
+              );
+            } else if (a.type === "bounceEdge") {
+              const m = 14;
+              if (
+                s.x <= m ||
+                s.x >= cw - m ||
+                s.y <= m ||
+                s.y >= ch - m
+              ) {
+                s.heading = normHeading(s.heading + 180);
+              }
+            } else if (a.type === "say") {
+              s.bubble = {
+                text: a.text,
+                kind: "say",
+                until: Date.now() + a.ms,
+              };
+              await waitMs(a.ms);
+              s.bubble = undefined;
+            } else if (a.type === "think") {
+              s.bubble = {
+                text: a.text,
+                kind: "think",
+                until: Date.now() + a.ms,
+              };
+              await waitMs(a.ms);
+              s.bubble = undefined;
+            } else if (a.type === "costume") {
+              s.costume = a.id;
+              onActorCostumeChangeRef.current(spriteId, a.id);
+            } else if (a.type === "scene") {
+              currentSceneRef.current = a.id;
+              onSceneChangeRef.current(a.id);
+            } else if (a.type === "sound") {
+              playOllieSound(a.id);
+            } else if (a.type === "soundWait") {
+              playOllieSound(a.id);
+              await waitMs(a.ms);
+            } else if (a.type === "wait") {
+              await waitMs(a.ms);
+            } else if (a.type === "broadcast") {
+              void dispatchBroadcast(a.message, false);
+            } else if (a.type === "broadcastWait") {
+              await dispatchBroadcast(a.message, true);
+            }
+          }
+        }
+
+        sessionActiveRef.current = true;
+        backdropPackRef.current = { plans, runSequence: runSequenceForSprite };
+
+        const keyHandler = (e: KeyboardEvent) => {
+          for (const { spriteId: sid, plan } of plans) {
+            for (const ks of plan.keyScripts) {
+              if (keyEventMatches(ks.keyId, e)) {
+                e.preventDefault();
+                void runSequenceForSprite(sid, ks.actions);
+              }
+            }
+          }
+        };
+        keyDownHandlerRef.current = keyHandler;
+        window.addEventListener("keydown", keyHandler);
+
+        stageClickHandlerRef.current = () => {
+          for (const { spriteId: sid, plan } of plans) {
+            for (const chain of plan.stageClickScripts) {
+              void runSequenceForSprite(sid, chain);
+            }
+          }
+        };
+
         try {
-          await Promise.all(
-            bundles.map(({ spriteId, actions }) =>
-              runSequenceForSprite(spriteId, actions),
-            ),
-          );
+          const greenRunners: Promise<void>[] = [];
+          for (const { spriteId: sid, plan } of plans) {
+            for (const chain of plan.runScripts) {
+              greenRunners.push(runSequenceForSprite(sid, chain));
+            }
+          }
+          await Promise.all(greenRunners);
         } finally {
           runningRef.current = false;
         }
@@ -419,6 +533,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               Math.min(CANVAS_MAX_PX, Math.max(1, el.clientWidth)),
               Math.min(CANVAS_MAX_PX, Math.max(1, el.clientHeight)),
             );
+          };
+
+          p.mousePressed = () => {
+            stageClickHandlerRef.current?.();
           };
         };
 

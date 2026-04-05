@@ -4,6 +4,31 @@ import {
   sceneDropdownOptions,
 } from "@/lib/canvas/stageAssets";
 
+/** Keys shown in “when … key pressed” — values match runtime in `P5Canvas`. */
+export function eventKeyDropdownOptions(): [string, string][] {
+  return [
+    ["space", "space"],
+    ["up arrow", "up"],
+    ["down arrow", "down"],
+    ["left arrow", "left"],
+    ["right arrow", "right"],
+    ["a", "a"],
+    ["d", "d"],
+    ["s", "s"],
+    ["w", "w"],
+    ["e", "e"],
+    ["r", "r"],
+  ];
+}
+
+export function broadcastMessageDropdownOptions(): [string, string][] {
+  return [
+    ["message1", "message1"],
+    ["message2", "message2"],
+    ["message3", "message3"],
+  ];
+}
+
 /**
  * Ollie blocks use Scratch 3–style `style` keys (see `ollieTheme.ts` — Motion green, Looks purple, etc.).
  */
@@ -26,6 +51,93 @@ export function getOllieBlockDefinitions(): Parameters<
     tooltip: "Like Scratch’s green flag — stack blocks below, then tap Run.",
     helpUrl: "",
     hat: "cap",
+  },
+  {
+    type: "ollie_event_key_pressed",
+    message0: "when %1 key pressed",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "KEY",
+        options: eventKeyDropdownOptions(),
+      },
+    ],
+    nextStatement: true,
+    style: "scratch_events",
+    tooltip: "Start the stack when this key is pressed (after you tap Run).",
+    helpUrl: "",
+    hat: "cap",
+  },
+  {
+    type: "ollie_event_stage_clicked",
+    message0: "when stage clicked",
+    nextStatement: true,
+    style: "scratch_events",
+    tooltip: "Start when you click the stage (after you tap Run).",
+    helpUrl: "",
+    hat: "cap",
+  },
+  {
+    type: "ollie_event_backdrop_switches",
+    message0: "when scene switches to %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "SCENE",
+        options: sceneDropdownOptions(),
+      },
+    ],
+    nextStatement: true,
+    style: "scratch_events",
+    tooltip: "Start when the scene matches (from the scene picker or a switch scene block).",
+    helpUrl: "",
+    hat: "cap",
+  },
+  {
+    type: "ollie_event_broadcast_received",
+    message0: "when I receive %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "MESSAGE",
+        options: broadcastMessageDropdownOptions(),
+      },
+    ],
+    nextStatement: true,
+    style: "scratch_events",
+    tooltip: "Start when another script broadcasts this message.",
+    helpUrl: "",
+    hat: "cap",
+  },
+  {
+    type: "ollie_broadcast",
+    message0: "broadcast %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "MESSAGE",
+        options: broadcastMessageDropdownOptions(),
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_events",
+    tooltip: "Tell all scripts that listen for this message to run.",
+  },
+  {
+    type: "ollie_broadcast_and_wait",
+    message0: "broadcast %1 and wait",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "MESSAGE",
+        options: broadcastMessageDropdownOptions(),
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_events",
+    tooltip: "Broadcast and wait until those scripts finish.",
   },
   {
     type: "ollie_move_forward",
