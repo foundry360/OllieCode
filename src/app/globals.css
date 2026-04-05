@@ -178,3 +178,16 @@ html::-webkit-scrollbar-thumb:hover {
   height: 0 !important;
   opacity: 0 !important;
 }
+
+/* Main workspace scrollbar: hidden until hover over Blockly (wheel / trackpad still scroll). */
+.ollie-blockly-host:not(.ollie-blockly--hide-main-scrollbar) .injectionDiv svg.blocklyMainWorkspaceScrollbar {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  pointer-events: none;
+}
+
+.ollie-blockly-host:not(.ollie-blockly--hide-main-scrollbar):hover .injectionDiv svg.blocklyMainWorkspaceScrollbar,
+.ollie-blockly-host:not(.ollie-blockly--hide-main-scrollbar):focus-within .injectionDiv svg.blocklyMainWorkspaceScrollbar {
+  opacity: 1;
+  pointer-events: auto;
+}

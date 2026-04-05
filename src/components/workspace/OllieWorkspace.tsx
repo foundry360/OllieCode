@@ -312,7 +312,7 @@ export function OllieWorkspace() {
           toolbox: OLLIE_TOOLBOX,
           theme: ollieBlocklyTheme,
           renderer: "zelos",
-          trashcan: true,
+          trashcan: false,
           zoom: {
             controls: true,
             wheel: true,
