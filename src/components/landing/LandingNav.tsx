@@ -32,7 +32,7 @@ export function LandingNav() {
             Fun stuff
           </a>
           <Link
-            href="/auth/signup"
+            href="/auth/login"
             className="rounded-full bg-[#84c126] px-5 py-2.5 text-white shadow-sm transition hover:bg-[#6fa020]"
           >
             Start Coding

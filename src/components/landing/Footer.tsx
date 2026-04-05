@@ -52,7 +52,9 @@ export function Footer() {
         </div>
       </div>
       <p className="mx-auto mt-10 max-w-6xl text-center text-xs text-[#9ca3af]">
-        © {new Date().getFullYear()} Ollie Code. Scaffold for demos — replace links and copy for production.
+        ©{" "}
+        <span suppressHydrationWarning>{new Date().getFullYear()}</span> Ollie
+        Code. Scaffold for demos — replace links and copy for production.
       </p>
     </footer>
   );

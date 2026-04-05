@@ -18,10 +18,10 @@ export function Hero() {
           </p>
           <div className="mt-8 flex flex-wrap gap-4">
             <Link
-              href="/auth/signup"
+              href="/auth/login"
               className="inline-flex items-center justify-center rounded-full bg-[#84c126] px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:bg-[#6fa020]"
             >
-              Sign Up / Start Coding
+              Start coding
             </Link>
             <a
               href="#features"

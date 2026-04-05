@@ -82,6 +82,11 @@ html::-webkit-scrollbar-thumb:hover {
   box-sizing: border-box;
 }
 
+/* Match workspace card rounded-b-2xl so Blockly chrome doesn’t paint square bottom corners. */
+.ollie-blockly-host.overflow-hidden > .injectionDiv {
+  border-radius: 0 0 1rem 1rem;
+}
+
 /* Inset toolbox category color strips from the panel edge */
 .blocklyToolbox .blocklyToolboxCategoryGroup {
   padding-left: 10px;

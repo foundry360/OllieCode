@@ -1,18 +1,8 @@
-"use client";
+import { WorkspacePageClient } from "@/app/workspace/workspace-page-client";
 
-import { Suspense } from "react";
-import { OllieWorkspace } from "@/components/workspace/OllieWorkspace";
+/** Per-request render so `useSearchParams()` (e.g. `?mission=`) matches SSR HTML and hydration. */
+export const dynamic = "force-dynamic";
 
 export default function WorkspacePage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="flex min-h-[100dvh] items-center justify-center bg-[#f8fafc] p-6 text-sm text-[#6b7280]">
-          Loading workspace…
-        </div>
-      }
-    >
-      <OllieWorkspace />
-    </Suspense>
-  );
+  return <WorkspacePageClient />;
 }

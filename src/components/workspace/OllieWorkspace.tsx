@@ -8,6 +8,7 @@ import {
   useState,
   type ReactElement,
 } from "react";
+import { useIsClient } from "@/hooks/useIsClient";
 import {
   Block,
   Events,
@@ -136,6 +137,7 @@ export function OllieWorkspace() {
     () => activeMission ?? MISSIONS[0],
     [activeMission],
   );
+  const isClient = useIsClient();
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<WorkspaceSvg | null>(null);
   const spriteWorkspacesRef = useRef<Record<string, Record<string, unknown>>>({});
@@ -174,6 +176,13 @@ export function OllieWorkspace() {
   const [missionsModalOpen, setMissionsModalOpen] = useState(false);
   const [deleteMissionModalOpen, setDeleteMissionModalOpen] = useState(false);
   const [deleteMissionLoading, setDeleteMissionLoading] = useState(false);
+  const [renameMissionModalOpen, setRenameMissionModalOpen] = useState(false);
+  const [renameMissionContext, setRenameMissionContext] = useState<{
+    missionId: string;
+    missionTitle: string;
+    defaultName: string;
+  } | null>(null);
+  const [renameMissionLoading, setRenameMissionLoading] = useState(false);
   const [savedMissionEntries, setSavedMissionEntries] = useState<
     SavedMissionProgressEntry[]
   >([]);
@@ -204,13 +213,16 @@ export function OllieWorkspace() {
     return activeMission.description || undefined;
   }, [activeMission, savedMissionEntries]);
 
+  /** Fixed locale + UTC so server and client match during hydration. */
   const defaultMissionSaveName = useMemo(() => {
     if (!missionForSave) return "";
     const d = new Date();
-    return `${missionForSave.title} — ${d.toLocaleDateString(undefined, {
+    const datePart = d.toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",
-    })}`;
+      timeZone: "UTC",
+    });
+    return `${missionForSave.title} — ${datePart}`;
   }, [missionForSave]);
 
   const currentStageScene =
@@ -684,6 +696,58 @@ export function OllieWorkspace() {
   const handleSave = useCallback(() => {
     saveMissionWithExistingNameOrPrompt();
   }, [saveMissionWithExistingNameOrPrompt]);
+
+  const openRenameMissionFromList = useCallback((missionId: string) => {
+    const meta = getMissionById(missionId);
+    const entry = getSavedMissionProgress().find(
+      (e) => e.missionId === missionId,
+    );
+    const defaultName =
+      entry?.displayName?.trim() || meta?.title || "Mission";
+    setRenameMissionContext({
+      missionId,
+      missionTitle: meta?.title ?? "Mission",
+      defaultName,
+    });
+    setRenameMissionModalOpen(true);
+  }, []);
+
+  const confirmRenameMission = useCallback(
+    async (displayName: string) => {
+      if (!renameMissionContext) return;
+      const trimmed = displayName.trim();
+      if (!trimmed) return;
+      setRenameMissionLoading(true);
+      try {
+        recordMissionSaved(renameMissionContext.missionId, trimmed);
+        const sb = getSupabaseBrowserClient();
+        if (sb) {
+          const {
+            data: { user },
+          } = await sb.auth.getUser();
+          if (user) {
+            const { error } = await upsertSavedMissionProgress(sb, user.id, {
+              missionId: renameMissionContext.missionId,
+              displayName: trimmed,
+              savedAt: new Date().toISOString(),
+            });
+            if (error) {
+              setStatus(`Renamed on this device; cloud: ${error.message}`);
+              setTimeout(() => setStatus(""), 5000);
+            }
+          }
+        }
+        setSavedMissionEntries(getSavedMissionProgress());
+        setRenameMissionModalOpen(false);
+        setRenameMissionContext(null);
+        setStatus("Mission renamed!");
+        setTimeout(() => setStatus(""), 2500);
+      } finally {
+        setRenameMissionLoading(false);
+      }
+    },
+    [renameMissionContext],
+  );
 
   const toggleFullscreen = useCallback(async () => {
     const doc = document as Document & {
@@ -1160,7 +1224,7 @@ export function OllieWorkspace() {
               aria-hidden
             />
           </ToolbarIconButton>
-          {getSupabaseBrowserClient() ? (
+          {isClient && getSupabaseBrowserClient() ? (
             <div className="flex items-center gap-2 border-l border-[#e5e7eb] pl-2 sm:gap-3 sm:pl-3">
               <WorkspaceHeaderTooltip text="Settings">
                 <Link
@@ -1285,16 +1349,16 @@ export function OllieWorkspace() {
       ) : null}
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
-        <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]">
-          <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
+        <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]">
+          <div className="shrink-0 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
             Workspace
           </div>
-          <div className="relative w-full min-w-0 flex-1 min-h-[480px]">
+          <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
             <div
               key={blocklyInjectKey}
               ref={blocklyDiv}
               className={[
-                "ollie-blockly-host absolute inset-0 min-h-[480px] w-full min-w-0",
+                "ollie-blockly-host absolute inset-0 min-h-[480px] w-full min-w-0 overflow-hidden",
                 HIDE_FLYOUT_SCROLLBAR_VISUAL ? "ollie-blockly--hide-flyout-scrollbar" : "",
                 HIDE_TOOLBOX_SCROLLBAR_VISUAL ? "ollie-blockly--hide-toolbox-scrollbar" : "",
                 HIDE_MAIN_WORKSPACE_SCROLLBAR_VISUAL ? "ollie-blockly--hide-main-scrollbar" : "",
@@ -1332,7 +1396,7 @@ export function OllieWorkspace() {
                 )
               }
             />
-            <div className="shrink-0 border-t border-[#e5e7eb] bg-[#f8fafc] px-2 py-1">
+            <div className="shrink-0 rounded-b-2xl border-t border-[#e5e7eb] bg-[#f8fafc] px-2 py-1">
               <div className="divide-y divide-[#e5e7eb]">
                 <div>
                   <button
@@ -1568,6 +1632,18 @@ export function OllieWorkspace() {
         onCancel={() => setSaveMissionNameModalOpen(false)}
         onConfirm={confirmSaveMissionName}
       />
+      <SaveMissionNameModal
+        open={renameMissionModalOpen && !!renameMissionContext}
+        variant="rename"
+        missionTitle={renameMissionContext?.missionTitle ?? "Mission"}
+        defaultName={renameMissionContext?.defaultName ?? ""}
+        saving={renameMissionLoading}
+        onCancel={() => {
+          setRenameMissionModalOpen(false);
+          setRenameMissionContext(null);
+        }}
+        onConfirm={confirmRenameMission}
+      />
       <SavedMissionsModal
         open={missionsModalOpen}
         onClose={() => setMissionsModalOpen(false)}
@@ -1578,6 +1654,7 @@ export function OllieWorkspace() {
             ? missionIdParam
             : null
         }
+        onRenameMission={openRenameMissionFromList}
       />
       <DeleteMissionModal
         open={deleteMissionModalOpen && canDeleteCurrentMission}

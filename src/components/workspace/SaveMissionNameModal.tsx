@@ -9,6 +9,8 @@ type SaveMissionNameModalProps = {
   onCancel: () => void;
   onConfirm: (displayName: string) => void | Promise<void>;
   saving?: boolean;
+  /** `rename` — shorter copy and “Rename” primary action. */
+  variant?: "save" | "rename";
 };
 
 export function SaveMissionNameModal({
@@ -18,6 +20,7 @@ export function SaveMissionNameModal({
   onCancel,
   onConfirm,
   saving = false,
+  variant = "save",
 }: SaveMissionNameModalProps) {
   const titleId = useId();
   const inputId = useId();
@@ -75,13 +78,13 @@ export function SaveMissionNameModal({
           id={titleId}
           className="font-display text-lg font-bold text-[#111827]"
         >
-          Name your mission save
+          {variant === "rename" ? "Rename your mission" : "Name your mission save"}
         </h2>
         <p className="mt-1 text-sm text-[#6b7280]">
           Mission: <span className="font-semibold text-[#374151]">{missionTitle}</span>
         </p>
         <label htmlFor={inputId} className="mt-4 block text-sm font-semibold text-[#374151]">
-          Save as
+          {variant === "rename" ? "Mission name" : "Save as"}
         </label>
         <input
           id={inputId}
@@ -112,7 +115,13 @@ export function SaveMissionNameModal({
             onClick={() => void submit()}
             className="rounded-xl bg-[#84c126] px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6fa020] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2 disabled:opacity-60"
           >
-            {saving ? "Saving…" : "Save"}
+            {saving
+              ? variant === "rename"
+                ? "Renaming…"
+                : "Saving…"
+              : variant === "rename"
+                ? "Rename"
+                : "Save"}
           </button>
         </div>
       </div>

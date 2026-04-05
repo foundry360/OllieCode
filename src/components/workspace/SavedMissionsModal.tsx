@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo } from "react";
 import { createPortal } from "react-dom";
+import { Pencil } from "lucide-react";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
 import {
   DEFAULT_SCENE_ID,
@@ -23,13 +24,15 @@ type SavedMissionsModalProps = {
   onSelectMission: (missionId: string) => void;
   /** Mission id from the URL — highlights the active row. */
   activeMissionId: string | null;
+  /** Open rename dialog (missions with at least one save). */
+  onRenameMission?: (missionId: string) => void;
 };
 
 function formatSavedAt(iso: string): string {
   try {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return iso;
-    return d.toLocaleString(undefined, {
+    return d.toLocaleString("en-US", {
       month: "short",
       day: "numeric",
       year: "numeric",
@@ -54,6 +57,8 @@ function MissionCard({
   savedAtIso,
   isActive,
   onSelect,
+  canRename,
+  onRename,
 }: {
   missionId: string;
   name: string;
@@ -61,48 +66,70 @@ function MissionCard({
   savedAtIso?: string | null;
   isActive: boolean;
   onSelect: (id: string) => void;
+  canRename: boolean;
+  onRename?: (id: string) => void;
 }) {
   const scene = sceneForMissionId(missionId);
+  const showRename = canRename && onRename;
 
   return (
     <li className="min-w-0">
-      <button
-        type="button"
-        onClick={() => onSelect(missionId)}
+      <div
         className={[
-          "flex w-full flex-col overflow-hidden rounded-2xl border text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+          "flex flex-col overflow-hidden rounded-2xl border text-left shadow-sm transition",
           isActive
             ? "border-[#84c126] bg-[#f7fee7] ring-2 ring-[#84c126]/35"
             : "border-[#e5e7eb] bg-white hover:border-[#84c126]/45 hover:shadow-md",
         ].join(" ")}
       >
-        <div className="relative h-[100px] w-full shrink-0 overflow-hidden rounded-t-2xl bg-[#f1f5f9]">
-          <ScenePreview scene={scene} className="h-full w-full object-cover" />
-          {isActive ? (
-            <span className="absolute right-2 top-2 rounded-full bg-[#84c126] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
-              Open
+        <button
+          type="button"
+          onClick={() => onSelect(missionId)}
+          className="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
+        >
+          <div className="relative h-[100px] w-full shrink-0 overflow-hidden rounded-t-2xl bg-[#f1f5f9]">
+            <ScenePreview scene={scene} className="h-full w-full object-cover" />
+            {isActive ? (
+              <span className="absolute right-2 top-2 rounded-full bg-[#84c126] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
+                Open
+              </span>
+            ) : null}
+          </div>
+          <div className="flex flex-col gap-1 px-3.5 py-3">
+            <span className="font-display text-base font-bold leading-snug text-[#111827]">
+              {name}
             </span>
-          ) : null}
-        </div>
-        <div className="flex flex-col gap-1 px-3.5 py-3">
-          <span className="font-display text-base font-bold leading-snug text-[#111827]">
-            {name}
-          </span>
-          {metaLine ? (
-            <span className="text-xs font-medium text-[#9ca3af]">{metaLine}</span>
-          ) : null}
-          <span className="text-xs text-[#6b7280]">
-            {savedAtIso ? (
-              <>
-                <span className="font-semibold text-[#64748b]">Saved: </span>
-                {formatSavedAt(savedAtIso)}
-              </>
-            ) : (
-              <span className="text-[#9ca3af]">No saves yet</span>
-            )}
-          </span>
-        </div>
-      </button>
+            {metaLine ? (
+              <span className="text-xs font-medium text-[#9ca3af]">{metaLine}</span>
+            ) : null}
+            <span className="text-xs text-[#6b7280]">
+              {savedAtIso ? (
+                <>
+                  <span className="font-semibold text-[#64748b]">Saved: </span>
+                  {formatSavedAt(savedAtIso)}
+                </>
+              ) : (
+                <span className="text-[#9ca3af]">No saves yet</span>
+              )}
+            </span>
+          </div>
+        </button>
+        {showRename ? (
+          <div className="border-t border-[#e5e7eb]/80 bg-[#fafafa]/80 px-2 py-1.5">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRename(missionId);
+              }}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg py-1.5 text-xs font-semibold text-[#365314] transition hover:bg-[#ecfccb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]"
+            >
+              <Pencil className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+              Rename
+            </button>
+          </div>
+        ) : null}
+      </div>
     </li>
   );
 }
@@ -113,6 +140,7 @@ export function SavedMissionsModal({
   entries,
   onSelectMission,
   activeMissionId,
+  onRenameMission,
 }: SavedMissionsModalProps) {
   const titleId = useId();
 
@@ -211,6 +239,8 @@ export function SavedMissionsModal({
                     savedAtIso={saved?.savedAt ?? null}
                     isActive={isActive}
                     onSelect={onSelectMission}
+                    canRename={Boolean(saved?.savedAt)}
+                    onRename={onRenameMission}
                   />
                 );
               })}
@@ -230,6 +260,8 @@ export function SavedMissionsModal({
                     savedAtIso={entry.savedAt}
                     isActive={isActive}
                     onSelect={onSelectMission}
+                    canRename
+                    onRename={onRenameMission}
                   />
                 );
               })}
@@ -241,7 +273,7 @@ export function SavedMissionsModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-full rounded-xl border border-[#e5e7eb] bg-white py-2.5 text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]"
+            className="w-full rounded-xl border border-[#6fa020]/80 bg-[#84c126] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6fa020] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
           >
             Close
           </button>

@@ -1,6 +1,9 @@
 import { Suspense } from "react";
 import { ParentThanksContent } from "@/app/auth/parent-thanks/parent-thanks-content";
 
+/** Per-request render so `useSearchParams()` (e.g. `?error=`) matches SSR HTML and hydration. */
+export const dynamic = "force-dynamic";
+
 function Fallback() {
   return (
     <div className="w-full max-w-md rounded-3xl border border-[#e5e7eb] bg-white p-8 shadow-lg">
