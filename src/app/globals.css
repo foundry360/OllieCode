@@ -75,6 +75,13 @@ html::-webkit-scrollbar-thumb:hover {
     sans-serif;
 }
 
+/* Blockly host: ensure injected layout fills the flex/absolute container (avoids 0-height toolbox). */
+.ollie-blockly-host > .injectionDiv {
+  height: 100%;
+  min-height: 480px;
+  box-sizing: border-box;
+}
+
 /* Inset toolbox category color strips from the panel edge */
 .blocklyToolbox .blocklyToolboxCategoryGroup {
   padding-left: 10px;

@@ -7,6 +7,10 @@ const nextConfig: NextConfig = {
     // directory). Without this, Next picks the wrong root and the app fails to load.
     root: path.join(__dirname),
   },
+  /** Browsers request `/favicon.ico` by default; asset lives at `public/images/favicon.ico`. */
+  async rewrites() {
+    return [{ source: "/favicon.ico", destination: "/images/favicon.ico" }];
+  },
 };
 
 export default nextConfig;

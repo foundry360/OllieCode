@@ -45,6 +45,14 @@ export type OllieAction =
   | { type: "soundWait"; id: "pop" | "boing" | "cheer"; ms: number }
   | { type: "wait"; ms: number };
 
+/** Missions the user has saved work for (merged across saves / devices via project JSON). */
+export type SavedMissionProgressEntry = {
+  missionId: string;
+  savedAt: string;
+  /** Name the learner chose when saving (optional on older data). */
+  displayName?: string;
+};
+
 export type ProjectPayload = {
   /** Blockly workspace JSON — legacy single-sprite save; used if `workspacesByActorId` absent */
   workspace: Record<string, unknown>;
@@ -56,4 +64,6 @@ export type ProjectPayload = {
   /** Project title (not a user’s real name). */
   name: string;
   updatedAt: string;
+  /** Optional: missions with saved progress (for the Missions list + cloud sync). */
+  savedMissionProgress?: SavedMissionProgressEntry[];
 };

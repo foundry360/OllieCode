@@ -53,7 +53,7 @@ export const OLLIE_SPRITE_COSTUMES = [
   },
   {
     id: "robot",
-    label: "Robot",
+    label: "Ollie",
     kind: "image" as const,
     src: "/images/sprites/bot.svg",
     width: 104,

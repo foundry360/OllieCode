@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactElement,
+} from "react";
 import {
   Block,
   Events,
@@ -9,6 +16,7 @@ import {
   common,
   inject,
   serialization,
+  svgResize,
   utils,
 } from "blockly/core";
 import type { WorkspaceSvg } from "blockly/core";
@@ -38,17 +46,41 @@ import { P5Canvas, type P5CanvasHandle } from "@/components/workspace/P5Canvas";
 import { ScenePickerModal } from "@/components/workspace/ScenePickerModal";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
 import { ConfirmDeleteModal } from "@/components/workspace/ConfirmDeleteModal";
+import { DeleteMissionModal } from "@/components/workspace/DeleteMissionModal";
+import { MissionCompleteModal } from "@/components/workspace/MissionCompleteModal";
+import { SaveMissionNameModal } from "@/components/workspace/SaveMissionNameModal";
+import { SavedMissionsModal } from "@/components/workspace/SavedMissionsModal";
 import { SpritePickerModal } from "@/components/workspace/SpritePickerModal";
 import { SpritePreview } from "@/components/workspace/SpritePreview";
+import {
+  clearMissionProjectSnapshotLocal,
+  createCustomMissionId,
+  getMissionById,
+  getSavedMissionProgress,
+  loadMissionProjectSnapshotLocal,
+  mergeMissionProgressIntoStorage,
+  missionCloudProjectId,
+  MISSIONS,
+  recordMissionSaved,
+  removeSavedMissionProgressEntry,
+  storeMissionProjectSnapshotLocal,
+} from "@/lib/missions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
+  deleteProjectJson,
   downloadProjectJson,
   uploadProjectJson,
 } from "@/lib/supabase/projectStorage";
 import {
+  deleteSavedMissionProgress,
+  fetchSavedMissionProgress,
+  upsertSavedMissionProgress,
+} from "@/lib/supabase/savedMissionProgress";
+import {
   normalizeStageActor,
   type OllieAction,
   type ProjectPayload,
+  type SavedMissionProgressEntry,
   type StageActor,
 } from "@/types/ollie";
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
@@ -61,25 +93,56 @@ import {
 } from "@/lib/profiles/avatarAssets";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import {
+  ChevronDown,
+  CopyPlus,
+  Briefcase,
+  LogOut,
+  Plus,
+  Maximize2,
+  Minimize2,
+  Play,
+  Redo,
+  RotateCcw,
+  Save,
+  Settings,
+  Trash2,
+  Undo,
+  Upload,
+} from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+const ICON_SM = "size-5 shrink-0";
+const ICON_STROKE = 2;
 
 /** Legacy id from older saves — migrated on load to {@link ACTOR_ROBOT_ID}. */
 const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
 const ACTOR_ROBOT_ID = "actor-robot";
 
 const DEFAULT_STAGE_ACTORS: StageActor[] = [
-  { id: ACTOR_ROBOT_ID, label: "Robot", costumeId: "robot" },
+  { id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: "robot" },
 ];
 
 /** Main Blockly + canvas + kid-friendly toolbar — extend with new blocks in lib/blockly. */
 export function OllieWorkspace() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const missionIdParam = searchParams.get("mission");
+  const activeMission = missionIdParam
+    ? getMissionById(missionIdParam)
+    : undefined;
+  /** Mission used when naming a save: URL mission, or the first catalog mission on plain `/workspace`. */
+  const missionForSave = useMemo(
+    () => activeMission ?? MISSIONS[0],
+    [activeMission],
+  );
   const blocklyDiv = useRef<HTMLDivElement>(null);
   const workspaceRef = useRef<WorkspaceSvg | null>(null);
   const spriteWorkspacesRef = useRef<Record<string, Record<string, unknown>>>({});
   const p5Ref = useRef<P5CanvasHandle>(null);
   const [status, setStatus] = useState<string>("");
   const [blocklyInjectKey, setBlocklyInjectKey] = useState(0);
+  const [blocklyMounted, setBlocklyMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
   const [stageSceneId, setStageSceneId] = useState<OllieSceneId>(DEFAULT_SCENE_ID);
   const [actors, setActors] = useState<StageActor[]>(DEFAULT_STAGE_ACTORS);
@@ -101,6 +164,54 @@ export function OllieWorkspace() {
   const [avatarSlug, setAvatarSlug] = useState<OllieAvatarId | null>(null);
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [missionCompleteOpen, setMissionCompleteOpen] = useState(false);
+  const [saveMissionNameModalOpen, setSaveMissionNameModalOpen] =
+    useState(false);
+  const [saveMissionNameLoading, setSaveMissionNameLoading] = useState(false);
+  const missionRewardShownRef = useRef(false);
+  /** After choosing a mission in the modal we load immediately; skip the duplicate run when `?mission=` updates. */
+  const skipNextMissionUrlEffectRef = useRef(false);
+  const [missionsModalOpen, setMissionsModalOpen] = useState(false);
+  const [deleteMissionModalOpen, setDeleteMissionModalOpen] = useState(false);
+  const [deleteMissionLoading, setDeleteMissionLoading] = useState(false);
+  const [savedMissionEntries, setSavedMissionEntries] = useState<
+    SavedMissionProgressEntry[]
+  >([]);
+
+  useEffect(() => {
+    setSavedMissionEntries(getSavedMissionProgress());
+  }, []);
+
+  /**
+   * Stage header: only show a specific mission title when `?mission=` is in the URL.
+   * Plain `/workspace` shows the generic label “Mission”.
+   */
+  const canvasMissionLabel = useMemo(() => {
+    if (!activeMission) return "Mission";
+    const saved = savedMissionEntries.find(
+      (e) => e.missionId === activeMission.id,
+    );
+    if (saved?.displayName?.trim()) return saved.displayName.trim();
+    return activeMission.title;
+  }, [activeMission, savedMissionEntries]);
+
+  const canvasMissionTooltip = useMemo(() => {
+    if (!activeMission) return undefined;
+    const saved = savedMissionEntries.find(
+      (e) => e.missionId === activeMission.id,
+    );
+    if (saved?.displayName?.trim()) return activeMission.title;
+    return activeMission.description || undefined;
+  }, [activeMission, savedMissionEntries]);
+
+  const defaultMissionSaveName = useMemo(() => {
+    if (!missionForSave) return "";
+    const d = new Date();
+    return `${missionForSave.title} — ${d.toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+    })}`;
+  }, [missionForSave]);
 
   const currentStageScene =
     getSceneById(stageSceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
@@ -149,6 +260,10 @@ export function OllieWorkspace() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    missionRewardShownRef.current = false;
+  }, [missionIdParam]);
 
   useEffect(() => {
     function syncFullscreen() {
@@ -208,6 +323,7 @@ export function OllieWorkspace() {
         }
 
         workspaceRef.current = ws;
+        setBlocklyMounted(true);
 
         const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
         Xml.clearWorkspaceAndLoadFromXml(xml, ws);
@@ -224,10 +340,32 @@ export function OllieWorkspace() {
 
     return () => {
       cancelled = true;
+      setBlocklyMounted(false);
       workspaceRef.current?.dispose();
       workspaceRef.current = null;
     };
   }, [blocklyInjectKey]);
+
+  /** Blockly’s SVG must be resized when the flex host changes size; otherwise toolbox/blocks can render at 0×0. */
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    const el = blocklyDiv.current;
+    const ws = workspaceRef.current;
+    if (!el || !ws) return;
+
+    const bump = () => {
+      requestAnimationFrame(() => svgResize(ws));
+    };
+    bump();
+
+    const ro = new ResizeObserver(bump);
+    ro.observe(el);
+    window.addEventListener("resize", bump);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", bump);
+    };
+  }, [blocklyMounted, blocklyInjectKey]);
 
   const switchActor = useCallback(
     (nextId: string) => {
@@ -342,9 +480,18 @@ export function OllieWorkspace() {
     await p5.runParallel(bundles);
     setStatus("Done!");
     setTimeout(() => setStatus(""), 2000);
-  }, [actors, activeActorId]);
 
-  const handleReset = useCallback(() => {
+    if (
+      activeMission &&
+      !missionRewardShownRef.current &&
+      activeMission.isComplete({ ...spriteWorkspacesRef.current })
+    ) {
+      missionRewardShownRef.current = true;
+      setMissionCompleteOpen(true);
+    }
+  }, [actors, activeActorId, activeMission]);
+
+  const resetWorkspaceToDefaultStarter = useCallback(() => {
     const ws = workspaceRef.current;
     if (!ws) return;
     setActors(DEFAULT_STAGE_ACTORS);
@@ -355,12 +502,20 @@ export function OllieWorkspace() {
     ws.clear();
     Xml.clearWorkspaceAndLoadFromXml(xml, ws);
     Events.enable();
-    spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
-      serialization.workspaces.save(ws) as Record<string, unknown>;
+    spriteWorkspacesRef.current = {
+      [ACTOR_ROBOT_ID]: serialization.workspaces.save(ws) as Record<
+        string,
+        unknown
+      >,
+    };
     p5Ref.current?.resetSprite();
+  }, []);
+
+  const handleReset = useCallback(() => {
+    resetWorkspaceToDefaultStarter();
     setStatus("Workspace reset");
     setTimeout(() => setStatus(""), 1500);
-  }, []);
+  }, [resetWorkspaceToDefaultStarter]);
 
   const handleUndo = useCallback(() => {
     workspaceRef.current?.undo(false);
@@ -391,12 +546,22 @@ export function OllieWorkspace() {
     newBlock.moveBy(32, 32);
   }, []);
 
-  const handleSave = useCallback(async () => {
+  const saveProject = useCallback(
+    async (opts?: {
+      missionRecord?: { missionId: string; displayName: string };
+    }): Promise<string> => {
     const ws = workspaceRef.current;
-    if (!ws) return;
+    if (!ws) return "Nothing to save";
     spriteWorkspacesRef.current[activeActorId] =
       serialization.workspaces.save(ws) as Record<string, unknown>;
     const workspacesByActorId = { ...spriteWorkspacesRef.current };
+    if (opts?.missionRecord) {
+      recordMissionSaved(
+        opts.missionRecord.missionId,
+        opts.missionRecord.displayName,
+      );
+    }
+    const mergedMissionProgress = getSavedMissionProgress();
     const payload: ProjectPayload = {
       workspace: workspacesByActorId[activeActorId]!,
       workspacesByActorId,
@@ -404,7 +569,11 @@ export function OllieWorkspace() {
       sceneId: stageSceneId,
       name: "My Ollie Project",
       updatedAt: new Date().toISOString(),
+      savedMissionProgress: mergedMissionProgress,
     };
+    if (opts?.missionRecord) {
+      storeMissionProjectSnapshotLocal(opts.missionRecord.missionId, payload);
+    }
 
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
@@ -413,21 +582,25 @@ export function OllieWorkspace() {
           "ollie-project-local",
           JSON.stringify(payload),
         );
-        setStatus("Saved locally (add Supabase env for cloud save)");
+        return "Saved locally (add Supabase env for cloud save)";
       } catch {
-        setStatus("Could not save");
+        return "Could not save";
       }
-      setTimeout(() => setStatus(""), 3000);
-      return;
     }
 
     const {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setStatus("Sign in to save to the cloud");
-      setTimeout(() => setStatus(""), 3000);
-      return;
+      try {
+        localStorage.setItem(
+          "ollie-project-local",
+          JSON.stringify(payload),
+        );
+        return "Saved on this device — sign in to sync to the cloud";
+      } catch {
+        return "Could not save";
+      }
     }
 
     const projectId = "default";
@@ -437,9 +610,80 @@ export function OllieWorkspace() {
       projectId,
       payload,
     );
-    setStatus(error ? `Save failed: ${error.message}` : "Saved to cloud!");
-    setTimeout(() => setStatus(""), 3000);
-  }, [actors, activeActorId, stageSceneId]);
+    const missionRecord = opts?.missionRecord;
+    if (!error && missionRecord) {
+      const { error: mErr } = await uploadProjectJson(
+        supabase,
+        user.id,
+        missionCloudProjectId(missionRecord.missionId),
+        payload,
+      );
+      if (mErr) {
+        /* mission file is optional; default save succeeded */
+      }
+    }
+    let missionDbError: Error | null = null;
+    if (!error && missionRecord && user) {
+      const entry = mergedMissionProgress.find(
+        (m) => m.missionId === missionRecord.missionId,
+      );
+      if (entry) {
+        const { error: upErr } = await upsertSavedMissionProgress(
+          supabase,
+          user.id,
+          entry,
+        );
+        missionDbError = upErr;
+      }
+    }
+    if (error) return `Save failed: ${error.message}`;
+    if (missionDbError) {
+      return `Saved to cloud! (Mission list not updated in database: ${missionDbError.message})`;
+    }
+    return "Saved to cloud!";
+  },
+    [actors, activeActorId, stageSceneId],
+  );
+
+  const confirmSaveMissionName = useCallback(
+    async (displayName: string) => {
+      if (!missionForSave) return;
+      setSaveMissionNameLoading(true);
+      try {
+        const msg = await saveProject({
+          missionRecord: {
+            missionId: missionForSave.id,
+            displayName,
+          },
+        });
+        setStatus(msg);
+        setSaveMissionNameModalOpen(false);
+        setSavedMissionEntries(getSavedMissionProgress());
+        setTimeout(() => setStatus(""), 3000);
+      } finally {
+        setSaveMissionNameLoading(false);
+      }
+    },
+    [missionForSave, saveProject],
+  );
+
+  /** Reuse the last name for this mission; only prompt when none exists yet. */
+  const saveMissionWithExistingNameOrPrompt = useCallback(() => {
+    if (!missionForSave) return;
+    const existing = getSavedMissionProgress().find(
+      (e) => e.missionId === missionForSave.id,
+    );
+    const name = existing?.displayName?.trim();
+    if (name) {
+      void confirmSaveMissionName(name);
+      return;
+    }
+    setSaveMissionNameModalOpen(true);
+  }, [missionForSave, confirmSaveMissionName]);
+
+  const handleSave = useCallback(() => {
+    saveMissionWithExistingNameOrPrompt();
+  }, [saveMissionWithExistingNameOrPrompt]);
 
   const toggleFullscreen = useCallback(async () => {
     const doc = document as Document & {
@@ -488,11 +732,7 @@ export function OllieWorkspace() {
       const migratedActors = payload.actors.map((a) => {
         const n = normalizeStageActor(a);
         if (n.id === LEGACY_ACTOR_OLLIE_ID) {
-          return {
-            ...n,
-            id: ACTOR_ROBOT_ID,
-            label: n.label === "Ollie" ? "Robot" : n.label,
-          };
+          return { ...n, id: ACTOR_ROBOT_ID };
         }
         return n;
       });
@@ -518,8 +758,199 @@ export function OllieWorkspace() {
       spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
     }
+    mergeMissionProgressIntoStorage(payload.savedMissionProgress);
+    setSavedMissionEntries(getSavedMissionProgress());
     p5Ref.current?.resetSprite();
   }, []);
+
+  /**
+   * Load a mission workspace: cloud JSON → local snapshot → default starter blocks.
+   * Call with an explicit id from the Missions modal so we don’t rely on `useSearchParams` updating first.
+   */
+  const openMissionWorkspace = useCallback(
+    async (missionId: string) => {
+      const meta = getMissionById(missionId);
+      if (!meta) return;
+      if (!workspaceRef.current) return;
+
+      const sb = getSupabaseBrowserClient();
+      if (sb) {
+        const {
+          data: { user },
+        } = await sb.auth.getUser();
+        if (user) {
+          const { data, error } = await downloadProjectJson(
+            sb,
+            user.id,
+            missionCloudProjectId(missionId),
+          );
+          if (data && !error) {
+            applyProjectPayload(data);
+            missionRewardShownRef.current = false;
+            requestAnimationFrame(() => {
+              const w = workspaceRef.current;
+              if (w) svgResize(w);
+            });
+            setStatus(`Opened “${meta.title}”`);
+            setTimeout(() => setStatus(""), 2000);
+            return;
+          }
+        }
+      }
+
+      const localSnap = loadMissionProjectSnapshotLocal(missionId);
+      if (localSnap) {
+        applyProjectPayload(localSnap);
+        missionRewardShownRef.current = false;
+        requestAnimationFrame(() => {
+          const w = workspaceRef.current;
+          if (w) svgResize(w);
+        });
+        setStatus(`Opened “${meta.title}”`);
+        setTimeout(() => setStatus(""), 2000);
+        return;
+      }
+
+      resetWorkspaceToDefaultStarter();
+      missionRewardShownRef.current = false;
+      requestAnimationFrame(() => {
+        const w = workspaceRef.current;
+        if (w) svgResize(w);
+      });
+      setStatus(
+        `Mission “${meta.title}” — start here, or open Save after you sign in to sync from the cloud.`,
+      );
+      setTimeout(() => setStatus(""), 4000);
+    },
+    [applyProjectPayload, resetWorkspaceToDefaultStarter],
+  );
+
+  /** Open mission from URL (direct links / refresh) and when Blockly becomes ready after navigation. */
+  useEffect(() => {
+    if (!blocklyMounted || !workspaceRef.current) return;
+    if (!missionIdParam || !getMissionById(missionIdParam)) return;
+
+    if (skipNextMissionUrlEffectRef.current) {
+      skipNextMissionUrlEffectRef.current = false;
+      return;
+    }
+
+    void openMissionWorkspace(missionIdParam);
+  }, [
+    missionIdParam,
+    blocklyMounted,
+    blocklyInjectKey,
+    openMissionWorkspace,
+  ]);
+
+  const openMissionsModal = useCallback(() => {
+    setSavedMissionEntries(getSavedMissionProgress());
+    setMissionsModalOpen(true);
+    void (async () => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return;
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      if (!session?.user) return;
+      const { data: rows, error } = await fetchSavedMissionProgress(
+        sb,
+        session.user.id,
+      );
+      if (error) {
+        setStatus(
+          `Could not load missions from cloud (${error.message}). Using this device only.`,
+        );
+        setTimeout(() => setStatus(""), 5000);
+        return;
+      }
+      if (rows.length) {
+        mergeMissionProgressIntoStorage(rows);
+        setSavedMissionEntries(getSavedMissionProgress());
+      }
+    })();
+  }, []);
+
+  const handleSelectMissionFromModal = useCallback(
+    (missionId: string) => {
+      setMissionsModalOpen(false);
+      if (workspaceRef.current) {
+        skipNextMissionUrlEffectRef.current = true;
+        void openMissionWorkspace(missionId);
+      }
+      const q = new URLSearchParams();
+      q.set("mission", missionId);
+      router.replace(`/workspace?${q.toString()}`, { scroll: false });
+    },
+    [router, openMissionWorkspace],
+  );
+
+  const handleNewMission = useCallback(() => {
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const newId = createCustomMissionId();
+    skipNextMissionUrlEffectRef.current = true;
+    resetWorkspaceToDefaultStarter();
+    missionRewardShownRef.current = false;
+    requestAnimationFrame(() => {
+      const w = workspaceRef.current;
+      if (w) svgResize(w);
+    });
+    const q = new URLSearchParams();
+    q.set("mission", newId);
+    router.replace(`/workspace?${q.toString()}`, { scroll: false });
+    setStatus("New mission — use Save to name it.");
+    setTimeout(() => setStatus(""), 3500);
+  }, [resetWorkspaceToDefaultStarter, router]);
+
+  const canDeleteCurrentMission = Boolean(activeMission && missionIdParam);
+
+  const confirmDeleteCurrentMission = useCallback(async () => {
+    const id = missionIdParam;
+    if (!id || !getMissionById(id)) return;
+    setDeleteMissionLoading(true);
+    let cloudListWarning: string | null = null;
+    try {
+      removeSavedMissionProgressEntry(id);
+      clearMissionProjectSnapshotLocal(id);
+      const sb = getSupabaseBrowserClient();
+      if (sb) {
+        const {
+          data: { user },
+        } = await sb.auth.getUser();
+        if (user) {
+          await deleteProjectJson(sb, user.id, missionCloudProjectId(id));
+          const { error: rowErr } = await deleteSavedMissionProgress(
+            sb,
+            user.id,
+            id,
+          );
+          if (rowErr) cloudListWarning = rowErr.message;
+        }
+      }
+      skipNextMissionUrlEffectRef.current = true;
+      resetWorkspaceToDefaultStarter();
+      missionRewardShownRef.current = false;
+      router.replace("/workspace", { scroll: false });
+      requestAnimationFrame(() => {
+        const w = workspaceRef.current;
+        if (w) svgResize(w);
+      });
+      setSavedMissionEntries(getSavedMissionProgress());
+      setDeleteMissionModalOpen(false);
+      if (cloudListWarning) {
+        setStatus(
+          `Cleared here — cloud list may need a refresh (${cloudListWarning}).`,
+        );
+        setTimeout(() => setStatus(""), 5000);
+      } else {
+        setStatus("Mission deleted — fresh canvas!");
+        setTimeout(() => setStatus(""), 3000);
+      }
+    } finally {
+      setDeleteMissionLoading(false);
+    }
+  }, [missionIdParam, resetWorkspaceToDefaultStarter, router]);
 
   const handleLoad = useCallback(async () => {
     const ws = workspaceRef.current;
@@ -548,7 +979,18 @@ export function OllieWorkspace() {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) {
-      setStatus("Sign in to load from cloud");
+      const raw = localStorage.getItem("ollie-project-local");
+      if (raw) {
+        try {
+          const payload = JSON.parse(raw) as ProjectPayload;
+          applyProjectPayload(payload);
+          setStatus("Loaded from browser");
+        } catch {
+          setStatus("Bad project data");
+        }
+      } else {
+        setStatus("Sign in to load from cloud");
+      }
       setTimeout(() => setStatus(""), 3000);
       return;
     }
@@ -564,13 +1006,19 @@ export function OllieWorkspace() {
       return;
     }
     applyProjectPayload(data);
+    const { data: missionRows } = await fetchSavedMissionProgress(
+      supabase,
+      user.id,
+    );
+    if (missionRows.length) mergeMissionProgressIntoStorage(missionRows);
+    setSavedMissionEntries(getSavedMissionProgress());
     setStatus("Loaded!");
     setTimeout(() => setStatus(""), 2000);
   }, [applyProjectPayload]);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-[#111827]">
-      <header className="sticky top-0 z-30 flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white/95 px-4 py-3 backdrop-blur">
+      <header className="sticky top-0 z-[100000] flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex min-w-0 items-center gap-2">
           <Link
             href="/"
@@ -591,55 +1039,187 @@ export function OllieWorkspace() {
           </span>
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-2 sm:ml-auto">
-          <ToolbarButton onClick={handleRun} variant="primary">
-            Run
-          </ToolbarButton>
-          <ToolbarButton onClick={handleSave}>Save</ToolbarButton>
-          <ToolbarButton onClick={handleLoad}>Load</ToolbarButton>
-          <ToolbarButton onClick={handleReset}>Reset</ToolbarButton>
-          <ToolbarButton onClick={handleUndo} title="Undo">
-            Undo
-          </ToolbarButton>
-          <ToolbarButton onClick={handleRedo} title="Redo">
-            Redo
-          </ToolbarButton>
-          <ToolbarButton onClick={handleDuplicate} title="Duplicate selected block">
-            Duplicate
-          </ToolbarButton>
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:ml-auto sm:gap-2">
+          <ToolbarIconButton
+            variant="primary"
+            onClick={handleRun}
+            title="Run"
+            aria-label="Run"
+          >
+            <Play
+              className={`${ICON_SM} fill-current`}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleSave}
+            title="Save"
+            aria-label="Save"
+          >
+            <Save
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={() => void handleLoad()}
+            title="Load"
+            aria-label="Load"
+          >
+            <Upload
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleReset}
+            title="Reset"
+            aria-label="Reset"
+          >
+            <RotateCcw
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleUndo}
+            title="Undo"
+            aria-label="Undo"
+          >
+            <Undo
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleRedo}
+            title="Redo"
+            aria-label="Redo"
+          >
+            <Redo
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleDuplicate}
+            title="Duplicate"
+            aria-label="Duplicate"
+          >
+            <CopyPlus
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={openMissionsModal}
+            title="Missions"
+            aria-label="Open missions list"
+          >
+            <Briefcase
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={handleNewMission}
+            title="New mission"
+            aria-label="New mission"
+          >
+            <Plus
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            disabled={!canDeleteCurrentMission}
+            onClick={() => setDeleteMissionModalOpen(true)}
+            title={
+              canDeleteCurrentMission
+                ? "Delete mission"
+                : "Pick a mission first"
+            }
+            aria-label={
+              canDeleteCurrentMission
+                ? "Delete mission"
+                : "Delete mission (pick a mission first)"
+            }
+          >
+            <Trash2
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
           {getSupabaseBrowserClient() ? (
             <div className="flex items-center gap-2 border-l border-[#e5e7eb] pl-2 sm:gap-3 sm:pl-3">
-              <button
-                type="button"
-                onClick={async () => {
-                  const s = getSupabaseBrowserClient();
-                  await s?.auth.signOut();
-                  router.push("/auth/login?next=/workspace");
-                  router.refresh();
-                }}
-                title="Sign out"
-                aria-label="Sign out"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+              <WorkspaceHeaderTooltip text="Settings">
+                <Link
+                  href="/settings"
+                  aria-label="Settings"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                >
+                  <Settings
+                    className={ICON_SM}
+                    strokeWidth={ICON_STROKE}
+                    aria-hidden
+                  />
+                </Link>
+              </WorkspaceHeaderTooltip>
+              <WorkspaceHeaderTooltip
+                text={isFullscreen ? "Exit" : "Fullscreen"}
               >
-                <SignOutIcon />
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleFullscreen()}
-                title={isFullscreen ? "Exit fullscreen" : "Fullscreen"}
-                aria-label={isFullscreen ? "Exit fullscreen" : "Enter fullscreen"}
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-              >
-                {isFullscreen ? <FullscreenExitIcon /> : <FullscreenEnterIcon />}
-              </button>
-              <Link
-                href="/settings"
-                title="Settings"
-                aria-label="Settings"
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-              >
-                <SettingsIcon />
-              </Link>
+                <button
+                  type="button"
+                  onClick={() => void toggleFullscreen()}
+                  aria-label={
+                    isFullscreen ? "Exit fullscreen" : "Enter fullscreen"
+                  }
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                >
+                  {isFullscreen ? (
+                    <Minimize2
+                      className={ICON_SM}
+                      strokeWidth={ICON_STROKE}
+                      aria-hidden
+                    />
+                  ) : (
+                    <Maximize2
+                      className={ICON_SM}
+                      strokeWidth={ICON_STROKE}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              </WorkspaceHeaderTooltip>
+              <WorkspaceHeaderTooltip text="Logout">
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const s = getSupabaseBrowserClient();
+                    await s?.auth.signOut();
+                    router.push("/auth/login?next=/workspace");
+                    router.refresh();
+                  }}
+                  aria-label="Sign out"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                >
+                  <LogOut
+                    className={ICON_SM}
+                    strokeWidth={ICON_STROKE}
+                    aria-hidden
+                  />
+                </button>
+              </WorkspaceHeaderTooltip>
               {userCodename ? (
                 <div
                   className="flex min-w-0 items-center gap-2"
@@ -651,25 +1231,26 @@ export function OllieWorkspace() {
                   >
                     {userCodename}
                   </span>
-                  <button
-                    type="button"
-                    onClick={() => setAvatarPickerOpen(true)}
-                    title="Change avatar"
-                    aria-label="Change avatar"
-                    className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#ecfccb] text-sm font-bold uppercase text-[#365314] ring-2 ring-[#84c126]/25 transition hover:ring-[#84c126] focus:outline-none focus-visible:ring-4"
-                  >
-                    {headerAvatarAsset ? (
-                      <Image
-                        src={headerAvatarAsset.src}
-                        alt=""
-                        width={36}
-                        height={36}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <span aria-hidden>{userCodename.slice(0, 1)}</span>
-                    )}
-                  </button>
+                  <WorkspaceHeaderTooltip text="Avatar">
+                    <button
+                      type="button"
+                      onClick={() => setAvatarPickerOpen(true)}
+                      aria-label="Change avatar"
+                      className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[#ecfccb] text-sm font-bold uppercase text-[#365314] ring-2 ring-[#84c126]/25 transition hover:ring-[#84c126] focus:outline-none focus-visible:ring-4"
+                    >
+                      {headerAvatarAsset ? (
+                        <Image
+                          src={headerAvatarAsset.src}
+                          alt=""
+                          width={36}
+                          height={36}
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span aria-hidden>{userCodename.slice(0, 1)}</span>
+                      )}
+                    </button>
+                  </WorkspaceHeaderTooltip>
                 </div>
               ) : null}
             </div>
@@ -704,28 +1285,35 @@ export function OllieWorkspace() {
       ) : null}
 
       <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
-        <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
-          <div className="rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
+        <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]">
+          <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
             Workspace
           </div>
-          <div
-            key={blocklyInjectKey}
-            ref={blocklyDiv}
-            className={[
-              "ollie-blockly-host min-h-[480px] flex-1",
-              HIDE_FLYOUT_SCROLLBAR_VISUAL ? "ollie-blockly--hide-flyout-scrollbar" : "",
-              HIDE_TOOLBOX_SCROLLBAR_VISUAL ? "ollie-blockly--hide-toolbox-scrollbar" : "",
-              HIDE_MAIN_WORKSPACE_SCROLLBAR_VISUAL ? "ollie-blockly--hide-main-scrollbar" : "",
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          />
+          <div className="relative w-full min-w-0 flex-1 min-h-[480px]">
+            <div
+              key={blocklyInjectKey}
+              ref={blocklyDiv}
+              className={[
+                "ollie-blockly-host absolute inset-0 min-h-[480px] w-full min-w-0",
+                HIDE_FLYOUT_SCROLLBAR_VISUAL ? "ollie-blockly--hide-flyout-scrollbar" : "",
+                HIDE_TOOLBOX_SCROLLBAR_VISUAL ? "ollie-blockly--hide-toolbox-scrollbar" : "",
+                HIDE_MAIN_WORKSPACE_SCROLLBAR_VISUAL ? "ollie-blockly--hide-main-scrollbar" : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            />
+          </div>
         </div>
 
         <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[420px] lg:max-w-[42vw]">
           <div className="flex h-[min(720px,72vh)] min-h-[520px] shrink-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
             <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
-              Canvas
+              <span
+                className="block truncate"
+                title={canvasMissionTooltip}
+              >
+                {canvasMissionLabel}
+              </span>
             </div>
             <P5Canvas
               ref={p5Ref}
@@ -756,7 +1344,13 @@ export function OllieWorkspace() {
                     className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
                   >
                     Scene
-                    <StageAccordionChevron open={openStagePanel === "scene"} />
+                    <ChevronDown
+                      className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
+                        openStagePanel === "scene" ? "rotate-180" : ""
+                      }`}
+                      strokeWidth={ICON_STROKE}
+                      aria-hidden
+                    />
                   </button>
                   {openStagePanel === "scene" ? (
                     <div
@@ -779,7 +1373,11 @@ export function OllieWorkspace() {
                               onClick={() => setDeleteConfirm({ type: "scene" })}
                               className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
                             >
-                              <ThumbnailTrashIcon className="size-3.5" />
+                              <Trash2
+                                className="size-3.5 shrink-0"
+                                strokeWidth={ICON_STROKE}
+                                aria-hidden
+                              />
                             </button>
                           ) : null}
                         </div>
@@ -806,7 +1404,13 @@ export function OllieWorkspace() {
                     className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
                   >
                     Sprites
-                    <StageAccordionChevron open={openStagePanel === "sprite"} />
+                    <ChevronDown
+                      className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
+                        openStagePanel === "sprite" ? "rotate-180" : ""
+                      }`}
+                      strokeWidth={ICON_STROKE}
+                      aria-hidden
+                    />
                   </button>
                   {openStagePanel === "sprite" ? (
                     <div
@@ -858,7 +1462,11 @@ export function OllieWorkspace() {
                                     }}
                                     className="absolute right-0 top-0 z-10 flex size-6 items-center justify-center rounded-bl-md rounded-tr-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
                                   >
-                                    <ThumbnailTrashIcon className="size-3.5" />
+                                    <Trash2
+                                      className="size-3.5 shrink-0"
+                                      strokeWidth={ICON_STROKE}
+                                      aria-hidden
+                                    />
                                   </button>
                                 ) : null}
                               </div>
@@ -942,6 +1550,42 @@ export function OllieWorkspace() {
           setSpritePickerOpen(false);
         }}
       />
+      <MissionCompleteModal
+        open={missionCompleteOpen && !!activeMission}
+        missionTitle={activeMission?.title ?? "Mission"}
+        saving={false}
+        onDismiss={() => setMissionCompleteOpen(false)}
+        onSave={() => {
+          setMissionCompleteOpen(false);
+          saveMissionWithExistingNameOrPrompt();
+        }}
+      />
+      <SaveMissionNameModal
+        open={saveMissionNameModalOpen && !!missionForSave}
+        missionTitle={missionForSave?.title ?? "Mission"}
+        defaultName={defaultMissionSaveName}
+        saving={saveMissionNameLoading}
+        onCancel={() => setSaveMissionNameModalOpen(false)}
+        onConfirm={confirmSaveMissionName}
+      />
+      <SavedMissionsModal
+        open={missionsModalOpen}
+        onClose={() => setMissionsModalOpen(false)}
+        entries={savedMissionEntries}
+        onSelectMission={handleSelectMissionFromModal}
+        activeMissionId={
+          missionIdParam && getMissionById(missionIdParam)
+            ? missionIdParam
+            : null
+        }
+      />
+      <DeleteMissionModal
+        open={deleteMissionModalOpen && canDeleteCurrentMission}
+        missionLabel={canvasMissionLabel}
+        deleting={deleteMissionLoading}
+        onClose={() => setDeleteMissionModalOpen(false)}
+        onConfirm={confirmDeleteCurrentMission}
+      />
       <ConfirmDeleteModal
         open={deleteConfirm !== null}
         onClose={() => setDeleteConfirm(null)}
@@ -970,111 +1614,66 @@ export function OllieWorkspace() {
   );
 }
 
-function ThumbnailTrashIcon({ className }: { className?: string }) {
+/**
+ * Hover + keyboard (`:focus-visible`) only — not `focus-within`, so a mouse click
+ * doesn’t leave the tooltip open while the control stays focused.
+ */
+function WorkspaceHeaderTooltip({
+  text,
+  children,
+}: {
+  text: string;
+  children: ReactElement;
+}) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-      />
-    </svg>
+    <div className="group relative inline-flex shrink-0">
+      {children}
+      <span
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-[110001] -translate-x-1/2 whitespace-nowrap rounded-lg bg-[#111827] px-2.5 py-1.5 text-xs font-semibold text-white opacity-0 shadow-lg ring-1 ring-black/10 transition-opacity duration-150 ease-out group-hover:opacity-100 group-[&:has(*:focus-visible)]:opacity-100"
+      >
+        {text}
+      </span>
+    </div>
   );
 }
 
-function StageAccordionChevron({ open }: { open: boolean }) {
-  return (
-    <svg
-      className={`h-4 w-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
-        open ? "rotate-180" : ""
-      }`}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      aria-hidden
-    >
-      <path d="M6 9l6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SettingsIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.57 6.57 0 01-.22.128c-.331.183-.581.495-.644.869l-.213 1.28c-.09.543-.56.941-1.11.941h-2.594c-.55 0-1.02-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 01-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 01-1.369-.49l-1.297-2.247a1.125 1.125 0 01.26-1.431l1.004-.827c.292-.24.437-.613.43-.992a6.932 6.932 0 010-.255c.007-.378-.138-.75-.43-.99l-1.004-.828a1.125 1.125 0 01-.26-1.43l1.297-2.247a1.125 1.125 0 011.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z"
-      />
-      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-    </svg>
-  );
-}
-
-function SignOutIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
-      />
-    </svg>
-  );
-}
-
-function FullscreenEnterIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M3.75 3.75v4.5m0-4.5h4.5m-4.5 0L9 9M3.75 20.25v-4.5m0 4.5h4.5m-4.5 0L9 15M20.25 3.75h-4.5m4.5 0v4.5m0-4.5L15 9m5.25 11.25h-4.5m4.5 0v-4.5m0 4.5L15 15"
-      />
-    </svg>
-  );
-}
-
-function FullscreenExitIcon() {
-  return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
-      <path
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        d="M9 9V4.5M9 9H4.5M9 9L3.75 3.75M9 15v4.5M9 15H4.5M9 15l-5.25 5.25M15 9h4.5M15 9V4.5M15 9l5.25-5.25M15 15h4.5M15 15v4.5m0-4.5l5.25 5.25"
-      />
-    </svg>
-  );
-}
-
-function ToolbarButton({
+function ToolbarIconButton({
   children,
   onClick,
   title,
   variant,
+  disabled,
+  "aria-label": ariaLabel,
 }: {
   children: React.ReactNode;
   onClick: () => void;
-  title?: string;
+  title: string;
+  "aria-label": string;
   variant?: "primary";
+  disabled?: boolean;
 }) {
   const base =
-    "rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2";
+    "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2";
   const styles =
     variant === "primary"
       ? "bg-[#84c126] text-white hover:bg-[#6fa020]"
-      : "border border-[#e5e7eb] bg-white text-[#111827] hover:bg-[#f9fafb]";
+      : "border border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]";
+  const disabledStyles =
+    disabled === true
+      ? "cursor-not-allowed opacity-45 hover:bg-white"
+      : "";
   return (
-    <button type="button" title={title} onClick={onClick} className={`${base} ${styles}`}>
-      {children}
-    </button>
+    <WorkspaceHeaderTooltip text={title}>
+      <button
+        type="button"
+        aria-label={ariaLabel}
+        disabled={disabled}
+        onClick={onClick}
+        className={`${base} ${styles} ${disabledStyles}`}
+      >
+        {children}
+      </button>
+    </WorkspaceHeaderTooltip>
   );
 }

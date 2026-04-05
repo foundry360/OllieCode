@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 /**
  * Badges / levels — placeholder UI. Wire to Supabase profiles or a `user_progress` table later.
  * Optional: animate badge unlocks with GSAP (import gsap from 'gsap'; gsap.from('.badge', { scale: 0, ease: 'back.out' })).
@@ -16,7 +18,14 @@ export function GamificationPanel() {
         </span>
       </div>
       <p className="mt-1 text-sm text-[#6b7280]">
-        Earn badges as you finish missions (coming soon).
+        Try the{" "}
+        <Link
+          href="/workspace?mission=first-move"
+          className="font-semibold text-[#3f6212] underline decoration-[#84c126]/50 underline-offset-2 hover:text-[#84c126]"
+        >
+          first mission
+        </Link>
+        : add a Move block, tap Run, then save your work.
       </p>
       <ul className="mt-3 flex flex-wrap gap-2">
         {BADGES.map((b) => (

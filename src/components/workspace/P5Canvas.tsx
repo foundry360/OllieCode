@@ -462,7 +462,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       <div
         ref={containerRef}
         className={className}
-        aria-label="Canvas preview"
+        aria-label="Mission preview"
       />
     );
   },

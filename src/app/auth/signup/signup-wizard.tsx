@@ -1,5 +1,6 @@
 "use client";
 
+import { OllieLogoLink } from "@/components/auth/OllieLogoLink";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Fragment, useState } from "react";
@@ -180,6 +181,7 @@ export function SignupWizard() {
 
   return (
     <div className="w-full">
+      <OllieLogoLink className="mb-6" />
       <h1 className="font-display text-2xl font-bold text-[#111827]">Create an account</h1>
       <p className="mt-2 text-sm text-[#6b7280]">
         {done

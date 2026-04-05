@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   title: "Ollie Code — Learn to code, build games, create with AI",
   description:
     "A fun, simple coding platform for kids ages 7–13. Blockly workspace, canvas, and sounds.",
+  icons: {
+    icon: [{ url: "/favicon.ico", type: "image/x-icon" }],
+  },
 };
 
 export default function RootLayout({

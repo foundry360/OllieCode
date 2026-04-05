@@ -1,5 +1,6 @@
 "use client";
 
+import { OllieLogoLink } from "@/components/auth/OllieLogoLink";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -110,6 +111,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full">
+      <OllieLogoLink className="mb-6" />
       <h1 className="font-display text-2xl font-bold text-[#111827]">Sign in</h1>
       <p className="mt-2 text-sm text-[#6b7280]">
         Sign in with your codename and password.

@@ -22,6 +22,16 @@ export async function uploadProjectJson(
   return { error: error ? new Error(error.message) : null };
 }
 
+export async function deleteProjectJson(
+  supabase: SupabaseClient,
+  userId: string,
+  projectId: string,
+): Promise<{ error: Error | null }> {
+  const path = `${userId}/${projectId}.json`;
+  const { error } = await supabase.storage.from(BUCKET).remove([path]);
+  return { error: error ? new Error(error.message) : null };
+}
+
 export async function downloadProjectJson(
   supabase: SupabaseClient,
   userId: string,
