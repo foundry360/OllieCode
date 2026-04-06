@@ -3,7 +3,10 @@ import { AuthSplitLayout } from "@/components/auth/AuthSplitLayout";
 
 export default function SignupPage() {
   return (
-    <AuthSplitLayout>
+    <AuthSplitLayout
+      pageBackgroundSrc="/images/landing_bg.png"
+      showIllustration={false}
+    >
       <SignupWizard />
     </AuthSplitLayout>
   );

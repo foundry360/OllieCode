@@ -8,13 +8,16 @@ import { ScenePreview } from "@/components/workspace/ScenePreview";
 type ScenePickerModalProps = {
   open: boolean;
   onClose: () => void;
-  selectedId: OllieSceneId;
+  title?: string;
+  /** Which scene shows the green border (e.g. top layer). Set `false` when adding another layer. */
+  selectedId?: OllieSceneId | false;
   onSelect: (id: OllieSceneId) => void;
 };
 
 export function ScenePickerModal({
   open,
   onClose,
+  title = "Choose a scene",
   selectedId,
   onSelect,
 }: ScenePickerModalProps) {
@@ -61,7 +64,7 @@ export function ScenePickerModal({
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
           <h2 id={titleId} className="text-base font-bold text-[#111827] sm:text-lg">
-            Choose a scene
+            {title}
           </h2>
           <button
             ref={closeBtnRef}
@@ -75,7 +78,8 @@ export function ScenePickerModal({
         </header>
         <div className="grid grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-2 sm:gap-4">
           {OLLIE_SCENES.map((scene) => {
-            const selected = scene.id === selectedId;
+            const selected =
+              selectedId !== false && scene.id === selectedId;
             return (
               <button
                 key={scene.id}

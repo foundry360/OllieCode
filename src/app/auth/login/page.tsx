@@ -8,7 +8,10 @@ function FormFallback() {
 
 export default function LoginPage() {
   return (
-    <AuthSplitLayout>
+    <AuthSplitLayout
+      pageBackgroundSrc="/images/landing_bg.png"
+      showIllustration={false}
+    >
       <Suspense fallback={<FormFallback />}>
         <LoginForm />
       </Suspense>

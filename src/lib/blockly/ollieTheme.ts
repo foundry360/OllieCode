@@ -41,6 +41,7 @@ export const scratchToolboxCategoryColour = {
   logic: S.motion.colourPrimary,
   loops: S.control.colourPrimary,
   math: S.sensing.colourPrimary,
+  sensing: S.sensing.colourPrimary,
   text: S.looks.colourPrimary,
   lists: S.list.colourPrimary,
   color: S.color.colourPrimary,
@@ -61,6 +62,7 @@ export const ollieBlocklyTheme = Theme.defineTheme("ollie", {
     scratch_looks: S.looks,
     scratch_sound: S.sound,
     scratch_control: S.control,
+    scratch_sensing: S.sensing,
 
     logic_blocks: S.motion,
     loop_blocks: S.control,

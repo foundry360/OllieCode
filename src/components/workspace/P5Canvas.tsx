@@ -9,11 +9,18 @@ import {
 import type p5Types from "p5";
 import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
 import {
+  evalSerializedBool,
+  type SensingEvalContext,
+} from "@/lib/blockly/sensingSerialize";
+import {
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
   collectStageImageUrls,
   getCostumeById,
   getSceneById,
+  migrateCostumeIdFromStorage,
+  nextOllieSpriteCostumeId,
+  normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { playOllieSound } from "@/lib/sounds/ollieSounds";
@@ -24,14 +31,22 @@ export type P5CanvasHandle = {
   /** Run green-flag scripts, then keep key / stage / backdrop / broadcast handlers until the next run. */
   runProjectPlans: (
     plans: { spriteId: string; plan: SpriteScriptPlan }[],
-  ) => Promise<void>;
+  ) => Promise<{ aborted: boolean }>;
+  /** Request an immediate stop of in-flight scripts (same effect as the “stop all” block). */
+  stopRun: () => void;
   resetSprite: () => void;
 };
 
 export type P5CanvasProps = {
   className?: string;
-  sceneId: OllieSceneId;
+  /** Backdrop layers (bottom → top). At least one id. */
+  sceneLayerIds: OllieSceneId[];
   actors: StageActorPaint[];
+  /**
+   * While true, do not push `actors[].costumeId` into the runtime sprite map.
+   * Avoids React re-renders overwriting costumes set mid-run before `onActorCostumeChange` state lands.
+   */
+  pauseActorCostumePropSync?: boolean;
   onSceneChange: (id: OllieSceneId) => void;
   onActorCostumeChange: (
     actorId: string,
@@ -44,11 +59,16 @@ type Sprite = {
   y: number;
   heading: number;
   costume: OllieSpriteCostumeId;
+  /** Frame index for image costumes with `spriteSheet` (walk/run advances this). */
+  sheetFrame: number;
   bubble?: { text: string; kind: "say" | "think"; until: number };
 };
 
 const MOVE_FRAMES = 18;
 const CANVAS_MAX_PX = 4096;
+
+/** Scratch-style “face right” at rest; pairs with {@link CostumeDef} `spriteRotationOffsetDeg` for Ollie Bot. */
+const DEFAULT_SPRITE_HEADING_DEG = 90;
 
 /**
  * p5 `loadImage` often leaves SVGs with `width === 0`, which triggers the green
@@ -99,6 +119,34 @@ function normHeading(deg: number) {
   return ((deg % 360) + 360) % 360;
 }
 
+type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
+
+/**
+ * Scratch heading + optional costume bitmap offset (see `spriteRotationOffsetDeg`).
+ * For side-view art, net 180° would rotate the whole costume upside down; use mirror
+ * instead so “face left” stays upright.
+ */
+function spriteDrawOrient(
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): SpriteDrawOrient {
+  const def =
+    getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
+  const img = images.get(def.src);
+  if (!img || img.width <= 0) {
+    return { rotationDeg: normHeading(s.heading), mirrorX: false };
+  }
+  const off =
+    typeof def.spriteRotationOffsetDeg === "number"
+      ? def.spriteRotationOffsetDeg
+      : 0;
+  const net = normHeading(s.heading + off);
+  if (off !== 0 && net === 180) {
+    return { rotationDeg: 0, mirrorX: true };
+  }
+  return { rotationDeg: net, mirrorX: false };
+}
+
 function layoutSlot(
   index: number,
   total: number,
@@ -125,27 +173,70 @@ function scratchStageToPixel(
   };
 }
 
+/** Inverse of {@link scratchStageToPixel} — sprite center in px → Scratch coords. */
+function pixelToScratchStage(
+  px: number,
+  py: number,
+  cw: number,
+  ch: number,
+): { xPct: number; yPct: number } {
+  const xPct = (px / Math.max(1, cw)) * 200 - 100;
+  const yPct = 100 - (py / Math.max(1, ch)) * 200;
+  return {
+    xPct: Math.min(100, Math.max(-100, xPct)),
+    yPct: Math.min(100, Math.max(-100, yPct)),
+  };
+}
+
 function drawSceneLayer(
   p: p5Types,
   sceneId: OllieSceneId,
   images: Map<string, p5Types.Image>,
 ) {
-  const scene = getSceneById(sceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
-  if (scene.kind === "solid") {
-    const [r, g, b] = scene.rgb;
-    p.background(r, g, b);
-    return;
+  drawSceneLayers(p, [sceneId], images);
+}
+
+/** Draw each backdrop in order; upper layers paint on top (use PNG alpha to show through). */
+function drawSceneLayers(
+  p: p5Types,
+  sceneIds: OllieSceneId[],
+  images: Map<string, p5Types.Image>,
+) {
+  const layers = normalizeSceneLayerIdsFromPayload(sceneIds, undefined);
+  let isFirst = true;
+  for (const sceneId of layers) {
+    const scene = getSceneById(sceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
+    if (scene.kind === "solid") {
+      const [r, g, b] = scene.rgb;
+      if (isFirst) {
+        p.background(r, g, b);
+      } else {
+        p.fill(r, g, b);
+        p.noStroke();
+        p.rect(0, 0, p.width, p.height);
+      }
+    } else {
+      const img = images.get(scene.src);
+      if (img && img.width > 0) {
+        if (isFirst) {
+          p.background(0);
+        }
+        p.imageMode(p.CORNER);
+        p.image(img, 0, 0, p.width, p.height);
+      } else {
+        const [r, g, b] = scene.fallbackRgb;
+        if (isFirst) {
+          p.background(r, g, b);
+        } else {
+          p.fill(r, g, b);
+          p.noStroke();
+          p.rect(0, 0, p.width, p.height);
+        }
+      }
+    }
+    isFirst = false;
   }
-  const img = images.get(scene.src);
-  if (img && img.width > 0) {
-    p.background(0);
-    p.imageMode(p.CORNER);
-    p.image(img, 0, 0, p.width, p.height);
-    p.imageMode(p.CENTER);
-  } else {
-    const [r, g, b] = scene.fallbackRgb;
-    p.background(r, g, b);
-  }
+  p.imageMode(p.CENTER);
 }
 
 /** Matches Blockly event key dropdown values (`ollie_event_key_pressed`). */
@@ -168,50 +259,73 @@ function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
   }
 }
 
+/** Normalized key id for Sensing — must match {@link keyEventMatches} / toolbox dropdowns. */
+function keyIdFromKeyboardEvent(e: KeyboardEvent): string | null {
+  if (e.code === "Space" || e.key === " ") return "space";
+  if (e.key === "ArrowUp") return "up";
+  if (e.key === "ArrowDown") return "down";
+  if (e.key === "ArrowLeft") return "left";
+  if (e.key === "ArrowRight") return "right";
+  if (e.key.length === 1) return e.key.toLowerCase();
+  return null;
+}
+
 function drawSpriteForCostume(
   p: p5Types,
-  costumeId: OllieSpriteCostumeId,
+  sprite: Sprite,
   images: Map<string, p5Types.Image>,
 ) {
-  const def = getCostumeById(costumeId) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
-  if (def.kind === "image") {
-    const img = images.get(def.src);
-    if (img && img.width > 0) {
-      const w = def.width;
-      const h = w * (img.height / img.width);
-      p.image(img, 0, 0, w, h);
-    } else {
-      p.stroke(255);
-      p.strokeWeight(2);
-      p.fill(132, 193, 38);
-      p.triangle(0, -18, -14, 14, 14, 14);
-    }
-    return;
-  }
-  if (def.shape === "square") {
+  const def =
+    getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
+  const img = images.get(def.src);
+  if (img && img.width > 0) {
+    const cols = def.spriteSheet?.columns ?? 1;
+    const rows = def.spriteSheet?.rows ?? 1;
+    const cellW = Math.floor(img.width / cols);
+    const cellH = Math.floor(img.height / rows);
+    const n = Math.max(1, cols * rows);
+    const fi = ((sprite.sheetFrame % n) + n) % n;
+    const col = fi % cols;
+    const row = Math.floor(fi / cols);
+    const sx = col * cellW;
+    const sy = row * cellH;
+    const w = def.width;
+    const h = w * (cellH / cellW);
+    p.image(img, 0, 0, w, h, sx, sy, cellW, cellH);
+  } else {
     p.stroke(255);
     p.strokeWeight(2);
-    p.fill(59, 130, 246);
-    p.rectMode(p.CENTER);
-    p.square(0, 0, 28);
-    return;
+    p.fill(132, 193, 38);
+    p.triangle(0, -34, -26, 26, 26, 26);
   }
-  p.stroke(255);
-  p.strokeWeight(2);
-  p.fill(244, 114, 182);
-  p.circle(0, 0, 28);
 }
 
 export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
   function P5Canvas(
-    { className, sceneId, actors, onSceneChange, onActorCostumeChange },
+    {
+      className,
+      sceneLayerIds,
+      actors,
+      pauseActorCostumePropSync = false,
+      onSceneChange,
+      onActorCostumeChange,
+    },
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
     const p5Ref = useRef<p5Types | null>(null);
     const spritesByIdRef = useRef<Map<string, Sprite>>(new Map());
-    const currentSceneRef = useRef<OllieSceneId>(sceneId);
+    const normalizedLayers = normalizeSceneLayerIdsFromPayload(
+      sceneLayerIds,
+      undefined,
+    );
+    const topSceneId =
+      normalizedLayers[normalizedLayers.length - 1] ?? DEFAULT_SCENE_ID;
+    const currentSceneRef = useRef<OllieSceneId>(topSceneId);
     const runningRef = useRef(false);
+    const abortRunRef = useRef(false);
+    const keysHeldRef = useRef<Set<string>>(new Set());
+    const timerStartMsRef = useRef(0);
     const onSceneChangeRef = useRef(onSceneChange);
     const onActorCostumeChangeRef = useRef(onActorCostumeChange);
     const actorsRef = useRef(actors);
@@ -219,8 +333,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     onActorCostumeChangeRef.current = onActorCostumeChange;
     actorsRef.current = actors;
 
-    const latestSceneIdRef = useRef(sceneId);
-    latestSceneIdRef.current = sceneId;
+    const latestSceneLayerIdsRef = useRef<OllieSceneId[]>(normalizedLayers);
+    latestSceneLayerIdsRef.current = normalizedLayers;
+
+    const latestSceneIdRef = useRef<OllieSceneId>(topSceneId);
+    latestSceneIdRef.current = topSceneId;
 
     /** After Run, scene-change scripts use this; cleared on the next Run. */
     const sessionActiveRef = useRef(false);
@@ -232,23 +349,29 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     const keyDownHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(
       null,
     );
+    /**
+     * One-time heading fix per actor: older runtime used 0° at rest; Scratch
+     * default is 90° (face right). Without this, existing map entries never pick up
+     * {@link DEFAULT_SPRITE_HEADING_DEG}.
+     */
+    const headingLegacyMigratedRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
-      currentSceneRef.current = sceneId;
-    }, [sceneId]);
+      currentSceneRef.current = topSceneId;
+    }, [topSceneId]);
 
-    /** Scratch-style “when scene switches to …” — fires when `sceneId` prop changes after a Run. */
+    /** Scratch-style “when scene switches to …” — fires when the top backdrop changes after a Run. */
     useEffect(() => {
       const pack = backdropPackRef.current;
       if (!sessionActiveRef.current || !pack) return;
       for (const { spriteId, plan } of pack.plans) {
         for (const bd of plan.backdropScripts) {
-          if (bd.sceneId === sceneId) {
+          if (bd.sceneId === topSceneId) {
             void pack.runSequence(spriteId, bd.actions);
           }
         }
       }
-    }, [sceneId]);
+    }, [topSceneId]);
 
     useEffect(() => {
       const el = containerRef.current;
@@ -263,29 +386,45 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       const map = spritesByIdRef.current;
       const ids = new Set(actors.map((a) => a.id));
       for (const id of [...map.keys()]) {
-        if (!ids.has(id)) map.delete(id);
+        if (!ids.has(id)) {
+          map.delete(id);
+          headingLegacyMigratedRef.current.delete(id);
+        }
       }
       actors.forEach((a, i) => {
         const existing = map.get(a.id);
         if (existing) {
-          existing.costume = a.costumeId;
+          if (!pauseActorCostumePropSync) {
+            if (existing.costume !== a.costumeId) {
+              existing.sheetFrame = 0;
+            }
+            existing.costume = a.costumeId;
+          }
+          if (
+            existing.heading === 0 &&
+            !headingLegacyMigratedRef.current.has(a.id)
+          ) {
+            existing.heading = DEFAULT_SPRITE_HEADING_DEG;
+            headingLegacyMigratedRef.current.add(a.id);
+          }
         } else {
           const pos = layoutSlot(i, actors.length, w, h);
           map.set(a.id, {
             x: pos.x,
             y: pos.y,
-            heading: 0,
+            heading: DEFAULT_SPRITE_HEADING_DEG,
             costume: a.costumeId,
+            sheetFrame: 0,
           });
         }
       });
-    }, [actors]);
+    }, [actors, pauseActorCostumePropSync]);
 
     useImperativeHandle(ref, () => ({
       async runProjectPlans(
         plans: { spriteId: string; plan: SpriteScriptPlan }[],
       ) {
-        if (runningRef.current) return;
+        if (runningRef.current) return { aborted: false };
         if (keyDownHandlerRef.current) {
           window.removeEventListener("keydown", keyDownHandlerRef.current);
           keyDownHandlerRef.current = null;
@@ -295,7 +434,48 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         stageClickHandlerRef.current = null;
 
         runningRef.current = true;
+        abortRunRef.current = false;
         let broadcastDepth = 0;
+        let stopAllScripts = false;
+
+        const shouldCancel = () => {
+          if (abortRunRef.current) stopAllScripts = true;
+          return stopAllScripts;
+        };
+
+        keysHeldRef.current.clear();
+        timerStartMsRef.current = performance.now();
+        const onSensingKeyDown = (e: KeyboardEvent) => {
+          const id = keyIdFromKeyboardEvent(e);
+          if (id) keysHeldRef.current.add(id);
+        };
+        const onSensingKeyUp = (e: KeyboardEvent) => {
+          const id = keyIdFromKeyboardEvent(e);
+          if (id) keysHeldRef.current.delete(id);
+        };
+        window.addEventListener("keydown", onSensingKeyDown);
+        window.addEventListener("keyup", onSensingKeyUp);
+
+        function buildSensingCtx(sid: string): SensingEvalContext | null {
+          const sprite = spritesByIdRef.current.get(sid);
+          if (!sprite) return null;
+          const box = containerRef.current?.getBoundingClientRect();
+          const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
+          const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
+          const p = p5Ref.current;
+          return {
+            cw,
+            ch,
+            spriteId: sid,
+            spriteX: sprite.x,
+            spriteY: sprite.y,
+            mouseX: p?.mouseX ?? 0,
+            mouseY: p?.mouseY ?? 0,
+            mouseIsPressed: p?.mouseIsPressed ?? false,
+            keysDown: keysHeldRef.current,
+            timerSecs: (performance.now() - timerStartMsRef.current) / 1000,
+          };
+        }
 
         async function dispatchBroadcast(
           message: string,
@@ -330,6 +510,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
 
           for (const a of actions) {
+            if (shouldCancel()) return;
             if (a.type === "rotate") {
               s.heading = normHeading(s.heading + a.degrees);
             } else if (a.type === "setHeading") {
@@ -338,7 +519,32 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               const rad = (s.heading * Math.PI) / 180;
               const dx = Math.sin(rad) * a.distance;
               const dy = -Math.cos(rad) * a.distance;
-              await animateMove(s, s.x + dx, s.y + dy, MOVE_FRAMES);
+              await animateMove(
+                s,
+                s.x + dx,
+                s.y + dy,
+                MOVE_FRAMES,
+                shouldCancel,
+              );
+            } else if (a.type === "moveWithBob") {
+              const rad = (s.heading * Math.PI) / 180;
+              const dx = Math.sin(rad) * a.distance;
+              const dy = -Math.cos(rad) * a.distance;
+              const isRun = a.style === "run";
+              const bob = isRun
+                ? { amplitude: 7, cycles: 3 }
+                : { amplitude: 5.5, cycles: 2 };
+              const frames = isRun
+                ? Math.max(10, Math.round(MOVE_FRAMES * 0.62))
+                : MOVE_FRAMES;
+              await animateMove(
+                s,
+                s.x + dx,
+                s.y + dy,
+                frames,
+                shouldCancel,
+                bob,
+              );
             } else if (a.type === "goTo") {
               const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
               s.x = pos.x;
@@ -355,7 +561,27 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 tx,
                 ty,
                 Math.max(8, Math.round((a.secs * 1000) / 16)),
+                shouldCancel,
               );
+            } else if (a.type === "jumpArc") {
+              const { xPct, yPct } = pixelToScratchStage(
+                s.x,
+                s.y,
+                cw,
+                ch,
+              );
+              const peakY = Math.min(
+                100,
+                Math.max(-100, yPct + a.peakYPct),
+              );
+              const frames = Math.max(
+                8,
+                Math.round((a.halfSecs * 1000) / 16),
+              );
+              const up = scratchStageToPixel(xPct, peakY, cw, ch);
+              await animateMove(s, up.x, up.y, frames, shouldCancel);
+              const down = scratchStageToPixel(xPct, yPct, cw, ch);
+              await animateMove(s, down.x, down.y, frames, shouldCancel);
             } else if (a.type === "bounceEdge") {
               const m = 14;
               if (
@@ -372,7 +598,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 kind: "say",
                 until: Date.now() + a.ms,
               };
-              await waitMs(a.ms);
+              await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "think") {
               s.bubble = {
@@ -380,25 +606,52 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 kind: "think",
                 until: Date.now() + a.ms,
               };
-              await waitMs(a.ms);
+              await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "costume") {
-              s.costume = a.id;
-              onActorCostumeChangeRef.current(spriteId, a.id);
+              const id = migrateCostumeIdFromStorage(a.id);
+              s.costume = id;
+              s.sheetFrame = 0;
+              onActorCostumeChangeRef.current(spriteId, id);
+            } else if (a.type === "nextCostume") {
+              const curDef =
+                getCostumeById(s.costume) ??
+                getCostumeById(DEFAULT_COSTUME_ID)!;
+              if (curDef.kind === "image" && curDef.spriteSheet) {
+                const n = Math.max(
+                  1,
+                  curDef.spriteSheet.columns * curDef.spriteSheet.rows,
+                );
+                s.sheetFrame = (s.sheetFrame + 1) % n;
+              } else {
+                const nextId = nextOllieSpriteCostumeId(s.costume);
+                if (nextId !== s.costume) {
+                  s.costume = nextId;
+                  s.sheetFrame = 0;
+                  onActorCostumeChangeRef.current(spriteId, nextId);
+                }
+              }
             } else if (a.type === "scene") {
               currentSceneRef.current = a.id;
+              latestSceneLayerIdsRef.current = [a.id];
               onSceneChangeRef.current(a.id);
             } else if (a.type === "sound") {
               playOllieSound(a.id);
             } else if (a.type === "soundWait") {
               playOllieSound(a.id);
-              await waitMs(a.ms);
+              await waitMs(a.ms, shouldCancel);
             } else if (a.type === "wait") {
-              await waitMs(a.ms);
+              await waitMs(a.ms, shouldCancel);
             } else if (a.type === "broadcast") {
               void dispatchBroadcast(a.message, false);
             } else if (a.type === "broadcastWait") {
               await dispatchBroadcast(a.message, true);
+            } else if (a.type === "stop") {
+              if (a.scope === "all") {
+                stopAllScripts = true;
+                return;
+              }
+              return;
             }
           }
         }
@@ -427,6 +680,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           }
         };
 
+        let aborted = false;
         try {
           const greenRunners: Promise<void>[] = [];
           for (const { spriteId: sid, plan } of plans) {
@@ -436,8 +690,16 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           }
           await Promise.all(greenRunners);
         } finally {
+          window.removeEventListener("keydown", onSensingKeyDown);
+          window.removeEventListener("keyup", onSensingKeyUp);
+          aborted = abortRunRef.current;
+          abortRunRef.current = false;
           runningRef.current = false;
         }
+        return { aborted };
+      },
+      stopRun() {
+        abortRunRef.current = true;
       },
       resetSprite() {
         const el = containerRef.current;
@@ -457,9 +719,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           const pos = layoutSlot(i, list.length, w, h);
           s.x = pos.x;
           s.y = pos.y;
-          s.heading = 0;
+          s.heading = DEFAULT_SPRITE_HEADING_DEG;
           s.bubble = undefined;
           s.costume = a.costumeId;
+          s.sheetFrame = 0;
         });
       },
     }));
@@ -494,16 +757,19 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               map.set(a.id, {
                 x: pos.x,
                 y: pos.y,
-                heading: 0,
+                heading: DEFAULT_SPRITE_HEADING_DEG,
                 costume: a.costumeId,
+                sheetFrame: 0,
               });
             });
           };
 
           p.draw = () => {
-            const sid = currentSceneRef.current;
+            const layers = latestSceneLayerIdsRef.current;
+            const sid =
+              layers[layers.length - 1] ?? DEFAULT_SCENE_ID;
             const sceneMeta = getSceneById(sid) ?? getSceneById(DEFAULT_SCENE_ID)!;
-            drawSceneLayer(p, sid, stageImages);
+            drawSceneLayers(p, layers, stageImages);
             if (sceneMeta.grid) {
               drawDotsBackground(p);
             }
@@ -513,9 +779,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               if (!s) continue;
               p.push();
               p.translate(s.x, s.y);
-              p.rotate(s.heading);
+              const o = spriteDrawOrient(s, stageImages);
+              if (o.mirrorX) p.scale(-1, 1);
+              p.rotate(o.rotationDeg);
               p.imageMode(p.CENTER);
-              drawSpriteForCostume(p, s.costume, stageImages);
+              drawSpriteForCostume(p, s, stageImages);
               p.pop();
             }
             for (const id of order) {
@@ -648,28 +916,80 @@ function drawDotsBackground(p: p5Types) {
   }
 }
 
-function waitMs(ms: number) {
-  return new Promise<void>((r) => setTimeout(r, ms));
+function waitMs(ms: number, shouldCancel?: () => boolean) {
+  return new Promise<void>((resolve) => {
+    const start = Date.now();
+    const tick = () => {
+      if (shouldCancel?.()) {
+        resolve();
+        return;
+      }
+      const elapsed = Date.now() - start;
+      if (elapsed >= ms) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, Math.min(50, ms - elapsed));
+    };
+    tick();
+  });
 }
+
+type MoveBobOpts = {
+  amplitude: number;
+  cycles: number;
+};
 
 function animateMove(
   sprite: Sprite,
   tx: number,
   ty: number,
   totalFrames: number,
+  shouldCancel?: () => boolean,
+  bob?: MoveBobOpts,
 ) {
   const sx = sprite.x;
   const sy = sprite.y;
   let frame = 0;
+  const sheetDef = getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
+  const sheetCells =
+    sheetDef.kind === "image" && sheetDef.spriteSheet
+      ? Math.max(
+          1,
+          sheetDef.spriteSheet.columns * sheetDef.spriteSheet.rows,
+        )
+      : 0;
   return new Promise<void>((resolve) => {
     const step = () => {
+      if (shouldCancel?.()) {
+        resolve();
+        return;
+      }
       frame += 1;
       const t = Math.min(1, frame / totalFrames);
-      sprite.x = sx + (tx - sx) * t;
-      sprite.y = sy + (ty - sy) * t;
+      const baseX = sx + (tx - sx) * t;
+      const baseY = sy + (ty - sy) * t;
+      let y = baseY;
+      if (bob) {
+        const envelope = Math.sin(t * Math.PI);
+        const stride = Math.sin(t * Math.PI * 2 * bob.cycles);
+        y += envelope * stride * bob.amplitude;
+      }
+      if (sheetCells > 0) {
+        const idx = Math.max(0, frame - 1);
+        const denom = Math.max(1, totalFrames - 1);
+        const phase = totalFrames <= 1 ? 1 : idx / denom;
+        sprite.sheetFrame =
+          Math.floor(phase * sheetCells) % sheetCells;
+      }
+      sprite.x = baseX;
+      sprite.y = y;
       if (frame >= totalFrames) {
         sprite.x = tx;
         sprite.y = ty;
+        if (sheetCells > 0) {
+          sprite.sheetFrame = 0;
+        }
         resolve();
         return;
       }

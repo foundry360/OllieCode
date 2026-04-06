@@ -1,8 +1,11 @@
 import * as Blockly from "blockly/core";
+import { Blocks, FieldDropdown } from "blockly/core";
+import type { Block } from "blockly/core";
 import {
   costumeDropdownOptions,
   sceneDropdownOptions,
 } from "@/lib/canvas/stageAssets";
+import { animationDropdownOptions } from "@/lib/canvas/ollieAnimationPresets";
 
 /** Keys shown in “when … key pressed” — values match runtime in `P5Canvas`. */
 export function eventKeyDropdownOptions(): [string, string][] {
@@ -155,7 +158,8 @@ export function getOllieBlockDefinitions(): Parameters<
     previousStatement: null,
     nextStatement: null,
     style: "scratch_motion",
-    tooltip: "Move in the direction the sprite is facing.",
+    tooltip:
+      "Walk in the direction the sprite is facing (uses the sprite’s walk frames while moving).",
   },
   {
     type: "ollie_turn",
@@ -227,7 +231,29 @@ export function getOllieBlockDefinitions(): Parameters<
     previousStatement: null,
     nextStatement: null,
     style: "scratch_motion",
-    tooltip: "0° = up, 90° = right (like Scratch stage).",
+    tooltip:
+      "Scratch stage angles: 0° = up, 90° = right, −90° = left, 180° = down.",
+  },
+  {
+    type: "ollie_point_towards",
+    message0: "point towards %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "DIR",
+        options: [
+          ["up", "up"],
+          ["right", "right"],
+          ["down", "down"],
+          ["left", "left"],
+        ],
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Face the top, right, bottom, or left of the stage (same as point in direction with 0°, 90°, 180°, or −90°).",
   },
   {
     type: "ollie_go_to_xy",
@@ -347,19 +373,14 @@ export function getOllieBlockDefinitions(): Parameters<
     tooltip: "Show a thought bubble.",
   },
   {
-    type: "ollie_switch_costume",
-    message0: "switch costume to %1",
-    args0: [
-      {
-        type: "field_dropdown",
-        name: "COSTUME",
-        options: costumeDropdownOptions(),
-      },
-    ],
+    type: "ollie_next_costume",
+    message0: "next costume",
     previousStatement: null,
     nextStatement: null,
     style: "scratch_looks",
-    tooltip: "Change how the sprite looks on the stage.",
+    tooltip:
+      "Advance to the next costume frame (sprite sheet) or the next costume in the list.",
+    helpUrl: "",
   },
   {
     type: "ollie_switch_scene",
@@ -375,6 +396,23 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_looks",
     tooltip: "Change the stage scene (same choices as under the canvas).",
+  },
+  {
+    type: "ollie_play_animation",
+    message0: "play animation %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "ANIMATION",
+        options: animationDropdownOptions(),
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip:
+      "Wave (turn), walk/run (forward with a bounce stride—no extra art needed), jump (arc).",
+    helpUrl: "",
   },
   {
     type: "ollie_play_sound",
@@ -424,13 +462,14 @@ export function getOllieBlockDefinitions(): Parameters<
         value: 1,
         min: 0,
         max: 10,
-        precision: 1,
+        /** Step 0.01 s so values like 0.2, 0.5, 0.75 are allowed (Blockly precision = rounding step). */
+        precision: 0.01,
       },
     ],
     previousStatement: null,
     nextStatement: null,
     style: "scratch_control",
-    tooltip: "Pause before the next block.",
+    tooltip: "Pause before the next block. Use decimals (e.g. 0.2, 0.5, 0.75).",
   },
   {
     type: "ollie_repeat",
@@ -457,9 +496,154 @@ export function getOllieBlockDefinitions(): Parameters<
     style: "scratch_control",
     tooltip: "Repeat the blocks inside (like Scratch’s repeat loop).",
   },
+  {
+    type: "ollie_forever",
+    message0: "forever",
+    message1: "do %1",
+    args1: [
+      {
+        type: "input_statement",
+        name: "DO",
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_control",
+    tooltip:
+      "Runs the blocks inside many times (safe cap). Nothing attaches below, like Scratch.",
+  },
+  {
+    type: "ollie_stop",
+    message0: "stop %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "SCOPE",
+        options: [
+          ["all", "ALL"],
+          ["this script", "THIS"],
+        ],
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_control",
+    tooltip:
+      "Stop this script or all running scripts. Blocks below this one do not run.",
+  },
+  {
+    type: "ollie_sensing_touching",
+    message0: "touching %1 ?",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "TOUCHING",
+        options: [
+          ["mouse-pointer", "MOUSE"],
+          ["edge", "EDGE"],
+        ],
+      },
+    ],
+    output: "Boolean",
+    style: "scratch_sensing",
+    tooltip: "Like Scratch / mBlock — true when this sprite touches the pointer or the stage edge.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_key_pressed",
+    message0: "key %1 pressed?",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "KEY",
+        options: eventKeyDropdownOptions(),
+      },
+    ],
+    output: "Boolean",
+    style: "scratch_sensing",
+    tooltip: "True while this key is held (after you tap Run).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_mouse_down",
+    message0: "mouse down?",
+    output: "Boolean",
+    style: "scratch_sensing",
+    tooltip: "True while the mouse button is pressed on the stage.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_mouse_x",
+    message0: "mouse x",
+    output: "Number",
+    style: "scratch_sensing",
+    tooltip: "Mouse x in Scratch coordinates (−100 left to +100 right).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_mouse_y",
+    message0: "mouse y",
+    output: "Number",
+    style: "scratch_sensing",
+    tooltip: "Mouse y in Scratch coordinates (−100 down to +100 up).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_distance",
+    message0: "distance to %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "TARGET",
+        options: [["mouse-pointer", "MOUSE"]],
+      },
+    ],
+    output: "Number",
+    style: "scratch_sensing",
+    tooltip: "Distance from the center of this sprite to the mouse in pixels.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_timer",
+    message0: "timer",
+    output: "Number",
+    style: "scratch_sensing",
+    tooltip: "Seconds since the timer started or since “reset timer”.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_reset_timer",
+    message0: "reset timer",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_sensing",
+    tooltip: "Set the timer back to 0 seconds.",
+    helpUrl: "",
+  },
   ];
+}
+
+/** Dynamic menu so new costumes in `OLLIE_SPRITE_COSTUMES` appear without stale JSON options. */
+function registerOllieSwitchCostumeBlock() {
+  Blocks["ollie_switch_costume"] = {
+    init: function (this: Block) {
+      this.setStyle("scratch_looks");
+      this.appendDummyInput()
+        .appendField("switch costume to")
+        .appendField(
+          new FieldDropdown(function (this: FieldDropdown) {
+            return costumeDropdownOptions();
+          }),
+          "COSTUME",
+        );
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setTooltip("Change how the sprite looks on the stage.");
+    },
+  };
 }
 
 export function registerOllieBlocks() {
   Blockly.common.defineBlocksWithJsonArray(getOllieBlockDefinitions());
+  registerOllieSwitchCostumeBlock();
 }

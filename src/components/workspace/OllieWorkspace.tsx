@@ -41,6 +41,7 @@ import {
   getCostumeById,
   getSceneById,
   migrateSceneIdFromStorage,
+  normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { P5Canvas, type P5CanvasHandle } from "@/components/workspace/P5Canvas";
@@ -104,12 +105,14 @@ import {
   Minimize2,
   Play,
   Redo,
+  Square,
   RotateCcw,
   Save,
   Settings,
   Trash2,
   Undo,
   Upload,
+  X,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -121,7 +124,7 @@ const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
 const ACTOR_ROBOT_ID = "actor-robot";
 
 const DEFAULT_STAGE_ACTORS: StageActor[] = [
-  { id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: "robot" },
+  { id: ACTOR_ROBOT_ID, label: "David", costumeId: "olliebot" },
 ];
 
 /** Main Blockly + canvas + kid-friendly toolbar — extend with new blocks in lib/blockly. */
@@ -146,7 +149,9 @@ export function OllieWorkspace() {
   const [blocklyInjectKey, setBlocklyInjectKey] = useState(0);
   const [blocklyMounted, setBlocklyMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [stageSceneId, setStageSceneId] = useState<OllieSceneId>(DEFAULT_SCENE_ID);
+  const [stageSceneLayers, setStageSceneLayers] = useState<OllieSceneId[]>([
+    DEFAULT_SCENE_ID,
+  ]);
   const [actors, setActors] = useState<StageActor[]>(DEFAULT_STAGE_ACTORS);
   const [activeActorId, setActiveActorId] = useState<string>(ACTOR_ROBOT_ID);
   const [scenePickerOpen, setScenePickerOpen] = useState(false);
@@ -167,6 +172,7 @@ export function OllieWorkspace() {
   const [avatarPickerOpen, setAvatarPickerOpen] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [missionCompleteOpen, setMissionCompleteOpen] = useState(false);
+  const [programRunning, setProgramRunning] = useState(false);
   const [saveMissionNameModalOpen, setSaveMissionNameModalOpen] =
     useState(false);
   const [saveMissionNameLoading, setSaveMissionNameLoading] = useState(false);
@@ -225,8 +231,10 @@ export function OllieWorkspace() {
     return `${missionForSave.title} — ${datePart}`;
   }, [missionForSave]);
 
+  const topStageSceneId =
+    stageSceneLayers[stageSceneLayers.length - 1] ?? DEFAULT_SCENE_ID;
   const currentStageScene =
-    getSceneById(stageSceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
+    getSceneById(topStageSceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
   const activeActor =
     actors.find((a) => a.id === activeActorId) ?? actors[0]!;
   const currentStageCostume =
@@ -403,8 +411,16 @@ export function OllieWorkspace() {
   );
 
   const confirmRemoveScene = useCallback(() => {
-    setStageSceneId(DEFAULT_SCENE_ID);
+    setStageSceneLayers([DEFAULT_SCENE_ID]);
     setDeleteConfirm(null);
+  }, []);
+
+  const removeSceneLayerAt = useCallback((index: number) => {
+    setStageSceneLayers((prev) => {
+      if (prev.length <= 1) return [DEFAULT_SCENE_ID];
+      const next = prev.filter((_, i) => i !== index);
+      return next.length > 0 ? next : [DEFAULT_SCENE_ID];
+    });
   }, []);
 
   const confirmRemoveSprite = useCallback(
@@ -469,44 +485,54 @@ export function OllieWorkspace() {
     [activeActorId],
   );
 
+  const handleStop = useCallback(() => {
+    p5Ref.current?.stopRun();
+  }, []);
+
   const handleRun = useCallback(async () => {
     const ws = workspaceRef.current;
     const p5 = p5Ref.current;
     if (!ws || !p5) return;
-    setStatus("Running…");
-    spriteWorkspacesRef.current[activeActorId] =
-      serialization.workspaces.save(ws) as Record<string, unknown>;
-    const emptyPlan = (): SpriteScriptPlan => ({
-      runScripts: [],
-      keyScripts: [],
-      stageClickScripts: [],
-      backdropScripts: [],
-      broadcastScripts: [],
-    });
-    const bundles = actors.map((actor) => {
-      const raw = spriteWorkspacesRef.current[actor.id];
-      let plan: SpriteScriptPlan = emptyPlan();
-      if (raw && Object.keys(raw).length > 0) {
-        try {
-          plan = extractSpriteScriptPlanFromSave(raw);
-        } catch {
-          plan = emptyPlan();
+    setProgramRunning(true);
+    try {
+      setStatus("Running…");
+      spriteWorkspacesRef.current[activeActorId] =
+        serialization.workspaces.save(ws) as Record<string, unknown>;
+      const emptyPlan = (): SpriteScriptPlan => ({
+        runScripts: [],
+        keyScripts: [],
+        stageClickScripts: [],
+        backdropScripts: [],
+        broadcastScripts: [],
+      });
+      const bundles = actors.map((actor) => {
+        const raw = spriteWorkspacesRef.current[actor.id];
+        let plan: SpriteScriptPlan = emptyPlan();
+        if (raw && Object.keys(raw).length > 0) {
+          try {
+            plan = extractSpriteScriptPlanFromSave(raw);
+          } catch {
+            plan = emptyPlan();
+          }
         }
-      }
-      return { spriteId: actor.id, plan };
-    });
-    p5.resetSprite();
-    await p5.runProjectPlans(bundles);
-    setStatus("Done!");
-    setTimeout(() => setStatus(""), 2000);
+        return { spriteId: actor.id, plan };
+      });
+      p5.resetSprite();
+      const { aborted } = await p5.runProjectPlans(bundles);
+      setStatus(aborted ? "Stopped" : "Done!");
+      setTimeout(() => setStatus(""), 2000);
 
-    if (
-      activeMission &&
-      !missionRewardShownRef.current &&
-      activeMission.isComplete({ ...spriteWorkspacesRef.current })
-    ) {
-      missionRewardShownRef.current = true;
-      setMissionCompleteOpen(true);
+      if (
+        !aborted &&
+        activeMission &&
+        !missionRewardShownRef.current &&
+        activeMission.isComplete({ ...spriteWorkspacesRef.current })
+      ) {
+        missionRewardShownRef.current = true;
+        setMissionCompleteOpen(true);
+      }
+    } finally {
+      setProgramRunning(false);
     }
   }, [actors, activeActorId, activeMission]);
 
@@ -515,7 +541,7 @@ export function OllieWorkspace() {
     if (!ws) return;
     setActors(DEFAULT_STAGE_ACTORS);
     setActiveActorId(ACTOR_ROBOT_ID);
-    setStageSceneId(DEFAULT_SCENE_ID);
+    setStageSceneLayers([DEFAULT_SCENE_ID]);
     const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
     Events.disable();
     ws.clear();
@@ -585,8 +611,9 @@ export function OllieWorkspace() {
       workspace: workspacesByActorId[activeActorId]!,
       workspacesByActorId,
       actors,
-      sceneId: stageSceneId,
-      name: "My Ollie Project",
+      sceneLayerIds: stageSceneLayers,
+      sceneId: topStageSceneId,
+      name: "My David Project",
       updatedAt: new Date().toISOString(),
       savedMissionProgress: mergedMissionProgress,
     };
@@ -661,7 +688,7 @@ export function OllieWorkspace() {
     }
     return "Saved to cloud!";
   },
-    [actors, activeActorId, stageSceneId],
+    [actors, activeActorId, stageSceneLayers, topStageSceneId],
   );
 
   const confirmSaveMissionName = useCallback(
@@ -802,16 +829,23 @@ export function OllieWorkspace() {
       }
       const migratedActors = payload.actors.map((a) => {
         const n = normalizeStageActor(a);
-        if (n.id === LEGACY_ACTOR_OLLIE_ID) {
-          return { ...n, id: ACTOR_ROBOT_ID };
-        }
-        return n;
+        const id = n.id === LEGACY_ACTOR_OLLIE_ID ? ACTOR_ROBOT_ID : n.id;
+        const label =
+          id === ACTOR_ROBOT_ID && (n.label === "Ollie" || n.label === "Robot")
+            ? "David"
+            : n.label;
+        return { ...n, id, label };
       });
       setActors(migratedActors);
       spriteWorkspacesRef.current = wsRaw;
       const firstId = migratedActors[0].id;
       setActiveActorId(firstId);
-      setStageSceneId(migrateSceneIdFromStorage(payload.sceneId));
+      setStageSceneLayers(
+        normalizeSceneLayerIdsFromPayload(
+          payload.sceneLayerIds,
+          payload.sceneId,
+        ),
+      );
       const blob =
         spriteWorkspacesRef.current[firstId] ?? getEmptyWorkspaceSave();
       Events.disable();
@@ -821,7 +855,12 @@ export function OllieWorkspace() {
     } else {
       setActors(DEFAULT_STAGE_ACTORS);
       setActiveActorId(ACTOR_ROBOT_ID);
-      setStageSceneId(migrateSceneIdFromStorage(payload.sceneId));
+      setStageSceneLayers(
+        normalizeSceneLayerIdsFromPayload(
+          payload.sceneLayerIds,
+          payload.sceneId,
+        ),
+      );
       Events.disable();
       ws.clear();
       serialization.workspaces.load(payload.workspace, ws, { recordUndo: false });
@@ -1094,7 +1133,7 @@ export function OllieWorkspace() {
           <Link
             href="/"
             className="block shrink-0"
-            aria-label="Ollie Code home"
+            aria-label="David Code home"
           >
             <Image
               src="/images/logo.png"
@@ -1111,18 +1150,33 @@ export function OllieWorkspace() {
         </div>
 
         <div className="flex flex-wrap items-center justify-end gap-1.5 sm:ml-auto sm:gap-2">
-          <ToolbarIconButton
-            variant="primary"
-            onClick={handleRun}
-            title="Run"
-            aria-label="Run"
-          >
-            <Play
-              className={`${ICON_SM} fill-current`}
-              strokeWidth={ICON_STROKE}
-              aria-hidden
-            />
-          </ToolbarIconButton>
+          {programRunning ? (
+            <ToolbarIconButton
+              variant="stop"
+              onClick={handleStop}
+              title="Stop"
+              aria-label="Stop"
+            >
+              <Square
+                className={`${ICON_SM} fill-current`}
+                strokeWidth={ICON_STROKE}
+                aria-hidden
+              />
+            </ToolbarIconButton>
+          ) : (
+            <ToolbarIconButton
+              variant="primary"
+              onClick={handleRun}
+              title="Run"
+              aria-label="Run"
+            >
+              <Play
+                className={`${ICON_SM} fill-current`}
+                strokeWidth={ICON_STROKE}
+                aria-hidden
+              />
+            </ToolbarIconButton>
+          )}
           <ToolbarIconButton
             onClick={handleSave}
             title="Save"
@@ -1389,12 +1443,13 @@ export function OllieWorkspace() {
             <P5Canvas
               ref={p5Ref}
               className="min-h-0 w-full flex-1"
-              sceneId={stageSceneId}
+              sceneLayerIds={stageSceneLayers}
               actors={actors.map((a) => ({
                 id: a.id,
                 costumeId: a.costumeId,
               }))}
-              onSceneChange={setStageSceneId}
+              pauseActorCostumePropSync={programRunning}
+              onSceneChange={(id) => setStageSceneLayers([id])}
               onActorCostumeChange={(actorId, costumeId) =>
                 setActors((prev) =>
                   prev.map((a) =>
@@ -1414,7 +1469,7 @@ export function OllieWorkspace() {
                     onClick={() => setOpenStagePanel("scene")}
                     className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
                   >
-                    Scene
+                    Scenes
                     <ChevronDown
                       className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
                         openStagePanel === "scene" ? "rotate-180" : ""
@@ -1430,34 +1485,58 @@ export function OllieWorkspace() {
                       aria-labelledby="ollie-stage-accordion-scene"
                       className="flex flex-col gap-1.5 px-2 pb-3 pt-0"
                     >
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] shadow-sm"
-                          title={currentStageScene.label}
-                        >
-                          <ScenePreview scene={currentStageScene} />
-                          {stageSceneId !== DEFAULT_SCENE_ID ? (
-                            <button
-                              type="button"
-                              aria-label="Remove backdrop"
-                              title="Remove backdrop"
-                              onClick={() => setDeleteConfirm({ type: "scene" })}
-                              className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
+                      <div className="flex flex-wrap items-center gap-2">
+                        {stageSceneLayers.map((layerId, index) => {
+                          const scene =
+                            getSceneById(layerId) ??
+                            getSceneById(DEFAULT_SCENE_ID)!;
+                          return (
+                            <div
+                              key={`${layerId}-${index}`}
+                              className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] shadow-sm"
+                              title={`${scene.label} (layer ${index + 1})`}
                             >
-                              <Trash2
-                                className="size-3.5 shrink-0"
-                                strokeWidth={ICON_STROKE}
-                                aria-hidden
-                              />
-                            </button>
-                          ) : null}
-                        </div>
+                              <ScenePreview scene={scene} />
+                              {stageSceneLayers.length > 1 ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${scene.label} layer`}
+                                  title="Remove this layer"
+                                  onClick={() => removeSceneLayerAt(index)}
+                                  className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
+                                >
+                                  <X
+                                    className="size-3.5 shrink-0"
+                                    strokeWidth={ICON_STROKE}
+                                    aria-hidden
+                                  />
+                                </button>
+                              ) : topStageSceneId !== DEFAULT_SCENE_ID ? (
+                                <button
+                                  type="button"
+                                  aria-label="Reset backdrop"
+                                  title="Reset backdrop"
+                                  onClick={() =>
+                                    setDeleteConfirm({ type: "scene" })
+                                  }
+                                  className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
+                                >
+                                  <Trash2
+                                    className="size-3.5 shrink-0"
+                                    strokeWidth={ICON_STROKE}
+                                    aria-hidden
+                                  />
+                                </button>
+                              ) : null}
+                            </div>
+                          );
+                        })}
                         <button
                           type="button"
                           onClick={() => setScenePickerOpen(true)}
                           className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          aria-label="Choose a scene"
-                          title="Choose a scene"
+                          aria-label="Add backdrop layer"
+                          title="Add backdrop layer"
                         >
                           +
                         </button>
@@ -1501,7 +1580,7 @@ export function OllieWorkspace() {
                             <div
                               key={actor.id}
                               className={[
-                                "grid h-20 w-20 shrink-0 grid-rows-[1fr_auto] gap-1 rounded-xl border-2 p-2 text-[11px] font-semibold leading-tight",
+                                "grid h-24 w-24 shrink-0 grid-rows-[1fr_auto] gap-1 rounded-xl border-2 p-2 text-[11px] font-semibold leading-tight",
                                 sel
                                   ? "border-[#84c126] bg-[#f7fee7]"
                                   : "border-[#e5e7eb] bg-white",
@@ -1515,8 +1594,8 @@ export function OllieWorkspace() {
                                   className="absolute inset-0 z-0 flex items-center justify-center focus:outline-none"
                                   aria-hidden
                                 />
-                                <div className="pointer-events-none flex h-full w-full items-center justify-center">
-                                  <SpritePreview costume={c} />
+                                <div className="pointer-events-none relative h-full w-full min-h-0 p-1">
+                                  <SpritePreview costume={c} fillCard />
                                 </div>
                                 {canRemoveSprite ? (
                                   <button
@@ -1560,11 +1639,11 @@ export function OllieWorkspace() {
                             spritePickerIntentRef.current = "costume";
                             setSpritePickerOpen(true);
                           }}
-                          className="relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] p-1 shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
                           title={`${currentStageCostume.label} — tap to change costume`}
                           aria-label="Change costume for selected sprite"
                         >
-                          <SpritePreview costume={currentStageCostume} />
+                          <SpritePreview costume={currentStageCostume} fillCard />
                         </button>
                         <button
                           type="button"
@@ -1572,7 +1651,7 @@ export function OllieWorkspace() {
                             spritePickerIntentRef.current = "new";
                             setSpritePickerOpen(true);
                           }}
-                          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
                           aria-label="Add a new sprite"
                           title="Add sprite"
                         >
@@ -1597,8 +1676,12 @@ export function OllieWorkspace() {
       <ScenePickerModal
         open={scenePickerOpen}
         onClose={() => setScenePickerOpen(false)}
-        selectedId={stageSceneId}
-        onSelect={setStageSceneId}
+        title="Add a backdrop layer"
+        selectedId={false}
+        onSelect={(id) => {
+          setStageSceneLayers((prev) => [...prev, id]);
+          setScenePickerOpen(false);
+        }}
       />
       <SpritePickerModal
         open={spritePickerOpen}
@@ -1734,7 +1817,7 @@ function ToolbarIconButton({
   onClick: () => void;
   title: string;
   "aria-label": string;
-  variant?: "primary";
+  variant?: "primary" | "stop";
   disabled?: boolean;
 }) {
   const base =
@@ -1742,7 +1825,9 @@ function ToolbarIconButton({
   const styles =
     variant === "primary"
       ? "bg-[#84c126] text-white hover:bg-[#6fa020]"
-      : "border border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]";
+      : variant === "stop"
+        ? "bg-[#FFAB19] text-white"
+        : "border border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]";
   const disabledStyles =
     disabled === true
       ? "cursor-not-allowed opacity-45 hover:bg-white"

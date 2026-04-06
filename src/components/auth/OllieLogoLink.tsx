@@ -11,7 +11,7 @@ export function OllieLogoLink({ className }: OllieLogoLinkProps) {
     <Link href="/" className={["block w-fit shrink-0", className].filter(Boolean).join(" ")}>
       <Image
         src="/images/logo.png"
-        alt="Ollie Code"
+        alt="David Code"
         width={434}
         height={91}
         className="h-8 w-auto sm:h-9"

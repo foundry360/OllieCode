@@ -9,7 +9,7 @@ export function LandingNav() {
           <Link
             href="/"
             className="block shrink-0"
-            aria-label="Ollie Code home"
+            aria-label="David Code home"
           >
             <Image
               src="/images/logo.png"

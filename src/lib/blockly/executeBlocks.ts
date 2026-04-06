@@ -2,9 +2,19 @@ import * as Blockly from "blockly/core";
 import { serialization } from "blockly/core";
 import {
   isOllieSceneId,
-  isOllieSpriteCostumeId,
+  resolveCostumeFieldForExecution,
 } from "@/lib/canvas/stageAssets";
-import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
+import {
+  evaluateBoolean,
+  evaluateNumber,
+} from "@/lib/blockly/evaluateBlock";
+import { serializeBoolExpr } from "@/lib/blockly/sensingSerialize";
+import { getAnimationPresetActions } from "@/lib/canvas/ollieAnimationPresets";
+import type {
+  OllieAction,
+  SerializedBoolExpr,
+  SpriteScriptPlan,
+} from "@/types/ollie";
 
 /**
  * Interprets Ollie stack blocks (Motion / Looks / Sound / Control / Events).
@@ -16,6 +26,8 @@ const BASE_STEP_PX = 2.4;
 /** Prevents Run from freezing the tab on huge repeats or long scripts. */
 const MAX_OLLIE_ACTIONS = 8_000;
 const MAX_REPEAT_UNROLL = 2_000;
+const MAX_WHILE_UNROLL = 2_000;
+const MAX_FOREVER_UNROLL = 500;
 
 function isSoundId(s: string): s is "pop" | "boing" | "cheer" {
   return s === "pop" || s === "boing" || s === "cheer";
@@ -30,7 +42,13 @@ function walkStatementChain(
     switch (current.type) {
       case "ollie_move_forward": {
         const steps = Number(current.getFieldValue("STEPS")) || 0;
-        actions.push({ type: "move", distance: steps * BASE_STEP_PX });
+        const distance = steps * BASE_STEP_PX;
+        /** Same as “play animation → walk” one stride: bob + sprite-sheet frames. */
+        actions.push({
+          type: "moveWithBob",
+          distance,
+          style: "walk",
+        });
         break;
       }
       case "ollie_turn": {
@@ -51,6 +69,19 @@ function walkStatementChain(
       case "ollie_point_in_direction": {
         const angle = Number(current.getFieldValue("ANGLE")) || 0;
         actions.push({ type: "setHeading", degrees: angle });
+        break;
+      }
+      case "ollie_point_towards": {
+        const dir = String(current.getFieldValue("DIR") ?? "up");
+        const deg =
+          dir === "right"
+            ? 90
+            : dir === "down"
+              ? 180
+              : dir === "left"
+                ? -90
+                : 0;
+        actions.push({ type: "setHeading", degrees: deg });
         break;
       }
       case "ollie_go_to_xy": {
@@ -99,13 +130,27 @@ function walkStatementChain(
         break;
       }
       case "ollie_switch_costume": {
-        const id = String(current.getFieldValue("COSTUME"));
-        if (isOllieSpriteCostumeId(id)) actions.push({ type: "costume", id });
+        const raw = String(current.getFieldValue("COSTUME") ?? "");
+        const id = resolveCostumeFieldForExecution(raw);
+        if (id) {
+          actions.push({ type: "costume", id });
+        }
         break;
       }
+      case "ollie_next_costume":
+        actions.push({ type: "nextCostume" });
+        break;
       case "ollie_switch_scene": {
         const id = String(current.getFieldValue("SCENE"));
         if (isOllieSceneId(id)) actions.push({ type: "scene", id });
+        break;
+      }
+      case "ollie_play_animation": {
+        const id = String(current.getFieldValue("ANIMATION") ?? "wave");
+        for (const act of getAnimationPresetActions(id)) {
+          if (actions.length >= MAX_OLLIE_ACTIONS) return;
+          actions.push(act);
+        }
         break;
       }
       case "ollie_play_sound": {
@@ -145,6 +190,133 @@ function walkStatementChain(
           MAX_REPEAT_UNROLL,
           Math.max(1, raw),
         );
+        const inner = current.getInputTargetBlock("DO");
+        for (let i = 0; i < times; i += 1) {
+          if (actions.length >= MAX_OLLIE_ACTIONS) return;
+          walkStatementChain(inner, actions);
+        }
+        break;
+      }
+      case "ollie_forever": {
+        const inner = current.getInputTargetBlock("DO");
+        for (let i = 0; i < MAX_FOREVER_UNROLL; i += 1) {
+          if (actions.length >= MAX_OLLIE_ACTIONS) return;
+          walkStatementChain(inner, actions);
+        }
+        break;
+      }
+      case "ollie_stop": {
+        const scope = current.getFieldValue("SCOPE");
+        actions.push({
+          type: "stop",
+          scope: scope === "ALL" ? "all" : "script",
+        });
+        return;
+      }
+      case "ollie_sensing_reset_timer":
+        actions.push({ type: "resetTimer" });
+        break;
+      case "controls_if": {
+        let i = 0;
+        const branches: {
+          cond: SerializedBoolExpr;
+          body: OllieAction[];
+        }[] = [];
+        let allDynamic = true;
+        while (current.getInput(`IF${i}`)) {
+          const c = serializeBoolExpr(current.getInputTargetBlock(`IF${i}`));
+          if (!c) {
+            allDynamic = false;
+            break;
+          }
+          branches.push({
+            cond: c,
+            body: collectChainActions(current.getInputTargetBlock(`DO${i}`)),
+          });
+          i += 1;
+        }
+        if (allDynamic && branches.length > 0) {
+          let elseBody: OllieAction[] | undefined;
+          if (current.getInput("ELSE")) {
+            elseBody = collectChainActions(
+              current.getInputTargetBlock("ELSE"),
+            );
+          }
+          actions.push({ type: "ifChainDynamic", branches, elseBody });
+          break;
+        }
+        let j = 0;
+        let matched = false;
+        while (current.getInput(`IF${j}`)) {
+          if (evaluateBoolean(current.getInputTargetBlock(`IF${j}`))) {
+            walkStatementChain(current.getInputTargetBlock(`DO${j}`), actions);
+            matched = true;
+            break;
+          }
+          j += 1;
+        }
+        if (!matched && current.getInput("ELSE")) {
+          walkStatementChain(current.getInputTargetBlock("ELSE"), actions);
+        }
+        break;
+      }
+      case "controls_ifelse": {
+        const dynCond = serializeBoolExpr(
+          current.getInputTargetBlock("IF0"),
+        );
+        if (dynCond) {
+          actions.push({
+            type: "ifChainDynamic",
+            branches: [
+              {
+                cond: dynCond,
+                body: collectChainActions(
+                  current.getInputTargetBlock("DO0"),
+                ),
+              },
+            ],
+            elseBody: collectChainActions(
+              current.getInputTargetBlock("ELSE"),
+            ),
+          });
+          break;
+        }
+        if (evaluateBoolean(current.getInputTargetBlock("IF0"))) {
+          walkStatementChain(current.getInputTargetBlock("DO0"), actions);
+        } else {
+          walkStatementChain(current.getInputTargetBlock("ELSE"), actions);
+        }
+        break;
+      }
+      case "controls_whileUntil": {
+        const mode = current.getFieldValue("MODE");
+        const boolBlock = current.getInputTargetBlock("BOOL");
+        const inner = current.getInputTargetBlock("DO");
+        const dyn = serializeBoolExpr(boolBlock);
+        if (dyn) {
+          actions.push({
+            type: "whileUntilDynamic",
+            mode: mode === "WHILE" ? "WHILE" : "UNTIL",
+            cond: dyn,
+            body: collectChainActions(inner),
+          });
+          break;
+        }
+        let iter = 0;
+        while (iter < MAX_WHILE_UNROLL && actions.length < MAX_OLLIE_ACTIONS) {
+          const c = evaluateBoolean(boolBlock);
+          const go = mode === "WHILE" ? c : !c;
+          if (!go) break;
+          walkStatementChain(inner, actions);
+          iter += 1;
+        }
+        break;
+      }
+      case "controls_repeat_ext": {
+        const raw = Math.floor(
+          Math.abs(evaluateNumber(current.getInputTargetBlock("TIMES"))),
+        );
+        const times = Math.min(MAX_REPEAT_UNROLL, Math.max(0, raw));
         const inner = current.getInputTargetBlock("DO");
         for (let i = 0; i < times; i += 1) {
           if (actions.length >= MAX_OLLIE_ACTIONS) return;

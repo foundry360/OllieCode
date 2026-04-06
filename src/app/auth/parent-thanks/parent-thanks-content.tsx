@@ -37,7 +37,7 @@ export function ParentThanksContent() {
     <div className="w-full max-w-md rounded-3xl border border-[#ecfccb] bg-white p-8 shadow-lg">
       <h1 className="font-display text-2xl font-bold text-[#166534]">Account approved</h1>
       <p className="mt-3 text-sm text-[#374151]">
-        The Ollie Code account is ready. Your child can sign in with the codename and password they
+        The David Code account is ready. Your child can sign in with the codename and password they
         chose.
       </p>
       <Link

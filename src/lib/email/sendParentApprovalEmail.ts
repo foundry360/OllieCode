@@ -36,7 +36,7 @@ export async function sendParentApprovalEmail({
     body: JSON.stringify({
       from,
       to: [parentEmail],
-      subject: `Approve ${childUsername}'s Ollie Code account`,
+      subject: `Approve ${childUsername}'s David Code account`,
       html: parentApprovalHtml(childUsername, approvalUrl),
     }),
   });
@@ -54,7 +54,7 @@ function parentApprovalHtml(childUsername: string, approvalUrl: string): string 
 <!DOCTYPE html>
 <html>
 <body style="font-family: system-ui, sans-serif; line-height: 1.5; color: #111827;">
-  <p>Someone requested an Ollie Code account for the codename <strong>${escapeHtml(childUsername)}</strong>.</p>
+  <p>Someone requested a David Code account for the codename <strong>${escapeHtml(childUsername)}</strong>.</p>
   <p>If you approve, click the button below to create the account. If you did not expect this, you can ignore this email.</p>
   <p><a href="${escapeHtml(approvalUrl)}" style="display: inline-block; padding: 12px 24px; background: #84c126; color: #fff; text-decoration: none; border-radius: 12px; font-weight: bold;">Approve account</a></p>
   <p style="font-size: 12px; color: #6b7280;">Or paste this link: ${escapeHtml(approvalUrl)}</p>

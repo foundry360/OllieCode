@@ -39,9 +39,9 @@ export function createCustomMissionId(): string {
 export const MISSIONS: MissionDefinition[] = [
   {
     id: "first-move",
-    title: "First move",
+    title: "Robot path",
     description:
-      "Your first coding mission: add a Move block under the green flag and run your program.",
+      "Help Ollie follow the path: switch the backdrop to Path if you like, snap a Move block under When Run clicked, tap Run, then save your mission.",
     isComplete: (workspaces) =>
       hasBlockTypeInAnyWorkspace(workspaces, "ollie_move_forward"),
   },

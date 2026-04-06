@@ -1,51 +1,70 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import type { CostumeDef } from "@/lib/canvas/stageAssets";
 
 type SpritePreviewProps = {
   costume: CostumeDef;
   className?: string;
+  /**
+   * When true (e.g. Choose a sprite modal), zoom the first sprite-sheet cell to fill the tile
+   * instead of shrinking the whole atlas with `object-contain` (which made Ollie tiny).
+   */
+  fillCard?: boolean;
 };
 
 /** Matches P5 stage sprite styling (see `P5Canvas` drawSpriteForCostume). */
-export function SpritePreview({ costume, className = "" }: SpritePreviewProps) {
-  if (costume.kind === "image") {
+export function SpritePreview({
+  costume,
+  className = "",
+  fillCard = false,
+}: SpritePreviewProps) {
+  const sh = costume.spriteSheet;
+  const isSheet = sh && (sh.columns > 1 || sh.rows > 1);
+
+  if (fillCard && isSheet) {
+    const c = sh.columns;
+    const r = sh.rows;
     return (
       <div
-        className={`flex h-full w-full items-center justify-center bg-[#f1f5f9] ${className}`.trim()}
+        className={`relative h-full w-full min-h-0 overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
       >
         <img
           src={costume.src}
           alt=""
-          className="max-h-[85%] max-w-[85%] object-contain"
+          className="pointer-events-none absolute left-0 top-0 max-h-none max-w-none select-none"
+          style={{
+            width: `${c * 100}%`,
+            height: `${r * 100}%`,
+            objectFit: "fill",
+          }}
           draggable={false}
         />
       </div>
     );
   }
 
-  if (costume.shape === "square") {
-    return (
-      <div
-        className={`flex h-full w-full items-center justify-center bg-[#f1f5f9] ${className}`.trim()}
-      >
-        <div
-          className="aspect-square w-[55%] rounded-sm border-2 border-white shadow-sm"
-          style={{ backgroundColor: "rgb(59, 130, 246)" }}
-          aria-hidden
-        />
-      </div>
-    );
-  }
+  const clip =
+    isSheet && sh
+      ? ({
+          clipPath: `inset(0 ${100 - 100 / sh.columns}% ${100 - 100 / sh.rows}% 0)`,
+        } satisfies CSSProperties)
+      : undefined;
 
   return (
     <div
-      className={`flex h-full w-full items-center justify-center bg-[#f1f5f9] ${className}`.trim()}
+      className={`flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
     >
-      <div
-        className="aspect-square w-[55%] rounded-full border-2 border-white shadow-sm"
-        style={{ backgroundColor: "rgb(244, 114, 182)" }}
-        aria-hidden
+      <img
+        src={costume.src}
+        alt=""
+        className={
+          fillCard
+            ? "h-full w-full max-h-full max-w-full object-contain p-2"
+            : "max-h-[96%] max-w-[96%] object-contain"
+        }
+        style={clip}
+        draggable={false}
       />
     </div>
   );

@@ -41,41 +41,51 @@ export const OLLIE_SCENES = [
     grid: false,
     fallbackRgb: [220, 230, 210] as const,
   },
+  {
+    id: "pathway",
+    label: "Pathway",
+    kind: "image" as const,
+    src: "/images/backdrops/pathway.png",
+    grid: false,
+    fallbackRgb: [210, 220, 200] as const,
+  },
 ] as const;
 
 export const OLLIE_SPRITE_COSTUMES = [
   {
-    id: "cat",
-    label: "Ollie",
+    id: "olliebot",
+    label: "Ollie Bot",
     kind: "image" as const,
-    src: "/images/ollie.png",
-    width: 88,
+    src: "/images/sprites/olliebot.png",
+    width: 200,
+    /** 1280×1280 texture: 5×5 walk cycle, left→right then next row. */
+    spriteSheet: { columns: 5, rows: 5 },
+    /**
+     * Bitmap faces right at 0°; Scratch headings use 0° = toward stage top.
+     * Applied in P5Canvas only (movement trig unchanged). Default sprite heading
+     * is 90° so the rest pose faces right (like Scratch’s default). Facing left
+     * uses horizontal mirror so the walk cycle stays upright (not 180° spin).
+     */
+    spriteRotationOffsetDeg: -90,
   },
   {
-    id: "robot",
-    label: "Ollie",
+    id: "dino",
+    label: "Dino",
     kind: "image" as const,
-    src: "/images/sprites/bot.svg",
-    width: 104,
+    src: "/images/sprites/dino.png",
+    width: 200,
+    /** Same layout as Ollie Bot: 5×5 walk cycle on a square sheet. */
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
   },
   {
-    id: "star",
-    label: "Star",
+    id: "schoolbus",
+    label: "School bus",
     kind: "image" as const,
-    src: "/images/sprites/star.svg",
-    width: 56,
-  },
-  {
-    id: "square",
-    label: "Blue square",
-    kind: "shape" as const,
-    shape: "square" as const,
-  },
-  {
-    id: "ball",
-    label: "Pink ball",
-    kind: "shape" as const,
-    shape: "ball" as const,
+    src: "/images/sprites/schoolbus.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
   },
 ] as const;
 
@@ -86,7 +96,8 @@ export type SceneDef = (typeof OLLIE_SCENES)[number];
 export type CostumeDef = (typeof OLLIE_SPRITE_COSTUMES)[number];
 
 export const DEFAULT_SCENE_ID: OllieSceneId = "white_dots";
-export const DEFAULT_COSTUME_ID: OllieSpriteCostumeId = "robot";
+/** Default costume for new sprites and legacy saves that used removed walk frames. */
+export const DEFAULT_COSTUME_ID: OllieSpriteCostumeId = "olliebot";
 
 export function getSceneById(id: string): SceneDef | undefined {
   const canonical = id === "white_grid" ? "white_dots" : id;
@@ -100,6 +111,23 @@ export function migrateSceneIdFromStorage(
   if (id === "white_grid") return "white_dots";
   if (id && isOllieSceneId(id)) return id;
   return DEFAULT_SCENE_ID;
+}
+
+/**
+ * Backdrop stack for the stage (bottom → top). Legacy saves only had `sceneId`.
+ */
+export function normalizeSceneLayerIdsFromPayload(
+  sceneLayerIds: unknown,
+  sceneId: unknown,
+): OllieSceneId[] {
+  if (Array.isArray(sceneLayerIds)) {
+    const out: OllieSceneId[] = [];
+    for (const x of sceneLayerIds) {
+      if (typeof x === "string" && isOllieSceneId(x)) out.push(x);
+    }
+    if (out.length > 0) return out;
+  }
+  return [migrateSceneIdFromStorage(typeof sceneId === "string" ? sceneId : undefined)];
 }
 
 export function getCostumeById(id: string): CostumeDef | undefined {
@@ -120,6 +148,103 @@ export function isOllieSceneId(s: string): s is OllieSceneId {
 
 export function isOllieSpriteCostumeId(s: string): s is OllieSpriteCostumeId {
   return OLLIE_SPRITE_COSTUMES.some((c) => c.id === s);
+}
+
+const LEGACY_COSTUME_IDS = new Set([
+  "bot1",
+  "bot2",
+  "bot3",
+  "bot4",
+  "backpack",
+  "cat",
+  "robot",
+  "star",
+  "square",
+  "ball",
+]);
+
+export function isLegacyOrCatalogCostumeId(id: string): boolean {
+  return isOllieSpriteCostumeId(id) || LEGACY_COSTUME_IDS.has(id);
+}
+
+/** Map removed costume ids (e.g. old walk frames) and unknown ids to a valid catalog entry. */
+export function migrateCostumeIdFromStorage(
+  id: string | undefined | null,
+): OllieSpriteCostumeId {
+  if (id && LEGACY_COSTUME_IDS.has(id)) return "olliebot";
+  if (id && isOllieSpriteCostumeId(id)) return id;
+  return DEFAULT_COSTUME_ID;
+}
+
+/**
+ * Resolve Blockly “switch costume” field values (id, legacy id, or human label from old XML).
+ */
+export function resolveCostumeFieldForExecution(
+  raw: string | undefined | null,
+): OllieSpriteCostumeId | undefined {
+  const s = String(raw ?? "").trim();
+  if (!s) return undefined;
+  if (isOllieSpriteCostumeId(s)) return s;
+  if (LEGACY_COSTUME_IDS.has(s)) return migrateCostumeIdFromStorage(s);
+  const lower = s.toLowerCase();
+  const byLabel = OLLIE_SPRITE_COSTUMES.find(
+    (c) => c.label.toLowerCase() === lower,
+  );
+  if (byLabel) return byLabel.id;
+  if (lower === "blue square" || lower === "pink ball") return DEFAULT_COSTUME_ID;
+  return undefined;
+}
+
+/**
+ * Per-character “next costume” groups. For Ollie Bot (sprite sheet), the runtime advances
+ * sheet frames instead of changing `costumeId` (see `P5Canvas` nextCostume).
+ */
+export const OLLIE_COSTUME_CYCLE_GROUPS: readonly OllieSpriteCostumeId[][] = [
+  ["olliebot"],
+  ["dino"],
+  ["schoolbus"],
+];
+
+/**
+ * Choose sprite modal: one row per character, not every costume (e.g. not all four walk frames).
+ * `costumeId` is the default costume applied when that row is chosen.
+ */
+export const OLLIE_SPRITE_PICKER_ENTRIES: readonly {
+  costumeId: OllieSpriteCostumeId;
+  label: string;
+}[] = [
+  { costumeId: "olliebot", label: "Ollie Bot" },
+  { costumeId: "dino", label: "Dino" },
+  { costumeId: "schoolbus", label: "School bus" },
+];
+
+/** True if the sprite’s current costume belongs to the same picker row (e.g. same cycle group). */
+export function isSpritePickerEntrySelected(
+  entryCostumeId: OllieSpriteCostumeId,
+  currentCostumeId: OllieSpriteCostumeId | null,
+): boolean {
+  if (currentCostumeId == null) return false;
+  if (entryCostumeId === currentCostumeId) return true;
+  for (const group of OLLIE_COSTUME_CYCLE_GROUPS) {
+    if (group.includes(entryCostumeId) && group.includes(currentCostumeId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Scratch-style “next costume” — cycles within a {@link OLLIE_COSTUME_CYCLE_GROUPS} row, else full catalog. */
+export function nextOllieSpriteCostumeId(
+  current: OllieSpriteCostumeId,
+): OllieSpriteCostumeId {
+  for (const group of OLLIE_COSTUME_CYCLE_GROUPS) {
+    const i = group.indexOf(current);
+    if (i >= 0) return group[(i + 1) % group.length]!;
+  }
+  const ids = OLLIE_SPRITE_COSTUMES.map((c) => c.id) as OllieSpriteCostumeId[];
+  const i = ids.indexOf(current);
+  const next = i >= 0 ? (i + 1) % ids.length : 0;
+  return ids[next]!;
 }
 
 export function collectStageImageUrls(): string[] {
