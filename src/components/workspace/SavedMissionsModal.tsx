@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo } from "react";
+import { useEffect, useId, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 import { Pencil } from "lucide-react";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
@@ -76,18 +76,18 @@ function MissionCard({
     <li className="min-w-0">
       <div
         className={[
-          "flex flex-col overflow-hidden rounded-2xl border text-left shadow-sm transition",
+          "flex flex-col overflow-hidden rounded-lg border-2 text-left shadow-sm transition focus-within:shadow-md",
           isActive
-            ? "border-[#84c126] bg-[#f7fee7] ring-2 ring-[#84c126]/35"
-            : "border-[#e5e7eb] bg-white hover:border-[#84c126]/45 hover:shadow-md",
+            ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
+            : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
         ].join(" ")}
       >
         <button
           type="button"
           onClick={() => onSelect(missionId)}
-          className="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
+          className="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
         >
-          <div className="relative h-[100px] w-full shrink-0 overflow-hidden rounded-t-2xl bg-[#f1f5f9]">
+          <div className="relative h-[100px] w-full shrink-0 overflow-hidden rounded-t-md bg-[#f1f5f9]">
             <ScenePreview scene={scene} className="h-full w-full object-cover" />
             {isActive ? (
               <span className="absolute right-2 top-2 rounded-full bg-[#84c126] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
@@ -115,7 +115,7 @@ function MissionCard({
           </div>
         </button>
         {showRename ? (
-          <div className="border-t border-[#e5e7eb]/80 bg-[#fafafa]/80 px-2 py-1.5">
+          <div className="border-t border-[#e5e7eb] bg-[#f9fafb] px-2 py-1.5">
             <button
               type="button"
               onClick={(e) => {
@@ -143,6 +143,7 @@ export function SavedMissionsModal({
   onRenameMission,
 }: SavedMissionsModalProps) {
   const titleId = useId();
+  const closeBtnRef = useRef<HTMLButtonElement>(null);
 
   const savedByMissionId = useMemo(() => {
     const map = new Map<string, SavedMissionProgressEntry>();
@@ -185,12 +186,12 @@ export function SavedMissionsModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[200020] flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[200020] flex min-h-0 items-center justify-center p-4 sm:p-5"
       role="presentation"
     >
       <button
         type="button"
-        aria-label="Close"
+        aria-label="Close adventures"
         className="absolute inset-0 bg-black/45 backdrop-blur-[2px]"
         onClick={onClose}
       />
@@ -198,29 +199,42 @@ export function SavedMissionsModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 flex max-h-[min(92dvh,900px)] w-full max-w-5xl flex-col overflow-hidden rounded-3xl border border-[#e5e7eb] bg-white shadow-2xl ring-1 ring-black/5"
+        aria-describedby={`${titleId}-hint`}
+        className="relative z-10 flex min-h-0 h-[82vh] max-h-[82dvh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:w-[calc(100vw-2.5rem)] sm:max-w-[calc(100vw-2.5rem)]"
       >
-        <div className="shrink-0 rounded-t-3xl border-b border-[#e5e7eb] bg-gradient-to-r from-[#f7fee7]/90 to-white px-5 py-4 sm:px-6">
+        <header className="flex shrink-0 items-center justify-between gap-3 rounded-t-2xl border-b border-[#6b9e1f] bg-[#84c126] px-4 py-3 sm:px-5">
           <h2
             id={titleId}
-            className="font-display text-xl font-bold text-[#111827] sm:text-2xl"
+            className="text-base font-bold text-white sm:text-lg"
           >
             Adventures
           </h2>
-          <p className="mt-1.5 text-sm leading-relaxed text-[#6b7280]">
-            Tap a card to open that mission. Use{" "}
-            <strong className="text-[#365314]">Save</strong> so your scene and
-            blocks stay put.
-          </p>
-        </div>
+          <button
+            ref={closeBtnRef}
+            type="button"
+            onClick={onClose}
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-xl leading-none text-white hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label="Close"
+          >
+            ×
+          </button>
+        </header>
 
-        <div className="ollie-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+          <p
+            id={`${titleId}-hint`}
+            className="mb-3 text-sm leading-relaxed text-[#6b7280] sm:mb-4"
+          >
+            Tap a card to open an adventure. Use{" "}
+            <strong className="font-semibold text-[#365314]">Save</strong> so
+            your scene and blocks stay put.
+          </p>
           {!hasAnyMission ? (
-            <p className="rounded-2xl border border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
+            <p className="rounded-lg border-2 border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
               No adventures are available yet.
             </p>
           ) : (
-            <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-5">
+            <ul className="grid grid-cols-2 gap-2 sm:grid-cols-6 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
               {MISSIONS.map((meta) => {
                 const saved = savedByMissionId.get(meta.id);
                 const isActive = activeMissionId === meta.id;
@@ -249,7 +263,7 @@ export function SavedMissionsModal({
                 const displayName =
                   entry.displayName?.trim() || "Untitled mission";
                 const metaLine = isCustomMissionId(entry.missionId)
-                  ? "Your mission"
+                  ? "Your Adventure"
                   : null;
                 return (
                   <MissionCard
@@ -267,16 +281,6 @@ export function SavedMissionsModal({
               })}
             </ul>
           )}
-        </div>
-
-        <div className="shrink-0 rounded-b-3xl border-t border-[#e5e7eb] bg-[#fafafa] px-5 py-3 sm:px-6">
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-full rounded-xl border border-[#6fa020]/80 bg-[#84c126] py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-[#6fa020] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-          >
-            Close
-          </button>
         </div>
       </div>
     </div>,

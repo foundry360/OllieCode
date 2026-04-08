@@ -1,7 +1,51 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
+import {
+  applyCostumeChromaKeyToCanvas,
+  canvasToPngDataUrl,
+} from "@/lib/canvas/spriteChromaKey";
 import type { CostumeDef } from "@/lib/canvas/stageAssets";
+
+function useSpritePreviewDisplaySrc(costume: CostumeDef): {
+  src: string;
+  pending: boolean;
+} {
+  const base = costume.kind === "image" ? costume.src : "";
+  const chroma =
+    costume.kind === "image" && "chromaKey" in costume && costume.chromaKey
+      ? costume.chromaKey
+      : undefined;
+  const [dataUrl, setDataUrl] = useState<string | null>(() =>
+    chroma ? null : base,
+  );
+
+  useEffect(() => {
+    if (!chroma) {
+      setDataUrl(base);
+      return;
+    }
+    let dead = false;
+    setDataUrl(null);
+    const im = new Image();
+    im.onload = () => {
+      if (dead) return;
+      const c = applyCostumeChromaKeyToCanvas(im, im.width, im.height, chroma);
+      setDataUrl(canvasToPngDataUrl(c));
+    };
+    im.onerror = () => {
+      if (!dead) setDataUrl(base);
+    };
+    im.src = base;
+    return () => {
+      dead = true;
+    };
+  }, [base, chroma]);
+
+  const pending = Boolean(chroma) && dataUrl === null;
+  return { src: dataUrl ?? base, pending };
+}
 
 type SpritePreviewProps = {
   costume: CostumeDef;
@@ -19,28 +63,26 @@ export function SpritePreview({
   className = "",
   fillCard = false,
 }: SpritePreviewProps) {
+  const { src, pending } = useSpritePreviewDisplaySrc(costume);
   const sh = costume.spriteSheet;
   const isSheet = sh && (sh.columns > 1 || sh.rows > 1);
 
   if (fillCard && isSheet) {
     const c = sh.columns;
     const r = sh.rows;
+    /** Scale the full sheet so one cell fills the tile (same idea as P5 `drawSpriteForCostume` frame 0). */
+    const sheetStyle: CSSProperties = {
+      backgroundImage: pending ? "none" : `url(${JSON.stringify(src)})`,
+      backgroundSize: `${c * 100}% ${r * 100}%`,
+      backgroundPosition: "left top",
+      backgroundRepeat: "no-repeat",
+    };
     return (
       <div
-        className={`relative h-full w-full min-h-0 overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
-      >
-        <img
-          src={costume.src}
-          alt=""
-          className="pointer-events-none absolute left-0 top-0 max-h-none max-w-none select-none"
-          style={{
-            width: `${c * 100}%`,
-            height: `${r * 100}%`,
-            objectFit: "fill",
-          }}
-          draggable={false}
-        />
-      </div>
+        className={`h-full w-full min-h-0 overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
+        style={sheetStyle}
+        aria-hidden
+      />
     );
   }
 
@@ -55,17 +97,19 @@ export function SpritePreview({
     <div
       className={`flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
     >
-      <img
-        src={costume.src}
-        alt=""
-        className={
-          fillCard
-            ? "h-full w-full max-h-full max-w-full object-contain p-2"
-            : "max-h-[96%] max-w-[96%] object-contain"
-        }
-        style={clip}
-        draggable={false}
-      />
+      {pending ? null : (
+        <img
+          src={src}
+          alt=""
+          className={
+            fillCard
+              ? "h-full w-full max-h-full max-w-full object-contain p-2"
+              : "max-h-[96%] max-w-[96%] object-contain"
+          }
+          style={clip}
+          draggable={false}
+        />
+      )}
     </div>
   );
 }

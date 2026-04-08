@@ -17,9 +17,14 @@ import {
   type SensingEvalContext,
 } from "@/lib/blockly/sensingSerialize";
 import {
+  applyCostumeChromaKeyToCanvas,
+  canvasToPngDataUrl,
+} from "@/lib/canvas/spriteChromaKey";
+import {
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
   collectStageImageUrls,
+  getChromaKeyForSpriteSrc,
   getCostumeById,
   getSceneById,
   migrateCostumeIdFromStorage,
@@ -113,6 +118,20 @@ async function loadSvgOrRasterViaDom(
   });
 }
 
+async function maybeApplyChromaKey(
+  p: p5Types,
+  url: string,
+  img: p5Types.Image,
+): Promise<p5Types.Image> {
+  const key = getChromaKeyForSpriteSrc(url);
+  if (!key || !img.width) return img;
+  const elt = (img as unknown as { elt: CanvasImageSource }).elt;
+  const c = applyCostumeChromaKeyToCanvas(elt, img.width, img.height, key);
+  const dataUrl = canvasToPngDataUrl(c);
+  const next = await p.loadImage(dataUrl);
+  return next && next.width > 0 ? next : img;
+}
+
 async function loadStageImage(
   p: p5Types,
   url: string,
@@ -121,14 +140,16 @@ async function loadStageImage(
   try {
     const img = await p.loadImage(url);
     if (img && img.width > 0) {
-      stageImages.set(url, img);
+      stageImages.set(url, await maybeApplyChromaKey(p, url, img));
       return;
     }
   } catch {
     /* try DOM path */
   }
   const fallback = await loadSvgOrRasterViaDom(p, url);
-  if (fallback) stageImages.set(url, fallback);
+  if (fallback) {
+    stageImages.set(url, await maybeApplyChromaKey(p, url, fallback));
+  }
 }
 
 function normHeading(deg: number) {
@@ -968,7 +989,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     return (
       <div
         ref={containerRef}
-        className={className}
+        className={["min-h-0 min-w-0", className].filter(Boolean).join(" ")}
         aria-label="Mission preview"
       />
     );

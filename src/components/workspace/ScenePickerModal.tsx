@@ -17,7 +17,7 @@ type ScenePickerModalProps = {
 export function ScenePickerModal({
   open,
   onClose,
-  title = "Choose a scene",
+  title = "Choose a Scene",
   selectedId,
   onSelect,
 }: ScenePickerModalProps) {
@@ -47,7 +47,7 @@ export function ScenePickerModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6"
+      className="fixed inset-0 z-[100] flex min-h-0 items-center justify-center p-4 sm:p-5"
       role="presentation"
     >
       <button
@@ -60,23 +60,24 @@ export function ScenePickerModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 flex max-h-[min(560px,85vh)] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-2xl sm:max-w-lg"
+        className="relative z-10 flex min-h-0 h-[82vh] max-h-[82dvh] w-[calc(100vw-2rem)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-2xl bg-white shadow-2xl sm:w-[calc(100vw-2.5rem)] sm:max-w-[calc(100vw-2.5rem)]"
       >
-        <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e5e7eb] px-4 py-3">
-          <h2 id={titleId} className="text-base font-bold text-[#111827] sm:text-lg">
+        <header className="flex shrink-0 items-center justify-between gap-3 rounded-t-2xl border-b border-[#6b9e1f] bg-[#84c126] px-4 py-3 sm:px-5">
+          <h2 id={titleId} className="text-base font-bold text-white sm:text-lg">
             {title}
           </h2>
           <button
             ref={closeBtnRef}
             type="button"
             onClick={onClose}
-            className="flex h-9 w-9 items-center justify-center rounded-lg text-xl leading-none text-[#6b7280] hover:bg-[#f3f4f6] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]"
+            className="flex h-10 w-10 items-center justify-center rounded-lg text-xl leading-none text-white hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
             aria-label="Close"
           >
             ×
           </button>
         </header>
-        <div className="grid grid-cols-2 gap-3 overflow-y-auto p-4 sm:grid-cols-2 sm:gap-4">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-6 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
           {OLLIE_SCENES.map((scene) => {
             const selected =
               selectedId !== false && scene.id === selectedId;
@@ -89,21 +90,22 @@ export function ScenePickerModal({
                   onClose();
                 }}
                 className={[
-                  "flex flex-col overflow-hidden rounded-xl border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+                  "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
                   selected
                     ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
                     : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
                 ].join(" ")}
               >
-                <div className="aspect-video w-full overflow-hidden bg-[#f1f5f9]">
+                <div className="aspect-video w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9]">
                   <ScenePreview scene={scene} />
                 </div>
-                <span className="px-2 py-2 text-xs font-semibold text-[#111827] sm:text-sm">
+                <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
                   {scene.label}
                 </span>
               </button>
             );
           })}
+          </div>
         </div>
       </div>
     </div>

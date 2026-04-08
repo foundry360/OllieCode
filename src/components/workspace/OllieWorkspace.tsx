@@ -1756,7 +1756,7 @@ export function OllieWorkspace() {
               ) : null}
               <P5Canvas
                 ref={p5Ref}
-                className="min-h-0 w-full flex-1"
+                className="min-h-0 min-w-0 w-full flex-1"
                 sceneLayerIds={stageSceneLayers}
                 actors={actors.map((a) => ({
                   id: a.id,
@@ -1851,8 +1851,8 @@ export function OllieWorkspace() {
                           type="button"
                           onClick={() => setScenePickerOpen(true)}
                           className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          aria-label="Add backdrop layer"
-                          title="Add backdrop layer"
+                          aria-label="Choose a Scene"
+                          title="Choose a Scene"
                         >
                           +
                         </button>
@@ -1992,7 +1992,7 @@ export function OllieWorkspace() {
       <ScenePickerModal
         open={scenePickerOpen}
         onClose={() => setScenePickerOpen(false)}
-        title="Add a backdrop layer"
+        title="Choose a Scene"
         selectedId={false}
         onSelect={(id) => {
           setStageSceneLayers((prev) => [...prev, id]);

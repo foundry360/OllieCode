@@ -3,6 +3,12 @@
  * `public/images/backdrops/` and `public/images/sprites/`, then register here.
  */
 
+/** Pixels within `threshold` of `rgb` (per channel) become transparent after load. */
+export type CostumeChromaKey = {
+  rgb: readonly [number, number, number];
+  threshold?: number;
+};
+
 export const OLLIE_SCENES = [
   {
     id: "white_dots",
@@ -95,6 +101,126 @@ export const OLLIE_SPRITE_COSTUMES = [
     spriteSheet: { columns: 5, rows: 5 },
     spriteRotationOffsetDeg: -90,
   },
+  {
+    id: "skaterboy",
+    label: "Skater boy",
+    kind: "image" as const,
+    src: "/images/sprites/skaterboy.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "daveywalk",
+    label: "Davey",
+    kind: "image" as const,
+    src: "/images/sprites/daveywalk.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "matilda",
+    label: "Matilda",
+    kind: "image" as const,
+    src: "/images/sprites/matilda.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "professorproton",
+    label: "Professor Proton",
+    kind: "image" as const,
+    src: "/images/sprites/professorproton.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "gandorthewizard",
+    label: "Gandor the Wizard",
+    kind: "image" as const,
+    src: "/images/sprites/gandorthewizard.png",
+    width: 200,
+    /** 5×5 staff animation cycle on a square sheet. */
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "daisydragon",
+    label: "Daisy Dragon",
+    kind: "image" as const,
+    src: "/images/sprites/daisydragon.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "smilingsun",
+    label: "Smiling Sun",
+    kind: "image" as const,
+    src: "/images/sprites/smilingsun.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "helicopter",
+    label: "Helicopter",
+    kind: "image" as const,
+    src: "/images/sprites/helicopter.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "submarine",
+    label: "Submarine",
+    kind: "image" as const,
+    src: "/images/sprites/submarine.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "karlcrab",
+    label: "Karl Crab",
+    kind: "image" as const,
+    src: "/images/sprites/karlcrab.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "jerryjellyfish",
+    label: "Jerry Jellyfish",
+    kind: "image" as const,
+    src: "/images/sprites/jerryjellyfish.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
+  {
+    id: "murry",
+    label: "Murry",
+    kind: "image" as const,
+    src: "/images/sprites/murry.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+    /** Source art uses solid black; runtime makes it transparent on stage and in previews. */
+    chromaKey: { rgb: [0, 0, 0] as const, threshold: 18 },
+  },
+  {
+    id: "dori",
+    label: "Dori",
+    kind: "image" as const,
+    src: "/images/sprites/dori.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+  },
 ] as const;
 
 export type OllieSceneId = (typeof OLLIE_SCENES)[number]["id"];
@@ -142,6 +268,14 @@ export function getCostumeById(id: string): CostumeDef | undefined {
   return OLLIE_SPRITE_COSTUMES.find((c) => c.id === id);
 }
 
+export function getChromaKeyForSpriteSrc(src: string): CostumeChromaKey | undefined {
+  for (const c of OLLIE_SPRITE_COSTUMES) {
+    if (c.kind !== "image" || c.src !== src) continue;
+    if ("chromaKey" in c && c.chromaKey) return c.chromaKey;
+  }
+  return undefined;
+}
+
 export function sceneDropdownOptions(): [string, string][] {
   return OLLIE_SCENES.map((b) => [b.label, b.id]);
 }
@@ -169,6 +303,8 @@ const LEGACY_COSTUME_IDS = new Set([
   "star",
   "square",
   "ball",
+  /** Removed test costume — old saves migrate to default. */
+  "fatbird",
 ]);
 
 export function isLegacyOrCatalogCostumeId(id: string): boolean {
@@ -211,6 +347,19 @@ export const OLLIE_COSTUME_CYCLE_GROUPS: readonly OllieSpriteCostumeId[][] = [
   ["olliebot"],
   ["dino"],
   ["schoolbus"],
+  ["skaterboy"],
+  ["daveywalk"],
+  ["matilda"],
+  ["professorproton"],
+  ["gandorthewizard"],
+  ["daisydragon"],
+  ["smilingsun"],
+  ["helicopter"],
+  ["submarine"],
+  ["karlcrab"],
+  ["jerryjellyfish"],
+  ["murry"],
+  ["dori"],
 ];
 
 /**
@@ -224,6 +373,19 @@ export const OLLIE_SPRITE_PICKER_ENTRIES: readonly {
   { costumeId: "olliebot", label: "Ollie Bot" },
   { costumeId: "dino", label: "Dino" },
   { costumeId: "schoolbus", label: "School bus" },
+  { costumeId: "skaterboy", label: "Skater boy" },
+  { costumeId: "daveywalk", label: "Davey" },
+  { costumeId: "matilda", label: "Matilda" },
+  { costumeId: "professorproton", label: "Professor Proton" },
+  { costumeId: "gandorthewizard", label: "Gandor the Wizard" },
+  { costumeId: "daisydragon", label: "Daisy Dragon" },
+  { costumeId: "smilingsun", label: "Smiling Sun" },
+  { costumeId: "helicopter", label: "Helicopter" },
+  { costumeId: "submarine", label: "Submarine" },
+  { costumeId: "karlcrab", label: "Karl Crab" },
+  { costumeId: "jerryjellyfish", label: "Jerry Jellyfish" },
+  { costumeId: "murry", label: "Murry" },
+  { costumeId: "dori", label: "Dori" },
 ];
 
 /** True if the sprite’s current costume belongs to the same picker row (e.g. same cycle group). */
