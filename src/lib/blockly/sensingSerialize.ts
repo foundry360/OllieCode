@@ -1,7 +1,161 @@
 import type { Block } from "blockly/core";
-import type { SerializedBoolExpr, SerializedNumExpr } from "@/types/ollie";
+import type {
+  SerializedBoolExpr,
+  SerializedListExpr,
+  SerializedNumExpr,
+  SerializedStringExpr,
+} from "@/types/ollie";
 
 const DEG_TO_RAD = Math.PI / 180;
+
+type FieldWithVariable = {
+  getVariable?: () => {
+    getId: () => string;
+    getName?: () => string;
+  } | null;
+};
+
+const RUN_VAR_NAME_PREFIX = "__ollieName:";
+
+/** Stable key for looking up a variable by Blockly display name (when ids disagree). */
+export function runVarNameKey(displayName: string): string {
+  return `${RUN_VAR_NAME_PREFIX}${displayName.trim()}`;
+}
+
+export function assignRunVar(
+  vars: Record<string, number>,
+  id: string,
+  value: number,
+  displayName?: string,
+): void {
+  if (id) {
+    const ik = id.trim();
+    if (ik) vars[ik] = value;
+  }
+  const n = displayName?.trim();
+  if (n) vars[runVarNameKey(n)] = value;
+}
+
+function normKey(s: string): string {
+  return s.normalize("NFC").trim();
+}
+
+export function readVarValue(
+  vars: Record<string, number> | undefined,
+  id: string,
+  displayName?: string,
+): number | undefined {
+  if (!vars) return undefined;
+  const idNorm = id ? normKey(id) : "";
+  if (idNorm) {
+    const direct = vars[idNorm];
+    if (typeof direct === "number" && Number.isFinite(direct)) return direct;
+    if (typeof vars[id] === "number" && Number.isFinite(vars[id])) return vars[id];
+    for (const key of Object.keys(vars)) {
+      if (normKey(key) === idNorm) {
+        const v = vars[key];
+        if (typeof v === "number" && Number.isFinite(v)) return v;
+      }
+    }
+  }
+  const n = displayName?.trim();
+  if (n) {
+    const k = runVarNameKey(n);
+    const v = vars[k];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+    /** Blockly may show the same name with different casing on getter vs setter (e.g. answer vs Answer). */
+    const want = n.toLowerCase();
+    for (const key of Object.keys(vars)) {
+      if (!key.startsWith(RUN_VAR_NAME_PREFIX)) continue;
+      const rest = key.slice(RUN_VAR_NAME_PREFIX.length);
+      if (rest.toLowerCase() !== want) continue;
+      const vv = vars[key];
+      if (typeof vv === "number" && Number.isFinite(vv)) return vv;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Variable id for `variables_get` / `variables_set` — must match keys in {@link SensingEvalContext.vars}.
+ * Prefer the live variable model id over `getFieldValue("VAR")` so it stays aligned with `setVar`.
+ * Also walks `inputList` so blocks that use a non-`VAR` field name still resolve (e.g. some library variants).
+ */
+export function getBlocklyVariableId(block: Block): string {
+  const fromField = (f: unknown): string | null => {
+    const m = (f as FieldWithVariable | null | undefined)?.getVariable?.();
+    return m ? m.getId() : null;
+  };
+  const named = fromField(block.getField("VAR"));
+  if (named) return named;
+  const raw = String(block.getFieldValue("VAR") ?? "").trim();
+  if (raw) return raw;
+  for (const input of block.inputList) {
+    for (const f of input.fieldRow) {
+      const id = fromField(f);
+      if (id) return id;
+    }
+  }
+  return "";
+}
+
+type FieldMaybeText = { getText?: () => string };
+
+/** Blockly variable **name** (e.g. `Answer`) for dual id/name runtime lookup. */
+export function getBlocklyVariableName(block: Block): string | undefined {
+  const fromField = (f: unknown): string | undefined => {
+    const m = (f as FieldWithVariable | null | undefined)?.getVariable?.();
+    if (m && typeof m.getName === "function") {
+      const n = m.getName();
+      if (n?.trim()) return n.trim();
+    }
+    const ft = f as FieldMaybeText | null | undefined;
+    if (ft && typeof ft.getText === "function") {
+      const t = ft.getText();
+      if (t?.trim()) return t.trim();
+    }
+    return undefined;
+  };
+  const direct = fromField(block.getField("VAR"));
+  if (direct) return direct;
+  for (const input of block.inputList) {
+    for (const f of input.fieldRow) {
+      const n = fromField(f);
+      if (n) return n;
+    }
+  }
+  /** `FieldVariable.getVariable()` can be null while `VAR` still holds a valid id — resolve via the workspace map. */
+  const varFieldId = String(block.getFieldValue("VAR") ?? "").trim();
+  if (varFieldId && block.workspace) {
+    const model = block.workspace.getVariableMap().getVariableById(varFieldId);
+    if (model) {
+      const n = model.getName();
+      if (n?.trim()) return n.trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Id + name for serialization. Prefer {@link VariableMap#getVariableById} so the **name**
+ * matches the workspace model (field `getText()` / `getVariable()` can disagree with what
+ * `assignRunVar` stored under `__ollieName:` — logs showed compare `a` = 0 while `Answer` was 17).
+ */
+function serializedVariableRef(block: Block): { id: string; name?: string } | null {
+  const id = getBlocklyVariableId(block);
+  let name = getBlocklyVariableName(block);
+  if (id && block.workspace) {
+    const model = block.workspace.getVariableMap().getVariableById(id);
+    if (model?.getName()?.trim()) {
+      name = model.getName()!.trim();
+    }
+  }
+  if (!id && !name?.trim()) return null;
+  return {
+    id: id || "",
+    ...(name?.trim() ? { name: name.trim() } : {}),
+  };
+}
 
 /**
  * Turn a Blockly boolean/value subtree into a JSON-safe AST for **runtime** evaluation
@@ -29,7 +183,7 @@ export function serializeBoolExpr(block: Block | null): SerializedBoolExpr | nul
       return null;
     }
     case "logic_compare": {
-      const cmpOp = block.getFieldValue("OP");
+      const cmpOp = String(block.getFieldValue("OP") ?? "EQ");
       const map: Record<string, "EQ" | "NEQ" | "LT" | "LTE" | "GT" | "GTE"> = {
         EQ: "EQ",
         NEQ: "NEQ",
@@ -38,7 +192,11 @@ export function serializeBoolExpr(block: Block | null): SerializedBoolExpr | nul
         GT: "GT",
         GTE: "GTE",
       };
-      const o = map[cmpOp];
+      let o = map[cmpOp];
+      if (!o) {
+        if (cmpOp === "=" || cmpOp === "==" || cmpOp === "===") o = "EQ";
+        else if (cmpOp === "!=" || cmpOp === "!==") o = "NEQ";
+      }
       if (!o) return null;
       const a = serializeNumExpr(block.getInputTargetBlock("A"));
       const b = serializeNumExpr(block.getInputTargetBlock("B"));
@@ -67,6 +225,44 @@ export function serializeBoolExpr(block: Block | null): SerializedBoolExpr | nul
     }
     case "ollie_sensing_mouse_down":
       return { k: "mouseDown" };
+    case "math_number_property": {
+      const property = String(block.getFieldValue("PROPERTY") ?? "");
+      const n = serializeNumExpr(block.getInputTargetBlock("NUMBER_TO_CHECK"));
+      if (!n) return null;
+      if (property === "DIVISIBLE_BY") {
+        const divisor = serializeNumExpr(block.getInputTargetBlock("DIVISOR"));
+        if (!divisor) return null;
+        return { k: "numProp", property, n, divisor };
+      }
+      return { k: "numProp", property, n };
+    }
+    default:
+      return null;
+  }
+}
+
+function serializeListExpr(block: Block | null): SerializedListExpr | null {
+  if (!block) return null;
+  switch (block.type) {
+    case "lists_create_empty":
+      return { k: "empty" };
+    case "lists_create_with": {
+      const items: SerializedNumExpr[] = [];
+      let i = 0;
+      while (block.getInput(`ADD${i}`)) {
+        const e = serializeNumExpr(block.getInputTargetBlock(`ADD${i}`));
+        if (!e) return null;
+        items.push(e);
+        i += 1;
+      }
+      return { k: "items", items };
+    }
+    case "lists_repeat": {
+      const item = serializeNumExpr(block.getInputTargetBlock("ITEM"));
+      const count = serializeNumExpr(block.getInputTargetBlock("NUM"));
+      if (!item || !count) return null;
+      return { k: "repeat", item, count };
+    }
     default:
       return null;
   }
@@ -97,7 +293,8 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       if (!a || !b) return null;
       return { k: "arith", op: o, a, b };
     }
-    case "math_single": {
+    case "math_single":
+    case "math_trig": {
       const op = block.getFieldValue("OP");
       const a = serializeNumExpr(block.getInputTargetBlock("NUM"));
       if (!a) return null;
@@ -155,6 +352,12 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       if (!x || !y) return null;
       return { k: "atan2", x, y };
     }
+    case "math_on_list": {
+      const op = String(block.getFieldValue("OP") ?? "SUM");
+      const list = serializeListExpr(block.getInputTargetBlock("LIST"));
+      if (!list) return null;
+      return { k: "listOp", op, list };
+    }
     case "ollie_sensing_mouse_x":
       return { k: "mx" };
     case "ollie_sensing_mouse_y":
@@ -163,9 +366,165 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       return { k: "distMouse" };
     case "ollie_sensing_timer":
       return { k: "timer" };
+    case "variables_get":
+    case "variables_get_dynamic": {
+      const ref = serializedVariableRef(block);
+      if (!ref) return null;
+      return { k: "var", id: ref.id, ...(ref.name ? { name: ref.name } : {}) };
+    }
     default:
       return null;
   }
+}
+
+/** Blockly text / join / variables / math → runtime string (for `say` / ask). */
+export function serializeStringExpr(block: Block | null): SerializedStringExpr {
+  if (!block) return { k: "lit", v: "" };
+  switch (block.type) {
+    case "text":
+      return { k: "lit", v: String(block.getFieldValue("TEXT") ?? "") };
+    case "variables_get":
+    case "variables_get_dynamic": {
+      const ref = serializedVariableRef(block);
+      if (!ref) return { k: "lit", v: "" };
+      return { k: "var", id: ref.id, ...(ref.name ? { name: ref.name } : {}) };
+    }
+    case "text_join": {
+      const parts: SerializedStringExpr[] = [];
+      let i = 0;
+      while (block.getInput(`ADD${i}`)) {
+        parts.push(serializeStringExpr(block.getInputTargetBlock(`ADD${i}`)));
+        i += 1;
+      }
+      return { k: "join", parts };
+    }
+    default: {
+      const num = serializeNumExpr(block);
+      if (num) return { k: "num", e: num };
+      return { k: "lit", v: "" };
+    }
+  }
+}
+
+/** Evaluate string expression for Run (variables + sensing + math). */
+export function evalSerializedString(
+  e: SerializedStringExpr,
+  ctx: SensingEvalContext,
+): string {
+  switch (e.k) {
+    case "lit":
+      return e.v;
+    case "join":
+      return e.parts.map((p) => evalSerializedString(p, ctx)).join("");
+    case "var": {
+      const n = readVarValue(ctx.vars, e.id, e.name);
+      if (n === undefined) return "";
+      return Number.isInteger(n) ? String(n) : String(n);
+    }
+    case "num": {
+      const n = evalSerializedNum(e.e, ctx);
+      return Number.isInteger(n) ? String(n) : String(n);
+    }
+    default:
+      return "";
+  }
+}
+
+function evalSerializedList(
+  list: SerializedListExpr,
+  ctx: SensingEvalContext,
+): number[] {
+  switch (list.k) {
+    case "empty":
+      return [];
+    case "items":
+      return list.items.map((x) => evalSerializedNum(x, ctx));
+    case "repeat": {
+      const item = evalSerializedNum(list.item, ctx);
+      const n = Math.max(
+        0,
+        Math.floor(Math.abs(evalSerializedNum(list.count, ctx))),
+      );
+      return Array(n).fill(item);
+    }
+  }
+}
+
+/** Blockly `math_on_list` aggregate (matches `evaluateBlock` / JS generators). */
+function mathListOpFromNums(op: string, nums: number[]): number {
+  const list = nums.filter((x) => typeof x === "number" && Number.isFinite(x));
+  switch (op) {
+    case "SUM":
+      return list.reduce((x, y) => x + y, 0);
+    case "MIN":
+      return list.length ? Math.min(...list) : 0;
+    case "MAX":
+      return list.length ? Math.max(...list) : 0;
+    case "AVERAGE":
+      return list.length
+        ? list.reduce((x, y) => x + y, 0) / list.length
+        : 0;
+    case "MEDIAN": {
+      if (!list.length) return 0;
+      const localList = [...list].sort((a, b) => b - a);
+      if (localList.length % 2 === 0) {
+        return (
+          (localList[localList.length / 2 - 1] + localList[localList.length / 2]) /
+          2
+        );
+      }
+      return localList[(localList.length - 1) / 2];
+    }
+    case "MODE": {
+      if (!list.length) return 0;
+      const counts: [number, number][] = [];
+      let maxCount = 0;
+      for (const value of list) {
+        let found = false;
+        let thisCount = 0;
+        for (let j = 0; j < counts.length; j++) {
+          if (counts[j][0] === value) {
+            thisCount = ++counts[j][1];
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          counts.push([value, 1]);
+          thisCount = 1;
+        }
+        maxCount = Math.max(thisCount, maxCount);
+      }
+      const modes = counts.filter((c) => c[1] === maxCount).map((c) => c[0]);
+      return modes[0] ?? 0;
+    }
+    case "STD_DEV": {
+      const n = list.length;
+      if (!n) return 0;
+      const mean = list.reduce((x, y) => x + y, 0) / n;
+      let variance = 0;
+      for (let j = 0; j < n; j++) {
+        variance += (list[j] - mean) ** 2;
+      }
+      variance /= n;
+      return Math.sqrt(variance);
+    }
+    case "RANDOM":
+      return list.length ? list[Math.floor(Math.random() * list.length)] : 0;
+    default:
+      return 0;
+  }
+}
+
+function isPrimeBlockly(n: number): boolean {
+  if (n === 2 || n === 3) return true;
+  if (isNaN(n) || n <= 1 || n % 1 !== 0 || n % 2 === 0 || n % 3 === 0) {
+    return false;
+  }
+  for (let x = 6; x <= Math.sqrt(n) + 1; x += 6) {
+    if (n % (x - 1) === 0 || n % (x + 1) === 0) return false;
+  }
+  return true;
 }
 
 /** Evaluate serialized math for runtime sensing context. */
@@ -276,6 +635,18 @@ export function evalSerializedNum(
       const y = evalSerializedNum(e.y, ctx);
       return Math.atan2(y, x) / DEG_TO_RAD;
     }
+    case "listOp": {
+      const nums = evalSerializedList(e.list, ctx);
+      return mathListOpFromNums(e.op, nums);
+    }
+    case "var": {
+      const v = readVarValue(
+        ctx.vars,
+        String(e.id ?? ""),
+        e.name !== undefined ? String(e.name) : undefined,
+      );
+      return v !== undefined ? v : 0;
+    }
     default:
       return 0;
   }
@@ -292,6 +663,8 @@ export type SensingEvalContext = {
   mouseIsPressed: boolean;
   keysDown: ReadonlySet<string>;
   timerSecs: number;
+  /** Blockly variable values for the current Run (optional; defaults to empty). */
+  vars?: Record<string, number>;
 };
 
 function scratchMouseX(mouseX: number, cw: number): number {
@@ -329,9 +702,17 @@ export function evalSerializedBool(
       const b = evalSerializedNum(e.b, ctx);
       switch (e.op) {
         case "EQ":
-          return a === b;
+          return (
+            Number.isFinite(a) &&
+            Number.isFinite(b) &&
+            Math.abs(a - b) < 1e-4
+          );
         case "NEQ":
-          return a !== b;
+          return !(
+            Number.isFinite(a) &&
+            Number.isFinite(b) &&
+            Math.abs(a - b) < 1e-4
+          );
         case "LT":
           return a < b;
         case "LTE":
@@ -354,6 +735,30 @@ export function evalSerializedBool(
       );
     case "mouseDown":
       return ctx.mouseIsPressed;
+    case "numProp": {
+      const v = evalSerializedNum(e.n, ctx);
+      switch (e.property) {
+        case "EVEN":
+          return v % 2 === 0;
+        case "ODD":
+          return v % 2 === 1;
+        case "WHOLE":
+          return v % 1 === 0;
+        case "POSITIVE":
+          return v > 0;
+        case "NEGATIVE":
+          return v < 0;
+        case "PRIME":
+          return isPrimeBlockly(v);
+        case "DIVISIBLE_BY": {
+          const d = e.divisor ? evalSerializedNum(e.divisor, ctx) : 0;
+          if (d === 0) return false;
+          return v % d === 0;
+        }
+        default:
+          return false;
+      }
+    }
     default:
       return false;
   }

@@ -5,6 +5,7 @@ import {
   costumeDropdownOptions,
   sceneDropdownOptions,
 } from "@/lib/canvas/stageAssets";
+import { soundDropdownOptions } from "@/lib/sounds/ollieSounds";
 import { animationDropdownOptions } from "@/lib/canvas/ollieAnimationPresets";
 
 /** Keys shown in “when … key pressed” — values match runtime in `P5Canvas`. */
@@ -350,6 +351,29 @@ export function getOllieBlockDefinitions(): Parameters<
     tooltip: "Show a speech bubble (Scratch-style).",
   },
   {
+    type: "ollie_say_value",
+    message0: "say %1 for %2 seconds",
+    args0: [
+      {
+        type: "input_value",
+        name: "TEXT",
+      },
+      {
+        type: "field_number",
+        name: "SECS",
+        value: 2,
+        min: 0.1,
+        max: 10,
+        precision: 1,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip:
+      "Show a speech bubble with text from a block (variables, join, math).",
+  },
+  {
     type: "ollie_think",
     message0: "think %1 for %2 seconds",
     args0: [
@@ -421,11 +445,7 @@ export function getOllieBlockDefinitions(): Parameters<
       {
         type: "field_dropdown",
         name: "SOUND",
-        options: [
-          ["pop", "pop"],
-          ["boing", "boing"],
-          ["cheer", "cheer"],
-        ],
+        options: soundDropdownOptions(),
       },
     ],
     previousStatement: null,
@@ -440,11 +460,7 @@ export function getOllieBlockDefinitions(): Parameters<
       {
         type: "field_dropdown",
         name: "SOUND",
-        options: [
-          ["pop", "pop"],
-          ["boing", "boing"],
-          ["cheer", "cheer"],
-        ],
+        options: soundDropdownOptions(),
       },
     ],
     previousStatement: null,
@@ -618,6 +634,25 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_sensing",
     tooltip: "Set the timer back to 0 seconds.",
+    helpUrl: "",
+  },
+  /**
+   * Same runtime as `text_prompt_ext` (number), but **message socket first** so the join
+   * slot is obvious; stock Blockly puts the type dropdown first and hides the question input.
+   */
+  {
+    type: "ollie_ask_number",
+    message0: "ask %1 and wait for number",
+    args0: [
+      {
+        type: "input_value",
+        name: "TEXT",
+      },
+    ],
+    output: "Number",
+    style: "text_blocks",
+    tooltip:
+      "Ask a question and wait for a number answer. Put a Join block in the hole to show variables in the question.",
     helpUrl: "",
   },
   ];

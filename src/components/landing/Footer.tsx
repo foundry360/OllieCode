@@ -11,7 +11,7 @@ export function Footer() {
     <footer className="border-t border-[#e5e7eb] bg-white px-4 py-12">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 sm:flex-row sm:justify-between">
         <div className="text-center sm:text-left">
-          <p className="font-display text-xl font-bold text-[#111827]">David Code</p>
+          <p className="font-display text-xl font-bold text-[#111827]">Ollie Code</p>
           <p className="mt-1 text-sm text-[#6b7280]">Fun coding for kids 7–13.</p>
         </div>
         <nav className="flex flex-wrap justify-center gap-6 text-sm font-semibold text-[#374151]">
@@ -53,7 +53,7 @@ export function Footer() {
       </div>
       <p className="mx-auto mt-10 max-w-6xl text-center text-xs text-[#9ca3af]">
         ©{" "}
-        <span suppressHydrationWarning>{new Date().getFullYear()}</span> David
+        <span suppressHydrationWarning>{new Date().getFullYear()}</span> Ollie
         Code. Scaffold for demos — replace links and copy for production.
       </p>
     </footer>

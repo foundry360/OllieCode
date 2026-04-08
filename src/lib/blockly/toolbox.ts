@@ -50,6 +50,7 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColour.looks,
       contents: [
         B("ollie_say"),
+        B("ollie_say_value"),
         B("ollie_think"),
         B("ollie_switch_costume"),
         B("ollie_next_costume"),
@@ -132,6 +133,7 @@ export const OLLIE_TOOLBOX = {
         B("math_round"),
         B("math_on_list"),
         B("math_modulo"),
+        B("math_change"),
         B("math_constrain"),
         B("math_random_int"),
         B("math_random_float"),
@@ -143,6 +145,7 @@ export const OLLIE_TOOLBOX = {
       name: "Text",
       colour: scratchToolboxCategoryColour.text,
       contents: [
+        B("ollie_ask_number"),
         B("text"),
         B("text_join"),
         B("text_append"),
@@ -154,6 +157,7 @@ export const OLLIE_TOOLBOX = {
         B("text_changeCase"),
         B("text_trim"),
         B("text_print"),
+        /** Only the `_ext` ask block has a value socket; `text_prompt` uses quoted text with no connection. */
         B("text_prompt_ext"),
       ],
     },

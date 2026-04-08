@@ -1,4 +1,5 @@
 import * as Blockly from "blockly/core";
+import type { Block } from "blockly/core";
 import { serialization } from "blockly/core";
 import {
   isOllieSceneId,
@@ -8,17 +9,25 @@ import {
   evaluateBoolean,
   evaluateNumber,
 } from "@/lib/blockly/evaluateBlock";
-import { serializeBoolExpr } from "@/lib/blockly/sensingSerialize";
+import {
+  getBlocklyVariableId,
+  getBlocklyVariableName,
+  serializeBoolExpr,
+  serializeNumExpr,
+  serializeStringExpr,
+} from "@/lib/blockly/sensingSerialize";
+import { isOllieSoundId } from "@/lib/sounds/ollieSounds";
 import { getAnimationPresetActions } from "@/lib/canvas/ollieAnimationPresets";
 import type {
   OllieAction,
   SerializedBoolExpr,
+  SerializedStringExpr,
   SpriteScriptPlan,
 } from "@/types/ollie";
 
 /**
  * Interprets Ollie stack blocks (Motion / Looks / Sound / Control / Events).
- * Logic/Math blocks are for structure only unless expanded later.
+ * Logic blocks drive control flow; Math blocks are evaluated via {@link evaluateNumber} / sensing serialization.
  */
 
 const BASE_STEP_PX = 2.4;
@@ -29,8 +38,24 @@ const MAX_REPEAT_UNROLL = 2_000;
 const MAX_WHILE_UNROLL = 2_000;
 const MAX_FOREVER_UNROLL = 500;
 
-function isSoundId(s: string): s is "pop" | "boing" | "cheer" {
-  return s === "pop" || s === "boing" || s === "cheer";
+/** Text / join blocks for `ask` message (no reporters in v1). */
+function extractStaticStringFromBlock(block: Block | null): string {
+  if (!block) return "";
+  if (block.type === "text") {
+    return String(block.getFieldValue("TEXT") ?? "");
+  }
+  if (block.type === "text_join") {
+    let i = 0;
+    let out = "";
+    while (block.getInput(`ADD${i}`)) {
+      out += extractStaticStringFromBlock(
+        block.getInputTargetBlock(`ADD${i}`),
+      );
+      i += 1;
+    }
+    return out;
+  }
+  return "";
 }
 
 function walkStatementChain(
@@ -119,6 +144,16 @@ function walkStatementChain(
         });
         break;
       }
+      case "ollie_say_value": {
+        const secs = Number(current.getFieldValue("SECS")) || 2;
+        const expr = serializeStringExpr(current.getInputTargetBlock("TEXT"));
+        actions.push({
+          type: "sayDynamic",
+          expr,
+          ms: Math.max(100, secs * 1000),
+        });
+        break;
+      }
       case "ollie_think": {
         const text = String(current.getFieldValue("TEXT") ?? "");
         const secs = Number(current.getFieldValue("SECS")) || 2;
@@ -155,12 +190,12 @@ function walkStatementChain(
       }
       case "ollie_play_sound": {
         const id = String(current.getFieldValue("SOUND"));
-        if (isSoundId(id)) actions.push({ type: "sound", id });
+        if (isOllieSoundId(id)) actions.push({ type: "sound", id });
         break;
       }
       case "ollie_play_sound_until_done": {
         const id = String(current.getFieldValue("SOUND"));
-        if (isSoundId(id)) {
+        if (isOllieSoundId(id)) {
           actions.push({
             type: "soundWait",
             id,
@@ -222,20 +257,22 @@ function walkStatementChain(
           cond: SerializedBoolExpr;
           body: OllieAction[];
         }[] = [];
-        let allDynamic = true;
         while (current.getInput(`IF${i}`)) {
           const c = serializeBoolExpr(current.getInputTargetBlock(`IF${i}`));
-          if (!c) {
-            allDynamic = false;
-            break;
-          }
+          if (!c) break;
           branches.push({
             cond: c,
             body: collectChainActions(current.getInputTargetBlock(`DO${i}`)),
           });
           i += 1;
         }
-        if (allDynamic && branches.length > 0) {
+        /**
+         * Use runtime `ifChainDynamic` for **any** branch we could serialize. If we required
+         * *all* elseif conditions to serialize, a single unsupported block would fall through
+         * to `evaluateBoolean`, where `variables_get` is always 0 — breaking quizzes (always
+         * the else branch). Later elseifs that failed to serialize are omitted (rare).
+         */
+        if (branches.length > 0) {
           let elseBody: OllieAction[] | undefined;
           if (current.getInput("ELSE")) {
             elseBody = collectChainActions(
@@ -313,14 +350,102 @@ function walkStatementChain(
         break;
       }
       case "controls_repeat_ext": {
-        const raw = Math.floor(
-          Math.abs(evaluateNumber(current.getInputTargetBlock("TIMES"))),
-        );
-        const times = Math.min(MAX_REPEAT_UNROLL, Math.max(0, raw));
         const inner = current.getInputTargetBlock("DO");
-        for (let i = 0; i < times; i += 1) {
-          if (actions.length >= MAX_OLLIE_ACTIONS) return;
-          walkStatementChain(inner, actions);
+        if (!inner) break;
+        const timesBlock = current.getInputTargetBlock("TIMES");
+        const ser = serializeNumExpr(timesBlock);
+        if (ser) {
+          if (ser.k === "n") {
+            const times = Math.min(
+              MAX_REPEAT_UNROLL,
+              Math.max(0, Math.floor(ser.v)),
+            );
+            for (let i = 0; i < times; i += 1) {
+              if (actions.length >= MAX_OLLIE_ACTIONS) return;
+              walkStatementChain(inner, actions);
+            }
+          } else {
+            actions.push({
+              type: "repeatDynamic",
+              times: ser,
+              body: collectChainActions(inner),
+            });
+          }
+        } else {
+          const raw = Math.floor(
+            Math.abs(evaluateNumber(timesBlock)),
+          );
+          const times = Math.min(MAX_REPEAT_UNROLL, Math.max(0, raw));
+          for (let i = 0; i < times; i += 1) {
+            if (actions.length >= MAX_OLLIE_ACTIONS) return;
+            walkStatementChain(inner, actions);
+          }
+        }
+        break;
+      }
+      case "variables_set":
+      case "variables_set_dynamic": {
+        const varId = getBlocklyVariableId(current);
+        const varName = getBlocklyVariableName(current);
+        const valueBlock = current.getInputTargetBlock("VALUE");
+        if ((!varId && !varName?.trim()) || !valueBlock) break;
+        if (
+          valueBlock.type === "text_prompt_ext" ||
+          valueBlock.type === "ollie_ask_number"
+        ) {
+          const textSub = valueBlock.getInputTargetBlock("TEXT");
+          const msg = extractStaticStringFromBlock(textSub);
+          const messageExpr = serializeStringExpr(textSub);
+          const numberOnly =
+            valueBlock.type === "ollie_ask_number" ||
+            String(valueBlock.getFieldValue("TYPE") ?? "TEXT") === "NUMBER";
+          actions.push({
+            type: "promptAndSetVar",
+            varId: varId || "",
+            varName,
+            message: msg || "?",
+            messageExpr,
+            numberOnly,
+          });
+          break;
+        }
+        if (valueBlock.type === "text_prompt") {
+          const msg = String(valueBlock.getFieldValue("TEXT") ?? "");
+          const messageExpr: SerializedStringExpr = { k: "lit", v: msg };
+          const numberOnly =
+            String(valueBlock.getFieldValue("TYPE") ?? "TEXT") === "NUMBER";
+          actions.push({
+            type: "promptAndSetVar",
+            varId: varId || "",
+            varName,
+            message: msg || "?",
+            messageExpr,
+            numberOnly,
+          });
+          break;
+        }
+        const ser = serializeNumExpr(valueBlock);
+        if (ser) {
+          actions.push({
+            type: "setVar",
+            varId: varId || "",
+            varName,
+            value: ser,
+          });
+        }
+        break;
+      }
+      case "math_change": {
+        const varId = getBlocklyVariableId(current);
+        const varName = getBlocklyVariableName(current);
+        const ser = serializeNumExpr(current.getInputTargetBlock("DELTA"));
+        if ((varId || varName?.trim()) && ser) {
+          actions.push({
+            type: "changeVar",
+            varId: varId || "",
+            varName,
+            delta: ser,
+          });
         }
         break;
       }

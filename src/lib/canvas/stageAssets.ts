@@ -49,6 +49,14 @@ export const OLLIE_SCENES = [
     grid: false,
     fallbackRgb: [210, 220, 200] as const,
   },
+  {
+    id: "cityroad",
+    label: "City road",
+    kind: "image" as const,
+    src: "/images/backdrops/cityroad.png",
+    grid: false,
+    fallbackRgb: [180, 190, 200] as const,
+  },
 ] as const;
 
 export const OLLIE_SPRITE_COSTUMES = [

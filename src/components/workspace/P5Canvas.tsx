@@ -9,7 +9,11 @@ import {
 import type p5Types from "p5";
 import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
 import {
+  assignRunVar,
   evalSerializedBool,
+  evalSerializedNum,
+  evalSerializedString,
+  readVarValue,
   type SensingEvalContext,
 } from "@/lib/blockly/sensingSerialize";
 import {
@@ -23,7 +27,7 @@ import {
   normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
-import { playOllieSound } from "@/lib/sounds/ollieSounds";
+import { playOllieSound, stopOllieSounds } from "@/lib/sounds/ollieSounds";
 
 export type StageActorPaint = { id: string; costumeId: OllieSpriteCostumeId };
 
@@ -52,6 +56,14 @@ export type P5CanvasProps = {
     actorId: string,
     costumeId: OllieSpriteCostumeId,
   ) => void;
+  /**
+   * When set, `ask` / number prompts use this instead of `window.prompt`
+   * (e.g. in-app modal over the stage).
+   */
+  requestNumberInput?: (
+    message: string,
+    numberOnly: boolean,
+  ) => Promise<number>;
 };
 
 type Sprite = {
@@ -66,6 +78,10 @@ type Sprite = {
 
 const MOVE_FRAMES = 18;
 const CANVAS_MAX_PX = 4096;
+/** Cap for `repeat` when count comes from variables / runtime math. */
+const MAX_REPEAT_DYNAMIC_ITER = 2_000;
+/** Cap for `while` / `until` with live conditions. */
+const MAX_DYNAMIC_WHILE_ITER = 10_000;
 
 /** Scratch-style “face right” at rest; pairs with {@link CostumeDef} `spriteRotationOffsetDeg` for Ollie Bot. */
 const DEFAULT_SPRITE_HEADING_DEG = 90;
@@ -309,6 +325,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       pauseActorCostumePropSync = false,
       onSceneChange,
       onActorCostumeChange,
+      requestNumberInput,
     },
     ref,
   ) {
@@ -332,6 +349,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     onSceneChangeRef.current = onSceneChange;
     onActorCostumeChangeRef.current = onActorCostumeChange;
     actorsRef.current = actors;
+
+    const requestNumberInputRef = useRef<
+      typeof requestNumberInput | undefined
+    >(requestNumberInput);
+    requestNumberInputRef.current = requestNumberInput;
 
     const latestSceneLayerIdsRef = useRef<OllieSceneId[]>(normalizedLayers);
     latestSceneLayerIdsRef.current = normalizedLayers;
@@ -435,6 +457,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
 
         runningRef.current = true;
         abortRunRef.current = false;
+        const runVars: Record<string, number> = Object.create(null);
         let broadcastDepth = 0;
         let stopAllScripts = false;
 
@@ -456,9 +479,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         window.addEventListener("keydown", onSensingKeyDown);
         window.addEventListener("keyup", onSensingKeyUp);
 
-        function buildSensingCtx(sid: string): SensingEvalContext | null {
+        /**
+         * Always returns a context with `vars` so `setVar` / `if` never silently skip while
+         * `prompt` still mutates `runVars` (would leave e.g. `Answer` unset vs `Guess` set).
+         */
+        function buildSensingCtx(sid: string): SensingEvalContext {
           const sprite = spritesByIdRef.current.get(sid);
-          if (!sprite) return null;
           const box = containerRef.current?.getBoundingClientRect();
           const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
           const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
@@ -467,13 +493,14 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             cw,
             ch,
             spriteId: sid,
-            spriteX: sprite.x,
-            spriteY: sprite.y,
+            spriteX: sprite?.x ?? 0,
+            spriteY: sprite?.y ?? 0,
             mouseX: p?.mouseX ?? 0,
             mouseY: p?.mouseY ?? 0,
             mouseIsPressed: p?.mouseIsPressed ?? false,
             keysDown: keysHeldRef.current,
             timerSecs: (performance.now() - timerStartMsRef.current) / 1000,
+            vars: runVars,
           };
         }
 
@@ -600,6 +627,16 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               };
               await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
+            } else if (a.type === "sayDynamic") {
+              const ctx = buildSensingCtx(spriteId);
+              const text = evalSerializedString(a.expr, ctx).slice(0, 120);
+              s.bubble = {
+                text,
+                kind: "say",
+                until: Date.now() + a.ms,
+              };
+              await waitMs(a.ms, shouldCancel);
+              s.bubble = undefined;
             } else if (a.type === "think") {
               s.bubble = {
                 text: a.text,
@@ -642,6 +679,88 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               await waitMs(a.ms, shouldCancel);
             } else if (a.type === "wait") {
               await waitMs(a.ms, shouldCancel);
+            } else if (a.type === "setVar") {
+              const ctx = buildSensingCtx(spriteId);
+              assignRunVar(
+                runVars,
+                a.varId,
+                evalSerializedNum(a.value, ctx),
+                a.varName,
+              );
+            } else if (a.type === "changeVar") {
+              const ctx = buildSensingCtx(spriteId);
+              const cur =
+                readVarValue(runVars, a.varId, a.varName) ?? 0;
+              assignRunVar(
+                runVars,
+                a.varId,
+                cur + evalSerializedNum(a.delta, ctx),
+                a.varName,
+              );
+            } else if (a.type === "promptAndSetVar") {
+              const ctx = buildSensingCtx(spriteId);
+              let promptMsg = a.message;
+              if (a.messageExpr != null) {
+                const ev = evalSerializedString(a.messageExpr, ctx);
+                if (ev.length > 0) promptMsg = ev;
+              }
+              const req = requestNumberInputRef.current;
+              let parsed: number;
+              if (req) {
+                parsed = await req(promptMsg, a.numberOnly);
+                if (shouldCancel()) return;
+              } else {
+                const raw =
+                  typeof window !== "undefined"
+                    ? window.prompt(promptMsg, "")
+                    : null;
+                if (shouldCancel()) return;
+                parsed = Number.parseFloat(String(raw ?? "").trim());
+              }
+              if (Number.isFinite(parsed)) {
+                assignRunVar(
+                  runVars,
+                  a.varId,
+                  parsed,
+                  a.varName,
+                );
+              }
+            } else if (a.type === "repeatDynamic") {
+              const ctx = buildSensingCtx(spriteId);
+              const n = Math.min(
+                MAX_REPEAT_DYNAMIC_ITER,
+                Math.max(0, Math.floor(evalSerializedNum(a.times, ctx))),
+              );
+              for (let r = 0; r < n; r++) {
+                if (shouldCancel()) return;
+                await runSequenceForSprite(spriteId, a.body);
+              }
+            } else if (a.type === "ifChainDynamic") {
+              const ctx = buildSensingCtx(spriteId);
+              let taken = false;
+              for (const br of a.branches) {
+                if (evalSerializedBool(br.cond, ctx)) {
+                  await runSequenceForSprite(spriteId, br.body);
+                  taken = true;
+                  break;
+                }
+              }
+              if (!taken && a.elseBody?.length) {
+                await runSequenceForSprite(spriteId, a.elseBody);
+              }
+            } else if (a.type === "whileUntilDynamic") {
+              let w = 0;
+              while (w < MAX_DYNAMIC_WHILE_ITER) {
+                if (shouldCancel()) return;
+                const ctx = buildSensingCtx(spriteId);
+                const ok = evalSerializedBool(a.cond, ctx);
+                const go = a.mode === "WHILE" ? ok : !ok;
+                if (!go) break;
+                await runSequenceForSprite(spriteId, a.body);
+                w += 1;
+              }
+            } else if (a.type === "resetTimer") {
+              timerStartMsRef.current = performance.now();
             } else if (a.type === "broadcast") {
               void dispatchBroadcast(a.message, false);
             } else if (a.type === "broadcastWait") {
@@ -649,6 +768,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             } else if (a.type === "stop") {
               if (a.scope === "all") {
                 stopAllScripts = true;
+                stopOllieSounds();
                 return;
               }
               return;
@@ -700,6 +820,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       },
       stopRun() {
         abortRunRef.current = true;
+        stopOllieSounds();
       },
       resetSprite() {
         const el = containerRef.current;

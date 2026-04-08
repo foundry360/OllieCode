@@ -24,7 +24,7 @@ type SavedMissionsModalProps = {
   onSelectMission: (missionId: string) => void;
   /** Mission id from the URL — highlights the active row. */
   activeMissionId: string | null;
-  /** Open rename dialog (missions with at least one save). */
+  /** Open rename dialog (adventures with at least one save). */
   onRenameMission?: (missionId: string) => void;
 };
 
@@ -205,7 +205,7 @@ export function SavedMissionsModal({
             id={titleId}
             className="font-display text-xl font-bold text-[#111827] sm:text-2xl"
           >
-            Missions
+            Adventures
           </h2>
           <p className="mt-1.5 text-sm leading-relaxed text-[#6b7280]">
             Tap a card to open that mission. Use{" "}
@@ -217,7 +217,7 @@ export function SavedMissionsModal({
         <div className="ollie-scroll min-h-0 flex-1 overflow-y-auto px-3 py-4 sm:px-5">
           {!hasAnyMission ? (
             <p className="rounded-2xl border border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
-              No missions are available yet.
+              No adventures are available yet.
             </p>
           ) : (
             <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 lg:gap-5">

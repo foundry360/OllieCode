@@ -7,6 +7,7 @@ import {
   type OllieSceneId,
   type OllieSpriteCostumeId,
 } from "@/lib/canvas/stageAssets";
+import type { OllieSoundId } from "@/lib/sounds/ollieSounds";
 
 /** One character on stage — each has its own Blockly script (like Scratch sprites). */
 export type StageActor = {
@@ -56,13 +57,15 @@ export type OllieAction =
   | { type: "jumpArc"; peakYPct: number; halfSecs: number }
   | { type: "bounceEdge" }
   | { type: "say"; text: string; ms: number }
+  /** Speech bubble with text from Text / Join / variables / math at Run time. */
+  | { type: "sayDynamic"; expr: SerializedStringExpr; ms: number }
   | { type: "think"; text: string; ms: number }
   | { type: "costume"; id: OllieSpriteCostumeId }
   /** Advance to the next costume in the catalog order (like Scratch’s “next costume”). */
   | { type: "nextCostume" }
   | { type: "scene"; id: OllieSceneId }
-  | { type: "sound"; id: "pop" | "boing" | "cheer" }
-  | { type: "soundWait"; id: "pop" | "boing" | "cheer"; ms: number }
+  | { type: "sound"; id: OllieSoundId }
+  | { type: "soundWait"; id: OllieSoundId; ms: number }
   | { type: "wait"; ms: number }
   /** Scratch-style message — handled by the stage runtime, not queued as sprite motion. */
   | { type: "broadcast"; message: string }
@@ -72,6 +75,38 @@ export type OllieAction =
    * Scratch-style timer — resets with {@link OllieAction} `resetTimer` or at the start of a run.
    */
   | { type: "resetTimer" }
+  /**
+   * Blockly variables — values persist for the current Run (shared across sprites in one session).
+   */
+  | {
+      type: "setVar";
+      varId: string;
+      /** Display name for dual lookup when Blockly ids differ between getter/setter. */
+      varName?: string;
+      value: SerializedNumExpr;
+    }
+  | {
+      type: "changeVar";
+      varId: string;
+      varName?: string;
+      delta: SerializedNumExpr;
+    }
+  /**
+   * `ask` / `text_prompt_ext` (number) — blocks until the user submits the browser prompt.
+   */
+  | {
+      type: "promptAndSetVar";
+      varId: string;
+      varName?: string;
+      message: string;
+      /** When set, dialog title uses this instead of {@link message}. */
+      messageExpr?: SerializedStringExpr | null;
+      numberOnly: boolean;
+    }
+  /**
+   * `repeat` when the count uses variables or non-constant math (evaluated each loop entry).
+   */
+  | { type: "repeatDynamic"; times: SerializedNumExpr; body: OllieAction[] }
   /**
    * Repeat body while/until a condition that depends on sensing (mouse, keys, edge, …).
    * Evaluated live on the stage during Run — use with Sensing + Control blocks.
@@ -108,7 +143,22 @@ export type SerializedBoolExpr =
   | { k: "keyDown"; keyId: string }
   | { k: "touchEdge" }
   | { k: "touchMouse" }
-  | { k: "mouseDown" };
+  | { k: "mouseDown" }
+  /**
+   * Blockly `math_number_property` (even / odd / prime / …) — evaluated as true/false at runtime.
+   */
+  | {
+      k: "numProp";
+      property: string;
+      n: SerializedNumExpr;
+      divisor?: SerializedNumExpr;
+    };
+
+/** List literal for `math_on_list` when serialized (Blockly list blocks). */
+export type SerializedListExpr =
+  | { k: "empty" }
+  | { k: "repeat"; item: SerializedNumExpr; count: SerializedNumExpr }
+  | { k: "items"; items: SerializedNumExpr[] };
 
 /**
  * Serializable numeric expression (math + sensing reporters).
@@ -136,7 +186,20 @@ export type SerializedNumExpr =
   | { k: "constrain"; v: SerializedNumExpr; lo: SerializedNumExpr; hi: SerializedNumExpr }
   | { k: "randInt"; a: SerializedNumExpr; b: SerializedNumExpr }
   | { k: "rand" }
-  | { k: "atan2"; x: SerializedNumExpr; y: SerializedNumExpr };
+  | { k: "atan2"; x: SerializedNumExpr; y: SerializedNumExpr }
+  /** Blockly `math_on_list` (sum / min / max / average / …). */
+  | { k: "listOp"; op: string; list: SerializedListExpr }
+  /** Blockly `variables_get` / `variables_get_dynamic` — resolved at runtime. */
+  | { k: "var"; id: string; name?: string };
+
+/**
+ * String for dynamic `say` / ask: literals, join, variables, or numeric expression.
+ */
+export type SerializedStringExpr =
+  | { k: "lit"; v: string }
+  | { k: "join"; parts: SerializedStringExpr[] }
+  | { k: "var"; id: string; name?: string }
+  | { k: "num"; e: SerializedNumExpr };
 
 /**
  * One sprite’s Blockly workspace compiled into runnable scripts (multiple event hats).
@@ -150,7 +213,7 @@ export type SpriteScriptPlan = {
   broadcastScripts: { message: string; actions: OllieAction[] }[];
 };
 
-/** Missions the user has saved work for (merged across saves / devices via project JSON). */
+/** Adventures / missions the user has saved work for (merged across saves / devices via project JSON). */
 export type SavedMissionProgressEntry = {
   missionId: string;
   savedAt: string;
@@ -171,6 +234,6 @@ export type ProjectPayload = {
   /** Project title (not a user’s real name). */
   name: string;
   updatedAt: string;
-  /** Optional: missions with saved progress (for the Missions list + cloud sync). */
+  /** Optional: missions with saved progress (for the Adventures list + cloud sync). */
   savedMissionProgress?: SavedMissionProgressEntry[];
 };

@@ -35,7 +35,7 @@ export function createCustomMissionId(): string {
   return `${CUSTOM_MISSION_PREFIX}${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 }
 
-/** Missions are selected with `?mission=<id>` on `/workspace`. */
+/** Adventures (catalog entries) are selected with `?mission=<id>` on `/workspace`. */
 export const MISSIONS: MissionDefinition[] = [
   {
     id: "first-move",

@@ -15,6 +15,7 @@ import {
   Scrollbar,
   Xml,
   common,
+  dialog,
   inject,
   serialization,
   svgResize,
@@ -31,7 +32,10 @@ import {
   HIDE_TOOLBOX_SCROLLBAR_VISUAL,
 } from "@/lib/blockly/blocklyUiOptions";
 import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
-import { extractSpriteScriptPlanFromSave } from "@/lib/blockly/executeBlocks";
+import {
+  extractSpriteScriptPlan,
+  extractSpriteScriptPlanFromSave,
+} from "@/lib/blockly/executeBlocks";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
@@ -113,6 +117,7 @@ import {
   Undo,
   Upload,
   X,
+  Braces,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -124,7 +129,7 @@ const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
 const ACTOR_ROBOT_ID = "actor-robot";
 
 const DEFAULT_STAGE_ACTORS: StageActor[] = [
-  { id: ACTOR_ROBOT_ID, label: "David", costumeId: "olliebot" },
+  { id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: "olliebot" },
 ];
 
 /** Main Blockly + canvas + kid-friendly toolbar — extend with new blocks in lib/blockly. */
@@ -192,6 +197,113 @@ export function OllieWorkspace() {
   const [savedMissionEntries, setSavedMissionEntries] = useState<
     SavedMissionProgressEntry[]
   >([]);
+
+  /** In-app `ask` / prompt overlay (replaces `window.prompt` on the stage). */
+  const [askOverlay, setAskOverlay] = useState<{
+    message: string;
+    numberOnly: boolean;
+  } | null>(null);
+  /** Remount the ask `<form>` on each prompt so the uncontrolled field always matches the new question. */
+  const [askFormNonce, setAskFormNonce] = useState(0);
+  const [askInputError, setAskInputError] = useState<string | null>(null);
+  const askResolveRef = useRef<((n: number) => void) | null>(null);
+  const askInputRef = useRef<HTMLInputElement>(null);
+
+  const requestNumberInput = useCallback(
+    (message: string, numberOnly: boolean) => {
+      return new Promise<number>((resolve) => {
+        askResolveRef.current = resolve;
+        setAskInputError(null);
+        setAskFormNonce((n) => n + 1);
+        setAskOverlay({ message, numberOnly });
+      });
+    },
+    [],
+  );
+
+  const finishAsk = useCallback((value: string) => {
+    const resolve = askResolveRef.current;
+    askResolveRef.current = null;
+    const n = Number.parseFloat(String(value).trim());
+    /** Resolve the Run promise before closing the overlay so the canvas stores the number on the same turn (avoids ordering bugs with React state vs. `await`). */
+    resolve?.(Number.isFinite(n) ? n : Number.NaN);
+    setAskOverlay(null);
+  }, []);
+
+  const cancelAsk = useCallback(() => {
+    const resolve = askResolveRef.current;
+    askResolveRef.current = null;
+    setAskInputError(null);
+    setAskOverlay(null);
+    resolve?.(Number.NaN);
+  }, []);
+
+  /** Blockly `dialog.prompt` (create/rename variable, etc.) — replaces `window.prompt`. */
+  const [blocklyPrompt, setBlocklyPrompt] = useState<{
+    message: string;
+    defaultValue: string;
+  } | null>(null);
+  const [blocklyPromptInput, setBlocklyPromptInput] = useState("");
+  const blocklyPromptCallbackRef = useRef<
+    ((result: string | null) => void) | null
+  >(null);
+  const blocklyPromptInputRef = useRef<HTMLInputElement>(null);
+
+  const commitBlocklyPrompt = useCallback((result: string | null) => {
+    const cb = blocklyPromptCallbackRef.current;
+    blocklyPromptCallbackRef.current = null;
+    setBlocklyPrompt(null);
+    setBlocklyPromptInput("");
+    cb?.(result);
+  }, []);
+
+  const cancelBlocklyPrompt = useCallback(() => {
+    commitBlocklyPrompt(null);
+  }, [commitBlocklyPrompt]);
+
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    dialog.setPrompt((message, defaultValue, callback) => {
+      blocklyPromptCallbackRef.current = callback;
+      setBlocklyPromptInput(defaultValue);
+      setBlocklyPrompt({ message, defaultValue });
+    });
+    return () => {
+      dialog.setPrompt(undefined);
+    };
+  }, [blocklyMounted]);
+
+  useEffect(() => {
+    if (!blocklyPrompt) return;
+    const t = window.setTimeout(() => blocklyPromptInputRef.current?.focus(), 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelBlocklyPrompt();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [blocklyPrompt, cancelBlocklyPrompt]);
+
+  useEffect(() => {
+    if (!askOverlay) return;
+    const t = window.setTimeout(() => askInputRef.current?.focus(), 0);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        cancelAsk();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.clearTimeout(t);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [askOverlay, cancelAsk]);
 
   useEffect(() => {
     setSavedMissionEntries(getSavedMissionProgress());
@@ -510,7 +622,12 @@ export function OllieWorkspace() {
         let plan: SpriteScriptPlan = emptyPlan();
         if (raw && Object.keys(raw).length > 0) {
           try {
-            plan = extractSpriteScriptPlanFromSave(raw);
+            /** Live workspace avoids save→temp reload, which can desync variable ids vs `assignRunVar` (compare read 0, snap had Answer). */
+            if (actor.id === activeActorId && workspaceRef.current) {
+              plan = extractSpriteScriptPlan(workspaceRef.current);
+            } else {
+              plan = extractSpriteScriptPlanFromSave(raw);
+            }
           } catch {
             plan = emptyPlan();
           }
@@ -613,7 +730,7 @@ export function OllieWorkspace() {
       actors,
       sceneLayerIds: stageSceneLayers,
       sceneId: topStageSceneId,
-      name: "My David Project",
+      name: "My Ollie Project",
       updatedAt: new Date().toISOString(),
       savedMissionProgress: mergedMissionProgress,
     };
@@ -831,8 +948,11 @@ export function OllieWorkspace() {
         const n = normalizeStageActor(a);
         const id = n.id === LEGACY_ACTOR_OLLIE_ID ? ACTOR_ROBOT_ID : n.id;
         const label =
-          id === ACTOR_ROBOT_ID && (n.label === "Ollie" || n.label === "Robot")
-            ? "David"
+          id === ACTOR_ROBOT_ID &&
+          (n.label === "Robot" ||
+            n.label === "David" ||
+            n.label === "Ollie")
+            ? "Ollie"
             : n.label;
         return { ...n, id, label };
       });
@@ -875,7 +995,7 @@ export function OllieWorkspace() {
 
   /**
    * Load a mission workspace: cloud JSON → local snapshot → default starter blocks.
-   * Call with an explicit id from the Missions modal so we don’t rely on `useSearchParams` updating first.
+   * Call with an explicit id from the Adventures modal so we don’t rely on `useSearchParams` updating first.
    */
   const openMissionWorkspace = useCallback(
     async (missionId: string) => {
@@ -969,7 +1089,7 @@ export function OllieWorkspace() {
       );
       if (error) {
         setStatus(
-          `Could not load missions from cloud (${error.message}). Using this device only.`,
+          `Could not load adventures from cloud (${error.message}). Using this device only.`,
         );
         setTimeout(() => setStatus(""), 5000);
         return;
@@ -1133,7 +1253,7 @@ export function OllieWorkspace() {
           <Link
             href="/"
             className="block shrink-0"
-            aria-label="David Code home"
+            aria-label="Ollie Code home"
           >
             <Image
               src="/images/logo.png"
@@ -1245,8 +1365,8 @@ export function OllieWorkspace() {
           </ToolbarIconButton>
           <ToolbarIconButton
             onClick={openMissionsModal}
-            title="Missions"
-            aria-label="Open missions list"
+            title="Adventures"
+            aria-label="Open adventures list"
           >
             <Briefcase
               className={ICON_SM}
@@ -1440,24 +1560,220 @@ export function OllieWorkspace() {
                 {canvasMissionLabel}
               </span>
             </div>
-            <P5Canvas
-              ref={p5Ref}
-              className="min-h-0 w-full flex-1"
-              sceneLayerIds={stageSceneLayers}
-              actors={actors.map((a) => ({
-                id: a.id,
-                costumeId: a.costumeId,
-              }))}
-              pauseActorCostumePropSync={programRunning}
-              onSceneChange={(id) => setStageSceneLayers([id])}
-              onActorCostumeChange={(actorId, costumeId) =>
-                setActors((prev) =>
-                  prev.map((a) =>
-                    a.id === actorId ? { ...a, costumeId } : a,
-                  ),
-                )
-              }
-            />
+            <div className="relative flex min-h-0 flex-1 flex-col">
+              {askOverlay ? (
+                <div
+                  className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="ollie-ask-dialog-title"
+                >
+                  <button
+                    type="button"
+                    className="absolute inset-0 cursor-default bg-gradient-to-b from-[#0f172a]/55 via-[#0f172a]/45 to-[#0f172a]/60 backdrop-blur-[3px] transition-opacity"
+                    aria-label="Close dialog backdrop"
+                    onClick={cancelAsk}
+                  />
+                  <form
+                    key={askFormNonce}
+                    className="relative z-10 w-full max-w-md"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const fd = new FormData(e.currentTarget);
+                      const fromForm = String(
+                        fd.get("ollieAskAnswer") ?? "",
+                      ).trim();
+                      const fromRef = String(
+                        askInputRef.current?.value ?? "",
+                      ).trim();
+                      const chosen = fromRef || fromForm;
+                      if (askOverlay.numberOnly) {
+                        const n = Number.parseFloat(chosen);
+                        if (!chosen.trim() || !Number.isFinite(n)) {
+                          setAskInputError("Type a number first.");
+                          askInputRef.current?.focus();
+                          return;
+                        }
+                      }
+                      setAskInputError(null);
+                      finishAsk(chosen);
+                    }}
+                  >
+                    <div className="overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25)] ring-1 ring-black/5">
+                      <div className="space-y-4 px-4 pb-4 pt-4 sm:px-5 sm:pb-5">
+                        <p
+                          id="ollie-ask-dialog-title"
+                          className="font-display min-w-0 max-h-[min(200px,40vh)] overflow-y-auto text-base font-semibold leading-snug text-[#111827] whitespace-pre-wrap break-words"
+                        >
+                          {askOverlay.message}
+                        </p>
+                        <div>
+                          <label
+                            htmlFor="ollie-ask-input"
+                            className="mb-1.5 block text-xs font-semibold text-[#4b5563]"
+                          >
+                            {askOverlay.numberOnly ? "Answer" : "Reply"}
+                          </label>
+                          <input
+                            id="ollie-ask-input"
+                            name="ollieAskAnswer"
+                            ref={askInputRef}
+                            type="text"
+                            inputMode={
+                              askOverlay.numberOnly ? "decimal" : undefined
+                            }
+                            autoComplete="off"
+                            defaultValue=""
+                            placeholder={
+                              askOverlay.numberOnly ? "0" : "Type here…"
+                            }
+                            aria-invalid={askInputError ? true : undefined}
+                            onChange={() => setAskInputError(null)}
+                            className={[
+                              "w-full rounded-xl border-2 bg-[#f9fafb] px-3.5 py-3 text-base font-semibold text-[#111827] shadow-inner outline-none transition focus:bg-white focus:ring-4 focus:ring-[#d9f99d]/60",
+                              askInputError
+                                ? "border-red-400 placeholder:text-red-300 focus:border-red-500 focus:ring-red-200/60"
+                                : "border-[#e5e7eb] placeholder:text-[#9ca3af] focus:border-[#84c126]",
+                            ].join(" ")}
+                          />
+                          {askInputError ? (
+                            <p
+                              className="mt-2 text-sm font-semibold text-red-600"
+                              role="alert"
+                            >
+                              {askInputError}
+                            </p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
+                          <button
+                            type="button"
+                            onClick={cancelAsk}
+                            className="rounded-xl border-2 border-[#e5e7eb] bg-white px-4 py-2.5 text-sm font-bold text-[#4b5563] shadow-sm transition hover:border-[#d1d5db] hover:bg-[#f9fafb] active:scale-[0.99]"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="rounded-xl border-2 border-[#65a30d] bg-gradient-to-b from-[#a3e635] to-[#84cc16] px-5 py-2.5 text-sm font-bold text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635] active:scale-[0.99] active:shadow-sm"
+                          >
+                            OK
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              ) : null}
+              {blocklyPrompt ? (
+                <div
+                  className="fixed inset-0 z-[100010] flex items-center justify-center p-4 sm:p-6"
+                  role="dialog"
+                  aria-modal="true"
+                  aria-labelledby="ollie-blockly-prompt-title"
+                  aria-describedby="ollie-blockly-prompt-message"
+                >
+                  <button
+                    type="button"
+                    className="absolute inset-0 cursor-default bg-gradient-to-b from-[#0f172a]/55 via-[#0f172a]/45 to-[#0f172a]/60 backdrop-blur-[3px]"
+                    aria-label="Close dialog"
+                    onClick={cancelBlocklyPrompt}
+                  />
+                  <form
+                    className="relative z-10 w-full max-w-md"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      commitBlocklyPrompt(blocklyPromptInput.trim());
+                    }}
+                  >
+                    <div className="overflow-hidden rounded-2xl border border-[#d9f99d]/80 bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25),0_0_0_1px_rgba(132,193,38,0.12)] ring-1 ring-[#84c126]/20">
+                      <div className="flex items-center gap-2.5 border-b border-[#ecfccb] bg-gradient-to-r from-[#ecfccb] via-[#f7fee7] to-[#ecfccb] px-4 py-3.5">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/90 shadow-sm ring-1 ring-[#84c126]/25">
+                          <Braces
+                            className="size-5 text-[#3f6212]"
+                            strokeWidth={ICON_STROKE}
+                            aria-hidden
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            id="ollie-blockly-prompt-title"
+                            className="font-display text-xs font-bold uppercase tracking-wide text-[#4d7c0f]"
+                          >
+                            Variable
+                          </p>
+                          <p className="text-[11px] font-medium text-[#3f6212]/80">
+                            Name your variable for the blocks.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-4 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+                        <p
+                          id="ollie-blockly-prompt-message"
+                          className="text-sm font-medium text-[#374151]"
+                        >
+                          {blocklyPrompt.message}
+                        </p>
+                        <div>
+                          <label
+                            htmlFor="ollie-blockly-prompt-input"
+                            className="mb-1.5 block text-xs font-semibold text-[#4b5563]"
+                          >
+                            Name
+                          </label>
+                          <input
+                            id="ollie-blockly-prompt-input"
+                            ref={blocklyPromptInputRef}
+                            type="text"
+                            autoComplete="off"
+                            value={blocklyPromptInput}
+                            onChange={(e) =>
+                              setBlocklyPromptInput(e.target.value)
+                            }
+                            placeholder={blocklyPrompt.defaultValue || "name"}
+                            className="w-full rounded-xl border-2 border-[#e5e7eb] bg-[#f9fafb] px-3.5 py-3 text-base font-semibold text-[#111827] shadow-inner outline-none transition placeholder:text-[#9ca3af] focus:border-[#84c126] focus:bg-white focus:ring-4 focus:ring-[#d9f99d]/60"
+                          />
+                        </div>
+                        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
+                          <button
+                            type="button"
+                            onClick={cancelBlocklyPrompt}
+                            className="rounded-xl border-2 border-[#e5e7eb] bg-white px-4 py-2.5 text-sm font-bold text-[#4b5563] shadow-sm transition hover:border-[#d1d5db] hover:bg-[#f9fafb] active:scale-[0.99]"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            className="rounded-xl border-2 border-[#65a30d] bg-gradient-to-b from-[#a3e635] to-[#84cc16] px-5 py-2.5 text-sm font-bold text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635] active:scale-[0.99] active:shadow-sm"
+                          >
+                            OK
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+              ) : null}
+              <P5Canvas
+                ref={p5Ref}
+                className="min-h-0 w-full flex-1"
+                sceneLayerIds={stageSceneLayers}
+                actors={actors.map((a) => ({
+                  id: a.id,
+                  costumeId: a.costumeId,
+                }))}
+                pauseActorCostumePropSync={programRunning}
+                onSceneChange={(id) => setStageSceneLayers([id])}
+                onActorCostumeChange={(actorId, costumeId) =>
+                  setActors((prev) =>
+                    prev.map((a) =>
+                      a.id === actorId ? { ...a, costumeId } : a,
+                    ),
+                  )
+                }
+                requestNumberInput={requestNumberInput}
+              />
+            </div>
             <div className="shrink-0 rounded-b-2xl border-t border-[#e5e7eb] bg-[#f8fafc] px-2 py-1">
               <div className="divide-y divide-[#e5e7eb]">
                 <div>

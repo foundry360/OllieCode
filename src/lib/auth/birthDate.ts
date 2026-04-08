@@ -1,6 +1,6 @@
 /**
  * Birth date from 8 digits: MM, DD, YYYY (2+2+4).
- * David Code targets ages 7–13 (same as prior age-gate copy).
+ * Ollie Code targets ages 7–13 (same as prior age-gate copy).
  */
 
 const MIN_AGE = 7;
@@ -58,10 +58,10 @@ export function validateBirthDateForSignup(isoDate: string): string | null {
   if (birth > today) return "Birth date can’t be in the future.";
   const age = ageOnDate(birth, today);
   if (age < MIN_AGE) {
-    return `David Code is for ages ${MIN_AGE}–${MAX_AGE}. Ask a parent if you need help.`;
+    return `Ollie Code is for ages ${MIN_AGE}–${MAX_AGE}. Ask a parent if you need help.`;
   }
   if (age > MAX_AGE) {
-    return `David Code is for ages ${MIN_AGE}–${MAX_AGE}. Ask a parent if you need help.`;
+    return `Ollie Code is for ages ${MIN_AGE}–${MAX_AGE}. Ask a parent if you need help.`;
   }
   return null;
 }

@@ -20,7 +20,7 @@ export function AuthSplitLayout({
   pageBackgroundSrc,
   showIllustration = true,
   imageSrc = "/images/sprites/bot.svg",
-  imageAlt = "David robot character",
+  imageAlt = "Ollie robot character",
 }: AuthSplitLayoutProps) {
   return (
     <div className="relative min-h-[100dvh] overflow-hidden">
@@ -45,7 +45,7 @@ export function AuthSplitLayout({
             className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[#ecfccb] via-[#f4faf0] to-[#e8f0fc]"
             aria-hidden
           />
-          {/* Primary green glow — David Code brand */}
+          {/* Primary green glow — Ollie Code brand */}
           <div
             className="pointer-events-none absolute -left-1/4 top-0 h-[min(70vh,520px)] w-[min(90vw,600px)] rounded-full bg-[#84c126]/[0.14] blur-3xl"
             aria-hidden

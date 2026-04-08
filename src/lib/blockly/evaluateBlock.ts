@@ -7,6 +7,144 @@ import type { Block } from "blockly/core";
 
 const DEG_TO_RAD = Math.PI / 180;
 
+function isPrimeBlockly(n: number): boolean {
+  if (n === 2 || n === 3) return true;
+  if (isNaN(n) || n <= 1 || n % 1 !== 0 || n % 2 === 0 || n % 3 === 0) {
+    return false;
+  }
+  for (let x = 6; x <= Math.sqrt(n) + 1; x += 6) {
+    if (n % (x - 1) === 0 || n % (x + 1) === 0) return false;
+  }
+  return true;
+}
+
+/** Blockly `math_single` / `math_trig` ops (angles in degrees). */
+function evalMathSingleOp(op: string, n: number): number {
+  switch (op) {
+    case "ROOT":
+      return Math.sqrt(Math.max(0, n));
+    case "ABS":
+      return Math.abs(n);
+    case "NEG":
+      return -n;
+    case "LN":
+      return Math.log(Math.max(1e-12, n));
+    case "LOG10":
+      return Math.log10(Math.max(1e-12, n));
+    case "EXP":
+      return Math.exp(n);
+    case "POW10":
+      return 10 ** n;
+    case "SIN":
+      return Math.sin(DEG_TO_RAD * n);
+    case "COS":
+      return Math.cos(DEG_TO_RAD * n);
+    case "TAN":
+      return Math.tan(DEG_TO_RAD * n);
+    case "ASIN":
+      return Math.asin(n) / DEG_TO_RAD;
+    case "ACOS":
+      return Math.acos(n) / DEG_TO_RAD;
+    case "ATAN":
+      return Math.atan(n) / DEG_TO_RAD;
+    default:
+      return 0;
+  }
+}
+
+/** Blockly `math_on_list` (matches bundled JS generators). */
+function evalMathOnListOp(op: string, list: number[]): number {
+  const nums = list.filter((x) => typeof x === "number" && Number.isFinite(x));
+  switch (op) {
+    case "SUM":
+      return nums.reduce((x, y) => x + y, 0);
+    case "MIN":
+      return nums.length ? Math.min(...nums) : 0;
+    case "MAX":
+      return nums.length ? Math.max(...nums) : 0;
+    case "AVERAGE":
+      return nums.length
+        ? nums.reduce((x, y) => x + y, 0) / nums.length
+        : 0;
+    case "MEDIAN": {
+      if (!nums.length) return 0;
+      const localList = [...nums].sort((a, b) => b - a);
+      if (localList.length % 2 === 0) {
+        return (
+          (localList[localList.length / 2 - 1] + localList[localList.length / 2]) /
+          2
+        );
+      }
+      return localList[(localList.length - 1) / 2];
+    }
+    case "MODE": {
+      if (!nums.length) return 0;
+      const counts: [number, number][] = [];
+      let maxCount = 0;
+      for (const value of nums) {
+        let found = false;
+        let thisCount = 0;
+        for (let j = 0; j < counts.length; j++) {
+          if (counts[j][0] === value) {
+            thisCount = ++counts[j][1];
+            found = true;
+            break;
+          }
+        }
+        if (!found) {
+          counts.push([value, 1]);
+          thisCount = 1;
+        }
+        maxCount = Math.max(thisCount, maxCount);
+      }
+      const modes = counts.filter((c) => c[1] === maxCount).map((c) => c[0]);
+      return modes[0] ?? 0;
+    }
+    case "STD_DEV": {
+      const n = nums.length;
+      if (!n) return 0;
+      const mean = nums.reduce((x, y) => x + y, 0) / n;
+      let variance = 0;
+      for (let j = 0; j < n; j++) {
+        variance += (nums[j] - mean) ** 2;
+      }
+      variance /= n;
+      return Math.sqrt(variance);
+    }
+    case "RANDOM":
+      return nums.length ? nums[Math.floor(Math.random() * nums.length)] : 0;
+    default:
+      return 0;
+  }
+}
+
+function evaluateNumberList(block: Block | null): number[] {
+  if (!block) return [];
+  switch (block.type) {
+    case "lists_create_empty":
+      return [];
+    case "lists_create_with": {
+      const out: number[] = [];
+      let i = 0;
+      while (block.getInput(`ADD${i}`)) {
+        out.push(evaluateNumber(block.getInputTargetBlock(`ADD${i}`)));
+        i += 1;
+      }
+      return out;
+    }
+    case "lists_repeat": {
+      const item = evaluateNumber(block.getInputTargetBlock("ITEM"));
+      const n = Math.max(
+        0,
+        Math.floor(Math.abs(evaluateNumber(block.getInputTargetBlock("NUM")))),
+      );
+      return Array(n).fill(item);
+    }
+    default:
+      return [];
+  }
+}
+
 export function evaluateNumber(block: Block | null): number {
   if (!block) return 0;
 
@@ -38,36 +176,41 @@ export function evaluateNumber(block: Block | null): number {
     case "math_single": {
       const op = block.getFieldValue("OP");
       const n = evaluateNumber(block.getInputTargetBlock("NUM"));
-      switch (op) {
-        case "ROOT":
-          return Math.sqrt(Math.max(0, n));
-        case "ABS":
-          return Math.abs(n);
-        case "NEG":
-          return -n;
-        case "LN":
-          return Math.log(Math.max(1e-12, n));
-        case "LOG10":
-          return Math.log10(Math.max(1e-12, n));
-        case "EXP":
-          return Math.exp(n);
-        case "POW10":
-          return 10 ** n;
-        case "SIN":
-          return Math.sin(DEG_TO_RAD * n);
-        case "COS":
-          return Math.cos(DEG_TO_RAD * n);
-        case "TAN":
-          return Math.tan(DEG_TO_RAD * n);
-        case "ASIN":
-          return Math.asin(n) / DEG_TO_RAD;
-        case "ACOS":
-          return Math.acos(n) / DEG_TO_RAD;
-        case "ATAN":
-          return Math.atan(n) / DEG_TO_RAD;
+      return evalMathSingleOp(op, n);
+    }
+    case "math_trig": {
+      const op = block.getFieldValue("OP");
+      const n = evaluateNumber(block.getInputTargetBlock("NUM"));
+      return evalMathSingleOp(op, n);
+    }
+    case "math_number_property": {
+      const n = evaluateNumber(block.getInputTargetBlock("NUMBER_TO_CHECK"));
+      const prop = block.getFieldValue("PROPERTY");
+      switch (prop) {
+        case "EVEN":
+          return n % 2 === 0 ? 1 : 0;
+        case "ODD":
+          return n % 2 === 1 ? 1 : 0;
+        case "WHOLE":
+          return n % 1 === 0 ? 1 : 0;
+        case "POSITIVE":
+          return n > 0 ? 1 : 0;
+        case "NEGATIVE":
+          return n < 0 ? 1 : 0;
+        case "PRIME":
+          return isPrimeBlockly(n) ? 1 : 0;
+        case "DIVISIBLE_BY": {
+          const d = evaluateNumber(block.getInputTargetBlock("DIVISOR"));
+          if (d === 0) return 0;
+          return n % d === 0 ? 1 : 0;
+        }
         default:
           return 0;
       }
+    }
+    case "math_on_list": {
+      const op = block.getFieldValue("OP");
+      return evalMathOnListOp(op, evaluateNumberList(block.getInputTargetBlock("LIST")));
     }
     case "math_constant": {
       const c = block.getFieldValue("CONSTANT");
@@ -127,6 +270,10 @@ export function evaluateNumber(block: Block | null): number {
       const y = evaluateNumber(block.getInputTargetBlock("Y"));
       return Math.atan2(y, x) / DEG_TO_RAD;
     }
+    case "variables_get":
+    case "variables_get_dynamic":
+      /** Values only exist at Run time — compile-time / static eval uses 0. */
+      return 0;
     default:
       return 0;
   }

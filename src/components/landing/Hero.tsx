@@ -13,7 +13,7 @@ export function Hero() {
             Code games, build robots, and make friends — one block at a time.
           </h1>
           <p className="mt-5 max-w-xl text-lg text-[#4b5563]">
-            David Code is a friendly place to learn programming. Drag blocks, run your
+            Ollie Code is a friendly place to learn programming. Drag blocks, run your
             code, and watch your ideas come alive on the canvas.
           </p>
           <div className="mt-8 flex flex-wrap gap-4">

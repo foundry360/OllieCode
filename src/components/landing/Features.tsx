@@ -13,7 +13,7 @@ const ITEMS = [
   },
   {
     title: "Create AI Projects",
-    body: "Explore AI-themed missions and projects designed for curious young creators.",
+    body: "Explore AI-themed adventures and projects designed for curious young creators.",
     icon: "/placeholders/icon-ai.svg",
   },
 ];
