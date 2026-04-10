@@ -1,5 +1,16 @@
 import type { CostumeChromaKey } from "@/lib/canvas/stageAssets";
 
+/** Decode a URL to an element `CanvasRenderingContext2D.drawImage` always accepts. */
+export function loadImageElement(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.decoding = "async";
+    im.onload = () => resolve(im);
+    im.onerror = () => resolve(null);
+    im.src = url;
+  });
+}
+
 /**
  * Draw `source` at native size and set alpha to 0 for pixels within `threshold`
  * (per RGB channel) of `key.rgb`. Used for sprite sheets with a solid matte color.

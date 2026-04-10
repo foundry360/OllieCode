@@ -19,6 +19,7 @@ import {
 import {
   applyCostumeChromaKeyToCanvas,
   canvasToPngDataUrl,
+  loadImageElement,
 } from "@/lib/canvas/spriteChromaKey";
 import {
   DEFAULT_COSTUME_ID,
@@ -78,11 +79,16 @@ type Sprite = {
   costume: OllieSpriteCostumeId;
   /** Frame index for image costumes with `spriteSheet` (walk/run advances this). */
   sheetFrame: number;
+  /** Scratch-style display size; 100 = default draw scale. */
+  sizePct: number;
   bubble?: { text: string; kind: "say" | "think"; until: number };
 };
 
 const MOVE_FRAMES = 18;
 const CANVAS_MAX_PX = 4096;
+/** Scratch-style size % — clamped when changing with grow/shrink blocks. */
+const MIN_SPRITE_SIZE_PCT = 5;
+const MAX_SPRITE_SIZE_PCT = 500;
 /** Cap for `repeat` when count comes from variables / runtime math. */
 const MAX_REPEAT_DYNAMIC_ITER = 2_000;
 /** Cap for `while` / `until` with live conditions. */
@@ -125,8 +131,15 @@ async function maybeApplyChromaKey(
 ): Promise<p5Types.Image> {
   const key = getChromaKeyForSpriteSrc(url);
   if (!key || !img.width) return img;
-  const elt = (img as unknown as { elt: CanvasImageSource }).elt;
-  const c = applyCostumeChromaKeyToCanvas(elt, img.width, img.height, key);
+  /**
+   * p5’s internal `img.elt` is not always a valid `CanvasImageSource` for
+   * `drawImage` (p5 v2). Decode the same URL with `Image()` for chroma keying.
+   */
+  const domImg = await loadImageElement(url);
+  if (!domImg || domImg.naturalWidth === 0) return img;
+  const w = domImg.naturalWidth;
+  const h = domImg.naturalHeight;
+  const c = applyCostumeChromaKeyToCanvas(domImg, w, h, key);
   const dataUrl = canvasToPngDataUrl(c);
   const next = await p.loadImage(dataUrl);
   return next && next.width > 0 ? next : img;
@@ -312,6 +325,12 @@ function drawSpriteForCostume(
   sprite: Sprite,
   images: Map<string, p5Types.Image>,
 ) {
+  const sizePct = sprite.sizePct ?? 100;
+  const sc = Math.max(
+    MIN_SPRITE_SIZE_PCT / 100,
+    Math.min(MAX_SPRITE_SIZE_PCT / 100, sizePct / 100),
+  );
+  p.scale(sc);
   const def =
     getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const img = images.get(def.src);
@@ -437,6 +456,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       actors.forEach((a, i) => {
         const existing = map.get(a.id);
         if (existing) {
+          existing.sizePct = existing.sizePct ?? 100;
           if (!pauseActorCostumePropSync) {
             if (existing.costume !== a.costumeId) {
               existing.sheetFrame = 0;
@@ -458,6 +478,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             heading: DEFAULT_SPRITE_HEADING_DEG,
             costume: a.costumeId,
             sheetFrame: 0,
+            sizePct: 100,
           });
         }
       });
@@ -666,6 +687,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               };
               await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
+            } else if (a.type === "changeSize") {
+              const cur = s.sizePct ?? 100;
+              s.sizePct = Math.min(
+                MAX_SPRITE_SIZE_PCT,
+                Math.max(MIN_SPRITE_SIZE_PCT, cur + a.deltaPct),
+              );
             } else if (a.type === "costume") {
               const id = migrateCostumeIdFromStorage(a.id);
               s.costume = id;
@@ -865,6 +892,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           s.bubble = undefined;
           s.costume = a.costumeId;
           s.sheetFrame = 0;
+          s.sizePct = 100;
         });
       },
     }));
@@ -902,6 +930,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 heading: DEFAULT_SPRITE_HEADING_DEG,
                 costume: a.costumeId,
                 sheetFrame: 0,
+                sizePct: 100,
               });
             });
           };

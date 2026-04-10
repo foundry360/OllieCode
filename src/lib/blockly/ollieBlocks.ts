@@ -45,9 +45,12 @@ export function getOllieBlockDefinitions(): Parameters<
     message0: "When %1 clicked",
     args0: [
       {
-        type: "field_label_serializable",
-        name: "LABEL",
-        text: "Run",
+        type: "field_image",
+        name: "RUN_ICON",
+        src: "/images/blockly/run-play.svg",
+        width: 20,
+        height: 20,
+        alt: "Run",
       },
     ],
     nextStatement: true,
@@ -395,6 +398,45 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_looks",
     tooltip: "Show a thought bubble.",
+  },
+  {
+    type: "ollie_grow_size",
+    message0: "grow by %1 %",
+    args0: [
+      {
+        type: "field_number",
+        name: "PCT",
+        value: 10,
+        min: 1,
+        max: 200,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip:
+      "Make this sprite larger. Size starts at 100% (like Scratch); each block adds to that percent.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_shrink_size",
+    message0: "shrink by %1 %",
+    args0: [
+      {
+        type: "field_number",
+        name: "PCT",
+        value: 10,
+        min: 1,
+        max: 200,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Make this sprite smaller (reduces size % from 100%).",
+    helpUrl: "",
   },
   {
     type: "ollie_next_costume",

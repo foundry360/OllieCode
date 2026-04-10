@@ -63,6 +63,10 @@ export type OllieAction =
   | { type: "costume"; id: OllieSpriteCostumeId }
   /** Advance to the next costume in the catalog order (like Scratch’s “next costume”). */
   | { type: "nextCostume" }
+  /**
+   * Scratch-style size: 100 = default. `deltaPct` is added to the current size % (grow positive, shrink negative).
+   */
+  | { type: "changeSize"; deltaPct: number }
   | { type: "scene"; id: OllieSceneId }
   | { type: "sound"; id: OllieSoundId }
   | { type: "soundWait"; id: OllieSoundId; ms: number }

@@ -54,6 +54,8 @@ export const OLLIE_TOOLBOX = {
         B("ollie_think"),
         B("ollie_switch_costume"),
         B("ollie_next_costume"),
+        B("ollie_grow_size"),
+        B("ollie_shrink_size"),
         B("ollie_switch_scene"),
         B("ollie_play_animation"),
       ],

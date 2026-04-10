@@ -1,12 +1,18 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   getCostumeById,
   isSpritePickerEntrySelected,
   OLLIE_SPRITE_PICKER_ENTRIES,
+  SPRITE_CATEGORY_IDS,
+  SPRITE_CATEGORY_LABELS,
+  spriteCostumeMatchesCategory,
 } from "@/lib/canvas/stageAssets";
-import type { OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
+import type {
+  OllieSpriteCostumeId,
+  SpriteCategoryId,
+} from "@/lib/canvas/stageAssets";
 import { SpritePreview } from "@/components/workspace/SpritePreview";
 
 type SpritePickerModalProps = {
@@ -17,6 +23,8 @@ type SpritePickerModalProps = {
   onSelect: (id: OllieSpriteCostumeId) => void;
 };
 
+type FilterValue = SpriteCategoryId | "all";
+
 export function SpritePickerModal({
   open,
   onClose,
@@ -24,7 +32,9 @@ export function SpritePickerModal({
   onSelect,
 }: SpritePickerModalProps) {
   const titleId = useId();
+  const filterRegionId = useId();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const [categoryFilter, setCategoryFilter] = useState<FilterValue>("all");
 
   useEffect(() => {
     if (!open) return;
@@ -37,6 +47,10 @@ export function SpritePickerModal({
   }, [open, onClose]);
 
   useEffect(() => {
+    if (open) setCategoryFilter("all");
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -44,6 +58,12 @@ export function SpritePickerModal({
       document.body.style.overflow = prev;
     };
   }, [open]);
+
+  const filteredEntries = useMemo(() => {
+    return OLLIE_SPRITE_PICKER_ENTRIES.filter((entry) =>
+      spriteCostumeMatchesCategory(entry.costumeId, categoryFilter),
+    );
+  }, [categoryFilter]);
 
   if (!open) return null;
 
@@ -78,42 +98,101 @@ export function SpritePickerModal({
             ×
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
-          <div className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
-            {OLLIE_SPRITE_PICKER_ENTRIES.map((entry) => {
-              const costume = getCostumeById(entry.costumeId);
-              if (!costume) return null;
-              const selected = isSpritePickerEntrySelected(
-                entry.costumeId,
-                selectedId,
-              );
-              return (
-                <button
-                  key={entry.costumeId}
-                  type="button"
-                  onClick={() => {
-                    onSelect(entry.costumeId);
-                    onClose();
-                  }}
-                  className={[
-                    "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
-                    selected
-                      ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
-                      : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
-                  ].join(" ")}
-                >
-                  <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
-                    <SpritePreview costume={costume} fillCard />
-                  </div>
-                  <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
-                    {entry.label}
-                  </span>
-                </button>
-              );
-            })}
+
+        <div
+          className="shrink-0 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2.5 sm:px-4"
+          role="region"
+          aria-label="Sprite categories"
+          id={filterRegionId}
+        >
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">
+            Category
+          </p>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <FilterChip
+              label="All"
+              selected={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+            />
+            {SPRITE_CATEGORY_IDS.map((id) => (
+              <FilterChip
+                key={id}
+                label={SPRITE_CATEGORY_LABELS[id]}
+                selected={categoryFilter === id}
+                onClick={() => setCategoryFilter(id)}
+              />
+            ))}
           </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+          {filteredEntries.length === 0 ? (
+            <p className="py-8 text-center text-sm text-[#64748b]">
+              No sprites in this category. Try another filter or All.
+            </p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
+              {filteredEntries.map((entry) => {
+                const costume = getCostumeById(entry.costumeId);
+                if (!costume) return null;
+                const selected = isSpritePickerEntrySelected(
+                  entry.costumeId,
+                  selectedId,
+                );
+                return (
+                  <button
+                    key={entry.costumeId}
+                    type="button"
+                    onClick={() => {
+                      onSelect(entry.costumeId);
+                      onClose();
+                    }}
+                    className={[
+                      "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+                      selected
+                        ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
+                        : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
+                    ].join(" ")}
+                  >
+                    <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
+                      <SpritePreview costume={costume} fillCard />
+                    </div>
+                    <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
+                      {entry.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function FilterChip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border px-2.5 py-1 text-left text-[11px] font-semibold transition sm:px-3 sm:text-xs",
+        selected
+          ? "border-[#84c126] bg-[#ecfccb] text-[#365314] shadow-sm"
+          : "border-[#e2e8f0] bg-white text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8fafc]",
+      ].join(" ")}
+      aria-pressed={selected}
+    >
+      {label}
+    </button>
   );
 }

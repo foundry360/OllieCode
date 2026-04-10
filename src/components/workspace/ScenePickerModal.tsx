@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { OLLIE_SCENES } from "@/lib/canvas/stageAssets";
 import type { OllieSceneId } from "@/lib/canvas/stageAssets";
+import {
+  SCENE_CATEGORY_IDS,
+  SCENE_CATEGORY_LABELS,
+  sceneMatchesCategory,
+} from "@/lib/canvas/sceneCategories";
+import type { SceneCategoryId } from "@/lib/canvas/sceneCategories";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
 
 type ScenePickerModalProps = {
@@ -14,6 +20,8 @@ type ScenePickerModalProps = {
   onSelect: (id: OllieSceneId) => void;
 };
 
+type FilterValue = SceneCategoryId | "all";
+
 export function ScenePickerModal({
   open,
   onClose,
@@ -22,7 +30,9 @@ export function ScenePickerModal({
   onSelect,
 }: ScenePickerModalProps) {
   const titleId = useId();
+  const filterRegionId = useId();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const [categoryFilter, setCategoryFilter] = useState<FilterValue>("all");
 
   useEffect(() => {
     if (!open) return;
@@ -35,6 +45,10 @@ export function ScenePickerModal({
   }, [open, onClose]);
 
   useEffect(() => {
+    if (open) setCategoryFilter("all");
+  }, [open]);
+
+  useEffect(() => {
     if (!open) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -42,6 +56,12 @@ export function ScenePickerModal({
       document.body.style.overflow = prev;
     };
   }, [open]);
+
+  const filteredScenes = useMemo(() => {
+    return OLLIE_SCENES.filter((scene) =>
+      sceneMatchesCategory(scene.id, categoryFilter),
+    );
+  }, [categoryFilter]);
 
   if (!open) return null;
 
@@ -76,38 +96,97 @@ export function ScenePickerModal({
             ×
           </button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-6 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
-          {OLLIE_SCENES.map((scene) => {
-            const selected =
-              selectedId !== false && scene.id === selectedId;
-            return (
-              <button
-                key={scene.id}
-                type="button"
-                onClick={() => {
-                  onSelect(scene.id);
-                  onClose();
-                }}
-                className={[
-                  "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
-                  selected
-                    ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
-                    : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
-                ].join(" ")}
-              >
-                <div className="aspect-video w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9]">
-                  <ScenePreview scene={scene} />
-                </div>
-                <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
-                  {scene.label}
-                </span>
-              </button>
-            );
-          })}
+
+        <div
+          className="shrink-0 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2.5 sm:px-4"
+          role="region"
+          aria-label="Scene categories"
+          id={filterRegionId}
+        >
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">
+            Category
+          </p>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <FilterChip
+              label="All"
+              selected={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+            />
+            {SCENE_CATEGORY_IDS.map((id) => (
+              <FilterChip
+                key={id}
+                label={SCENE_CATEGORY_LABELS[id]}
+                selected={categoryFilter === id}
+                onClick={() => setCategoryFilter(id)}
+              />
+            ))}
           </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
+          {filteredScenes.length === 0 ? (
+            <p className="py-8 text-center text-sm text-[#64748b]">
+              No scenes in this category. Try another filter or All.
+            </p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
+              {filteredScenes.map((scene) => {
+                const selected =
+                  selectedId !== false && scene.id === selectedId;
+                return (
+                  <button
+                    key={scene.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(scene.id);
+                      onClose();
+                    }}
+                    className={[
+                      "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+                      selected
+                        ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
+                        : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
+                    ].join(" ")}
+                  >
+                    <div className="aspect-video w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9]">
+                      <ScenePreview scene={scene} />
+                    </div>
+                    <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
+                      {scene.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function FilterChip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border px-2.5 py-1 text-left text-[11px] font-semibold transition sm:px-3 sm:text-xs",
+        selected
+          ? "border-[#84c126] bg-[#ecfccb] text-[#365314] shadow-sm"
+          : "border-[#e2e8f0] bg-white text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8fafc]",
+      ].join(" ")}
+      aria-pressed={selected}
+    >
+      {label}
+    </button>
   );
 }

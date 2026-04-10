@@ -100,24 +100,26 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Braces,
+  Briefcase,
   ChevronDown,
   CopyPlus,
-  Briefcase,
   LogOut,
-  Plus,
   Maximize2,
   Minimize2,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
+  Plus,
   Redo,
-  Square,
   RotateCcw,
   Save,
   Settings,
+  Square,
   Trash2,
   Undo,
   Upload,
   X,
-  Braces,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -166,6 +168,8 @@ export function OllieWorkspace() {
   const [openStagePanel, setOpenStagePanel] = useState<"scene" | "sprite">(
     "scene",
   );
+  /** Code / Blockly column: collapsed gives more room to the stage (Blockly stays mounted off-screen). */
+  const [codePanelExpanded, setCodePanelExpanded] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | null
     | { type: "scene" }
@@ -1529,10 +1533,35 @@ export function OllieWorkspace() {
         </div>
       ) : null}
 
-      <main className="flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
-        <div className="flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]">
-          <div className="shrink-0 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
-            Workspace
+      <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
+        <div
+          id="ollie-code-workspace-shell"
+          className={[
+            "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm transition-[opacity,transform] duration-200",
+            codePanelExpanded
+              ? "relative min-h-[50vh] flex-1 lg:min-h-[calc(100dvh-9rem)]"
+              : "pointer-events-none fixed -left-[9999px] top-0 z-0 flex h-[calc(100dvh-8rem)] w-[min(960px,calc(100vw-2rem))] flex-col opacity-0",
+          ].join(" ")}
+          aria-hidden={!codePanelExpanded}
+        >
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
+            <span className="text-sm font-semibold text-[#365314]">Workspace</span>
+            <WorkspaceHeaderTooltip text="Hide code panel">
+              <button
+                type="button"
+                onClick={() => setCodePanelExpanded(false)}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#365314] transition hover:bg-white/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                aria-label="Hide code panel"
+                aria-expanded={codePanelExpanded}
+                aria-controls="ollie-code-workspace-shell"
+              >
+                <PanelLeftClose
+                  className="size-5 shrink-0"
+                  strokeWidth={ICON_STROKE}
+                  aria-hidden
+                />
+              </button>
+            </WorkspaceHeaderTooltip>
           </div>
           <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
             <div
@@ -1550,7 +1579,42 @@ export function OllieWorkspace() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[420px] lg:max-w-[42vw]">
+        {!codePanelExpanded ? (
+          <div className="flex w-full shrink-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:w-14 lg:shrink-0">
+            <WorkspaceHeaderTooltip text="Show code panel">
+              <button
+                type="button"
+                onClick={() => setCodePanelExpanded(true)}
+                className="flex w-full items-center justify-center gap-2 px-3 py-3 text-[#365314] transition hover:bg-[#f7fee7] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126] lg:flex-col lg:px-2 lg:py-5"
+                aria-label="Show code panel"
+                aria-expanded={false}
+                aria-controls="ollie-code-workspace-shell"
+              >
+                <PanelLeftOpen
+                  className="size-5 shrink-0"
+                  strokeWidth={ICON_STROKE}
+                  aria-hidden
+                />
+                <span className="text-sm font-semibold lg:hidden">Show code</span>
+                <span
+                  className="hidden max-h-[12rem] text-center text-[11px] font-bold uppercase tracking-wider text-[#365314] lg:block"
+                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+                >
+                  Code
+                </span>
+              </button>
+            </WorkspaceHeaderTooltip>
+          </div>
+        ) : null}
+
+        <div
+          className={[
+            "flex min-h-0 w-full flex-col gap-3",
+            codePanelExpanded
+              ? "lg:w-[420px] lg:max-w-[42vw]"
+              : "lg:min-w-0 lg:flex-1 lg:max-w-none",
+          ].join(" ")}
+        >
           <div className="flex h-[min(720px,72vh)] min-h-[520px] shrink-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
             <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
               <span

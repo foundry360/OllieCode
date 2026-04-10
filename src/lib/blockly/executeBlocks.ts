@@ -175,6 +175,18 @@ function walkStatementChain(
       case "ollie_next_costume":
         actions.push({ type: "nextCostume" });
         break;
+      case "ollie_grow_size": {
+        const raw = Number(current.getFieldValue("PCT")) || 10;
+        const pct = Math.min(200, Math.max(1, Math.round(raw)));
+        actions.push({ type: "changeSize", deltaPct: pct });
+        break;
+      }
+      case "ollie_shrink_size": {
+        const raw = Number(current.getFieldValue("PCT")) || 10;
+        const pct = Math.min(200, Math.max(1, Math.round(raw)));
+        actions.push({ type: "changeSize", deltaPct: -pct });
+        break;
+      }
       case "ollie_switch_scene": {
         const id = String(current.getFieldValue("SCENE"));
         if (isOllieSceneId(id)) actions.push({ type: "scene", id });
