@@ -32,6 +32,7 @@ import {
   HIDE_TOOLBOX_SCROLLBAR_VISUAL,
 } from "@/lib/blockly/blocklyUiOptions";
 import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
+import { OLLIE_TOOLBOX_CATEGORY_ICON_CSS } from "@/lib/blockly/toolboxCategoryIconCss";
 import {
   extractSpriteScriptPlan,
   extractSpriteScriptPlanFromSave,
@@ -40,11 +41,8 @@ import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
 import {
-  DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
-  getCostumeById,
   getSceneById,
-  migrateSceneIdFromStorage,
   normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
@@ -57,7 +55,9 @@ import { MissionCompleteModal } from "@/components/workspace/MissionCompleteModa
 import { SaveMissionNameModal } from "@/components/workspace/SaveMissionNameModal";
 import { SavedMissionsModal } from "@/components/workspace/SavedMissionsModal";
 import { SpritePickerModal } from "@/components/workspace/SpritePickerModal";
-import { SpritePreview } from "@/components/workspace/SpritePreview";
+import { StageActorCostumePreview } from "@/components/workspace/SpritePreview";
+import { CostumePaintModal } from "@/components/workspace/CostumePaintModal";
+import { resolveActorCostumeForDisplay } from "@/lib/canvas/actorCostumeDisplay";
 import {
   clearMissionProjectSnapshotLocal,
   createCustomMissionId,
@@ -108,6 +108,7 @@ import {
   Maximize2,
   Minimize2,
   PanelLeftClose,
+  Paintbrush,
   PanelLeftOpen,
   Play,
   Plus,
@@ -163,6 +164,7 @@ export function OllieWorkspace() {
   const [activeActorId, setActiveActorId] = useState<string>(ACTOR_ROBOT_ID);
   const [scenePickerOpen, setScenePickerOpen] = useState(false);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
+  const [costumePaintOpen, setCostumePaintOpen] = useState(false);
   /** Set immediately before opening the modal so onSelect is never stale vs. intent. */
   const spritePickerIntentRef = useRef<"costume" | "new">("costume");
   const [openStagePanel, setOpenStagePanel] = useState<"scene" | "sprite">(
@@ -349,13 +351,12 @@ export function OllieWorkspace() {
 
   const topStageSceneId =
     stageSceneLayers[stageSceneLayers.length - 1] ?? DEFAULT_SCENE_ID;
-  const currentStageScene =
-    getSceneById(topStageSceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
   const activeActor =
     actors.find((a) => a.id === activeActorId) ?? actors[0]!;
-  const currentStageCostume =
-    getCostumeById(activeActor.costumeId) ??
-    getCostumeById(DEFAULT_COSTUME_ID)!;
+  const activeCostumeLabel = useMemo(() => {
+    const r = resolveActorCostumeForDisplay(activeActor);
+    return r.kind === "painted" ? "Painted costume" : r.def.label;
+  }, [activeActor]);
   const headerAvatarAsset = getAvatarBySlug(avatarSlug);
 
   useEffect(() => {
@@ -1357,6 +1358,17 @@ export function OllieWorkspace() {
             />
           </ToolbarIconButton>
           <ToolbarIconButton
+            onClick={() => setCostumePaintOpen(true)}
+            title="Create Sprite"
+            aria-label="Create sprite for selected sprite"
+          >
+            <Paintbrush
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
             onClick={handleDuplicate}
             title="Duplicate"
             aria-label="Duplicate"
@@ -1367,6 +1379,10 @@ export function OllieWorkspace() {
               aria-hidden
             />
           </ToolbarIconButton>
+          <span
+            className="h-7 w-px shrink-0 self-center bg-[#e5e7eb]"
+            aria-hidden
+          />
           <ToolbarIconButton
             onClick={openMissionsModal}
             title="Adventures"
@@ -1564,6 +1580,9 @@ export function OllieWorkspace() {
             </WorkspaceHeaderTooltip>
           </div>
           <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
+            <style
+              dangerouslySetInnerHTML={{ __html: OLLIE_TOOLBOX_CATEGORY_ICON_CSS }}
+            />
             <div
               key={blocklyInjectKey}
               ref={blocklyDiv}
@@ -1825,13 +1844,16 @@ export function OllieWorkspace() {
                 actors={actors.map((a) => ({
                   id: a.id,
                   costumeId: a.costumeId,
+                  paintedCostumeUrl: a.paintedCostumeUrl,
                 }))}
                 pauseActorCostumePropSync={programRunning}
                 onSceneChange={(id) => setStageSceneLayers([id])}
                 onActorCostumeChange={(actorId, costumeId) =>
                   setActors((prev) =>
                     prev.map((a) =>
-                      a.id === actorId ? { ...a, costumeId } : a,
+                      a.id === actorId
+                        ? { ...a, costumeId, paintedCostumeUrl: undefined }
+                        : a,
                     ),
                   )
                 }
@@ -1951,9 +1973,6 @@ export function OllieWorkspace() {
                     >
                       <div className="flex flex-wrap gap-2">
                         {actors.map((actor) => {
-                          const c =
-                            getCostumeById(actor.costumeId) ??
-                            getCostumeById(DEFAULT_COSTUME_ID)!;
                           const sel = actor.id === activeActorId;
                           const canRemoveSprite = actors.length > 1;
                           return (
@@ -1975,7 +1994,10 @@ export function OllieWorkspace() {
                                   aria-hidden
                                 />
                                 <div className="pointer-events-none relative h-full w-full min-h-0 p-1">
-                                  <SpritePreview costume={c} fillCard />
+                                  <StageActorCostumePreview
+                                    actor={actor}
+                                    fillCard
+                                  />
                                 </div>
                                 {canRemoveSprite ? (
                                   <button
@@ -2020,10 +2042,13 @@ export function OllieWorkspace() {
                             setSpritePickerOpen(true);
                           }}
                           className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] p-1 shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          title={`${currentStageCostume.label} — tap to change costume`}
+                          title={`${activeCostumeLabel} — tap to change costume`}
                           aria-label="Change costume for selected sprite"
                         >
-                          <SpritePreview costume={currentStageCostume} fillCard />
+                          <StageActorCostumePreview
+                            actor={activeActor}
+                            fillCard
+                          />
                         </button>
                         <button
                           type="button"
@@ -2077,11 +2102,27 @@ export function OllieWorkspace() {
           } else {
             setActors((prev) =>
               prev.map((a) =>
-                a.id === activeActorId ? { ...a, costumeId: id } : a,
+                a.id === activeActorId
+                  ? { ...a, costumeId: id, paintedCostumeUrl: undefined }
+                  : a,
               ),
             );
           }
           setSpritePickerOpen(false);
+        }}
+      />
+      <CostumePaintModal
+        open={costumePaintOpen}
+        initialSpriteLabel={activeActor.label}
+        onClose={() => setCostumePaintOpen(false)}
+        onSaved={({ publicUrl, label }) => {
+          setActors((prev) =>
+            prev.map((a) =>
+              a.id === activeActorId
+                ? { ...a, paintedCostumeUrl: publicUrl, label }
+                : a,
+            ),
+          );
         }}
       />
       <MissionCompleteModal

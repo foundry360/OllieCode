@@ -119,6 +119,32 @@ function walkStatementChain(
         });
         break;
       }
+      case "ollie_go_to_target": {
+        const raw = String(current.getFieldValue("TARGET") ?? "random");
+        const target = raw === "mouse" ? "mouse" : "random";
+        actions.push({ type: "goToTarget", target });
+        break;
+      }
+      /** @deprecated Legacy block id — treat as random position. */
+      case "ollie_go_to_random_position":
+        actions.push({ type: "goToTarget", target: "random" });
+        break;
+      case "ollie_change_x_by": {
+        const d = Number(current.getFieldValue("DX")) || 0;
+        actions.push({
+          type: "changeXPctBy",
+          deltaPct: Math.min(200, Math.max(-200, d)),
+        });
+        break;
+      }
+      case "ollie_change_y_by": {
+        const d = Number(current.getFieldValue("DY")) || 0;
+        actions.push({
+          type: "changeYPctBy",
+          deltaPct: Math.min(200, Math.max(-200, d)),
+        });
+        break;
+      }
       case "ollie_glide_to": {
         const secs = Number(current.getFieldValue("SECS")) || 1;
         const x = Number(current.getFieldValue("XPCT")) ?? 0;
@@ -192,6 +218,27 @@ function walkStatementChain(
         if (isOllieSceneId(id)) actions.push({ type: "scene", id });
         break;
       }
+      case "ollie_next_scene":
+        actions.push({ type: "nextScene" });
+        break;
+      case "ollie_show":
+        actions.push({ type: "setVisible", visible: true });
+        break;
+      case "ollie_hide":
+        actions.push({ type: "setVisible", visible: false });
+        break;
+      case "ollie_change_size_by": {
+        const raw = Number(current.getFieldValue("DELTA")) || 0;
+        const d = Math.min(500, Math.max(-500, Math.round(raw)));
+        actions.push({ type: "changeSize", deltaPct: d });
+        break;
+      }
+      case "ollie_set_size_to": {
+        const raw = Number(current.getFieldValue("PCT")) || 100;
+        const pct = Math.min(500, Math.max(5, Math.round(raw)));
+        actions.push({ type: "setSizePct", sizePct: pct });
+        break;
+      }
       case "ollie_play_animation": {
         const id = String(current.getFieldValue("ANIMATION") ?? "wave");
         for (const act of getAnimationPresetActions(id)) {
@@ -260,6 +307,9 @@ function walkStatementChain(
         });
         return;
       }
+      case "ollie_delete_this_clone":
+        actions.push({ type: "deleteThisClone" });
+        return;
       case "ollie_sensing_reset_timer":
         actions.push({ type: "resetTimer" });
         break;

@@ -1580,6 +1580,13 @@ export function isOllieSceneId(s: string): s is OllieSceneId {
   return OLLIE_SCENES.some((b) => b.id === s);
 }
 
+/** Next scene in {@link OLLIE_SCENES} order (wraps). */
+export function nextOllieSceneId(current: OllieSceneId): OllieSceneId {
+  const i = OLLIE_SCENES.findIndex((s) => s.id === current);
+  const idx = i < 0 ? 0 : (i + 1) % OLLIE_SCENES.length;
+  return OLLIE_SCENES[idx].id;
+}
+
 export function isOllieSpriteCostumeId(s: string): s is OllieSpriteCostumeId {
   return OLLIE_SPRITE_COSTUMES.some((c) => c.id === s);
 }

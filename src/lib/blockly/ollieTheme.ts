@@ -85,3 +85,22 @@ export const ollieBlocklyTheme = Theme.defineTheme("ollie", {
     scrollbarOpacity: 0.95,
   },
 });
+
+/** Primary face colour per block `style` — used for category strip icons on blocks. */
+export const blockStyleColourPrimary: Readonly<Record<string, string>> = {
+  scratch_events: S.events.colourPrimary,
+  scratch_motion: S.operators.colourPrimary,
+  scratch_looks: S.looks.colourPrimary,
+  scratch_sound: S.sound.colourPrimary,
+  scratch_control: S.control.colourPrimary,
+  scratch_sensing: S.sensing.colourPrimary,
+  logic_blocks: S.motion.colourPrimary,
+  loop_blocks: S.control.colourPrimary,
+  math_blocks: S.sensing.colourPrimary,
+  text_blocks: S.looks.colourPrimary,
+  list_blocks: S.list.colourPrimary,
+  colour_blocks: S.color.colourPrimary,
+  variable_blocks: S.variables.colourPrimary,
+  variable_dynamic_blocks: S.variables.colourPrimary,
+  procedure_blocks: S.myBlocks.colourPrimary,
+};

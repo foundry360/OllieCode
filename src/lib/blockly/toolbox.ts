@@ -5,6 +5,7 @@ import {
   utils,
 } from "blockly/core";
 import { scratchToolboxCategoryColour } from "@/lib/blockly/ollieTheme";
+import { ollieToolboxCategoryCssconfig } from "@/lib/blockly/toolboxCategoryIconCss";
 
 const B = (type: string) => ({ kind: "block" as const, type });
 
@@ -18,6 +19,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Events",
       colour: scratchToolboxCategoryColour.events,
+      cssconfig: ollieToolboxCategoryCssconfig("events"),
       contents: [
         B("ollie_start"),
         B("ollie_event_key_pressed"),
@@ -32,6 +34,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Motion",
       colour: scratchToolboxCategoryColour.motion,
+      cssconfig: ollieToolboxCategoryCssconfig("motion"),
       contents: [
         B("ollie_move_forward"),
         B("ollie_turn"),
@@ -40,6 +43,9 @@ export const OLLIE_TOOLBOX = {
         B("ollie_point_in_direction"),
         B("ollie_point_towards"),
         B("ollie_go_to_xy"),
+        B("ollie_go_to_target"),
+        B("ollie_change_x_by"),
+        B("ollie_change_y_by"),
         B("ollie_glide_to"),
         B("ollie_if_on_edge_bounce"),
       ],
@@ -48,15 +54,21 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Looks",
       colour: scratchToolboxCategoryColour.looks,
+      cssconfig: ollieToolboxCategoryCssconfig("looks"),
       contents: [
         B("ollie_say"),
         B("ollie_say_value"),
         B("ollie_think"),
         B("ollie_switch_costume"),
         B("ollie_next_costume"),
+        B("ollie_show"),
+        B("ollie_hide"),
         B("ollie_grow_size"),
         B("ollie_shrink_size"),
+        B("ollie_change_size_by"),
+        B("ollie_set_size_to"),
         B("ollie_switch_scene"),
+        B("ollie_next_scene"),
         B("ollie_play_animation"),
       ],
     },
@@ -64,12 +76,14 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Sound",
       colour: scratchToolboxCategoryColour.sound,
+      cssconfig: ollieToolboxCategoryCssconfig("sound"),
       contents: [B("ollie_play_sound"), B("ollie_play_sound_until_done")],
     },
     {
       kind: "category",
       name: "Sensing",
       colour: scratchToolboxCategoryColour.sensing,
+      cssconfig: ollieToolboxCategoryCssconfig("sensing"),
       contents: [
         B("ollie_sensing_touching"),
         B("ollie_sensing_key_pressed"),
@@ -85,6 +99,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Control",
       colour: scratchToolboxCategoryColour.control,
+      cssconfig: ollieToolboxCategoryCssconfig("control"),
       contents: [
         B("ollie_wait"),
         B("ollie_repeat"),
@@ -92,12 +107,14 @@ export const OLLIE_TOOLBOX = {
         B("controls_whileUntil"),
         B("controls_repeat_ext"),
         B("ollie_stop"),
+        B("ollie_delete_this_clone"),
       ],
     },
     {
       kind: "category",
       name: "Logic",
       colour: scratchToolboxCategoryColour.logic,
+      cssconfig: ollieToolboxCategoryCssconfig("logic"),
       contents: [
         B("controls_if"),
         B("controls_ifelse"),
@@ -113,6 +130,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Loops",
       colour: scratchToolboxCategoryColour.loops,
+      cssconfig: ollieToolboxCategoryCssconfig("loops"),
       contents: [
         B("controls_repeat_ext"),
         B("controls_whileUntil"),
@@ -125,6 +143,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Math",
       colour: scratchToolboxCategoryColour.math,
+      cssconfig: ollieToolboxCategoryCssconfig("math"),
       contents: [
         B("math_number"),
         B("math_arithmetic"),
@@ -146,6 +165,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Text",
       colour: scratchToolboxCategoryColour.text,
+      cssconfig: ollieToolboxCategoryCssconfig("text"),
       contents: [
         B("ollie_ask_number"),
         B("text"),
@@ -167,6 +187,7 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Lists",
       colour: scratchToolboxCategoryColour.lists,
+      cssconfig: ollieToolboxCategoryCssconfig("lists"),
       contents: [
         B("lists_create_with"),
         B("lists_repeat"),
@@ -184,24 +205,28 @@ export const OLLIE_TOOLBOX = {
       kind: "category",
       name: "Color",
       colour: scratchToolboxCategoryColour.color,
+      cssconfig: ollieToolboxCategoryCssconfig("color"),
       contents: [B("colour_picker"), B("colour_random"), B("colour_rgb"), B("colour_blend")],
     },
     {
       kind: "category",
       name: "Variables",
       colour: scratchToolboxCategoryColour.variables,
+      cssconfig: ollieToolboxCategoryCssconfig("variables"),
       custom: VARIABLE_CATEGORY_NAME,
     },
     {
       kind: "category",
       name: "Variables (dynamic)",
       colour: scratchToolboxCategoryColour.variablesDynamic,
+      cssconfig: ollieToolboxCategoryCssconfig("variables-dynamic"),
       custom: VARIABLE_DYNAMIC_CATEGORY_NAME,
     },
     {
       kind: "category",
       name: "Functions",
       colour: scratchToolboxCategoryColour.functions,
+      cssconfig: ollieToolboxCategoryCssconfig("functions"),
       custom: PROCEDURE_CATEGORY_NAME,
     },
   ],

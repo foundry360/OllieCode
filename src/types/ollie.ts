@@ -15,6 +15,11 @@ export type StageActor = {
   /** Sprite label shown in the UI — not a person’s real name. */
   label: string;
   costumeId: OllieSpriteCostumeId;
+  /**
+   * When set, the stage draws this image (e.g. Supabase Storage public URL) instead of the
+   * catalog costume art. Cleared when the learner picks a library costume from the picker.
+   */
+  paintedCostumeUrl?: string;
 };
 
 /** Legacy saves used `name` for sprite label; map to {@link StageActor.label}. */
@@ -22,13 +27,19 @@ export function normalizeStageActor(
   raw: { id: string; costumeId: string } & {
     label?: string;
     name?: string;
+    paintedCostumeUrl?: string;
   },
 ): StageActor {
   const label = raw.label ?? raw.name ?? "Sprite";
+  const painted =
+    typeof raw.paintedCostumeUrl === "string" && raw.paintedCostumeUrl.length > 0
+      ? raw.paintedCostumeUrl
+      : undefined;
   return {
     id: raw.id,
     label,
     costumeId: migrateCostumeIdFromStorage(raw.costumeId),
+    ...(painted ? { paintedCostumeUrl: painted } : {}),
   };
 }
 
@@ -49,6 +60,15 @@ export type OllieAction =
    * (center 0,0; +y toward top, −y toward bottom).
    */
   | { type: "goTo"; xPct: number; yPct: number }
+  /**
+   * Scratch-style “go to” menu: random spot on stage, or the current mouse position
+   * (inside the stage area).
+   */
+  | { type: "goToTarget"; target: "random" | "mouse" }
+  /** Add to current Scratch x (−100…100); result clamped to the stage. */
+  | { type: "changeXPctBy"; deltaPct: number }
+  /** Add to current Scratch y (−100…100); result clamped to the stage. */
+  | { type: "changeYPctBy"; deltaPct: number }
   | { type: "glideTo"; secs: number; xPct: number; yPct: number }
   /**
    * Vertical hop: glide up in Scratch y by `peakYPct`, then back (same Scratch x).
@@ -67,7 +87,13 @@ export type OllieAction =
    * Scratch-style size: 100 = default. `deltaPct` is added to the current size % (grow positive, shrink negative).
    */
   | { type: "changeSize"; deltaPct: number }
+  /** Set display size to an absolute percent (Scratch-style; 100 = default). */
+  | { type: "setSizePct"; sizePct: number }
   | { type: "scene"; id: OllieSceneId }
+  /** Advance to the next backdrop in catalog order (wraps). */
+  | { type: "nextScene" }
+  /** Show or hide the sprite on the stage. */
+  | { type: "setVisible"; visible: boolean }
   | { type: "sound"; id: OllieSoundId }
   | { type: "soundWait"; id: OllieSoundId; ms: number }
   | { type: "wait"; ms: number }
@@ -75,6 +101,8 @@ export type OllieAction =
   | { type: "broadcast"; message: string }
   | { type: "broadcastWait"; message: string }
   | { type: "stop"; scope: "all" | "script" }
+  /** Remove this clone from the stage and end this script (no-op on the main sprite). */
+  | { type: "deleteThisClone" }
   /**
    * Scratch-style timer — resets with {@link OllieAction} `resetTimer` or at the start of a run.
    */

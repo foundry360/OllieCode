@@ -29,13 +29,20 @@ import {
   getCostumeById,
   getSceneById,
   migrateCostumeIdFromStorage,
+  nextOllieSceneId,
   nextOllieSpriteCostumeId,
   normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
+import { PAINTED_COSTUME_DISPLAY_WIDTH } from "@/lib/canvas/actorCostumeDisplay";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { playOllieSound, stopOllieSounds } from "@/lib/sounds/ollieSounds";
 
-export type StageActorPaint = { id: string; costumeId: OllieSpriteCostumeId };
+export type StageActorPaint = {
+  id: string;
+  costumeId: OllieSpriteCostumeId;
+  /** Supabase (or other) URL for user-painted costume bitmap. */
+  paintedCostumeUrl?: string;
+};
 
 export type P5CanvasHandle = {
   /** Run green-flag scripts, then keep key / stage / backdrop / broadcast handlers until the next run. */
@@ -77,10 +84,16 @@ type Sprite = {
   y: number;
   heading: number;
   costume: OllieSpriteCostumeId;
+  /** When set, draw this image URL instead of the catalog costume bitmap. */
+  paintedCostumeSrc?: string;
   /** Frame index for image costumes with `spriteSheet` (walk/run advances this). */
   sheetFrame: number;
   /** Scratch-style display size; 100 = default draw scale. */
   sizePct: number;
+  /** When false, sprite (and its bubble) are not drawn. */
+  visible: boolean;
+  /** Runtime clones only — used by “delete this clone”. */
+  isClone?: boolean;
   bubble?: { text: string; kind: "say" | "think"; until: number };
 };
 
@@ -169,6 +182,28 @@ function normHeading(deg: number) {
   return ((deg % 360) + 360) % 360;
 }
 
+/** Lazy-load user-painted costume URLs into the shared stage image map. */
+function ensurePaintedCostumeImage(
+  p: p5Types,
+  url: string | undefined,
+  images: Map<string, p5Types.Image>,
+  pending: Set<string>,
+) {
+  const u = url?.trim();
+  if (!u || images.has(u) || pending.has(u)) return;
+  pending.add(u);
+  p.loadImage(
+    u,
+    (img) => {
+      pending.delete(u);
+      if (img && img.width > 0) images.set(u, img);
+    },
+    () => {
+      pending.delete(u);
+    },
+  );
+}
+
 type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
 
 /**
@@ -180,6 +215,13 @@ function spriteDrawOrient(
   s: Sprite,
   images: Map<string, p5Types.Image>,
 ): SpriteDrawOrient {
+  const painted = s.paintedCostumeSrc?.trim();
+  if (painted) {
+    const img = images.get(painted);
+    if (img && img.width > 0) {
+      return { rotationDeg: normHeading(s.heading), mirrorX: false };
+    }
+  }
   const def =
     getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const img = images.get(def.src);
@@ -331,6 +373,21 @@ function drawSpriteForCostume(
     Math.min(MAX_SPRITE_SIZE_PCT / 100, sizePct / 100),
   );
   p.scale(sc);
+  const painted = sprite.paintedCostumeSrc?.trim();
+  if (painted) {
+    const img = images.get(painted);
+    if (img && img.width > 0) {
+      const w = PAINTED_COSTUME_DISPLAY_WIDTH;
+      const h = w * (img.height / img.width);
+      p.image(img, 0, 0, w, h);
+      return;
+    }
+    p.stroke(255);
+    p.strokeWeight(2);
+    p.fill(132, 193, 38);
+    p.triangle(0, -34, -26, 26, 26, 26);
+    return;
+  }
   const def =
     getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const img = images.get(def.src);
@@ -454,9 +511,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         }
       }
       actors.forEach((a, i) => {
+        const nextPainted = a.paintedCostumeUrl?.trim() || undefined;
         const existing = map.get(a.id);
         if (existing) {
           existing.sizePct = existing.sizePct ?? 100;
+          existing.visible = existing.visible !== false;
+          existing.paintedCostumeSrc = nextPainted;
           if (!pauseActorCostumePropSync) {
             if (existing.costume !== a.costumeId) {
               existing.sheetFrame = 0;
@@ -477,8 +537,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             y: pos.y,
             heading: DEFAULT_SPRITE_HEADING_DEG,
             costume: a.costumeId,
+            paintedCostumeSrc: nextPainted,
             sheetFrame: 0,
             sizePct: 100,
+            visible: true,
           });
         }
       });
@@ -618,6 +680,42 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
+            } else if (a.type === "goToTarget") {
+              if (a.target === "mouse") {
+                const p = p5Ref.current;
+                if (p) {
+                  s.x = Math.max(0, Math.min(cw, p.mouseX));
+                  s.y = Math.max(0, Math.min(ch, p.mouseY));
+                }
+              } else {
+                const xPct = Math.random() * 200 - 100;
+                const yPct = Math.random() * 200 - 100;
+                const pos = scratchStageToPixel(xPct, yPct, cw, ch);
+                s.x = pos.x;
+                s.y = pos.y;
+              }
+            } else if (a.type === "changeXPctBy") {
+              const { xPct, yPct } = pixelToScratchStage(
+                s.x,
+                s.y,
+                cw,
+                ch,
+              );
+              const nx = Math.min(100, Math.max(-100, xPct + a.deltaPct));
+              const pos = scratchStageToPixel(nx, yPct, cw, ch);
+              s.x = pos.x;
+              s.y = pos.y;
+            } else if (a.type === "changeYPctBy") {
+              const { xPct, yPct } = pixelToScratchStage(
+                s.x,
+                s.y,
+                cw,
+                ch,
+              );
+              const ny = Math.min(100, Math.max(-100, yPct + a.deltaPct));
+              const pos = scratchStageToPixel(xPct, ny, cw, ch);
+              s.x = pos.x;
+              s.y = pos.y;
             } else if (a.type === "glideTo") {
               const { x: tx, y: ty } = scratchStageToPixel(
                 a.xPct,
@@ -693,10 +791,18 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 MAX_SPRITE_SIZE_PCT,
                 Math.max(MIN_SPRITE_SIZE_PCT, cur + a.deltaPct),
               );
+            } else if (a.type === "setSizePct") {
+              s.sizePct = Math.min(
+                MAX_SPRITE_SIZE_PCT,
+                Math.max(MIN_SPRITE_SIZE_PCT, a.sizePct),
+              );
+            } else if (a.type === "setVisible") {
+              s.visible = a.visible;
             } else if (a.type === "costume") {
               const id = migrateCostumeIdFromStorage(a.id);
               s.costume = id;
               s.sheetFrame = 0;
+              s.paintedCostumeSrc = undefined;
               onActorCostumeChangeRef.current(spriteId, id);
             } else if (a.type === "nextCostume") {
               const curDef =
@@ -713,6 +819,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 if (nextId !== s.costume) {
                   s.costume = nextId;
                   s.sheetFrame = 0;
+                  s.paintedCostumeSrc = undefined;
                   onActorCostumeChangeRef.current(spriteId, nextId);
                 }
               }
@@ -720,6 +827,14 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               currentSceneRef.current = a.id;
               latestSceneLayerIdsRef.current = [a.id];
               onSceneChangeRef.current(a.id);
+            } else if (a.type === "nextScene") {
+              const layers = latestSceneLayerIdsRef.current;
+              const top =
+                layers[layers.length - 1] ?? currentSceneRef.current;
+              const next = nextOllieSceneId(top);
+              currentSceneRef.current = next;
+              latestSceneLayerIdsRef.current = [next];
+              onSceneChangeRef.current(next);
             } else if (a.type === "sound") {
               playOllieSound(a.id);
             } else if (a.type === "soundWait") {
@@ -820,6 +935,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 return;
               }
               return;
+            } else if (a.type === "deleteThisClone") {
+              if (s.isClone) {
+                spritesByIdRef.current.delete(spriteId);
+                return;
+              }
             }
           }
         }
@@ -891,8 +1011,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           s.heading = DEFAULT_SPRITE_HEADING_DEG;
           s.bubble = undefined;
           s.costume = a.costumeId;
+          s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
           s.sheetFrame = 0;
           s.sizePct = 100;
+          s.visible = true;
         });
       },
     }));
@@ -906,6 +1028,8 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       void import("p5").then((P5) => {
         if (disposed || !containerRef.current) return;
         const p5 = P5.default;
+
+        const paintedLoadPending = new Set<string>();
 
         const sketch = (p: p5Types) => {
           p.setup = async () => {
@@ -929,8 +1053,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 y: pos.y,
                 heading: DEFAULT_SPRITE_HEADING_DEG,
                 costume: a.costumeId,
+                paintedCostumeSrc: a.paintedCostumeUrl?.trim() || undefined,
                 sheetFrame: 0,
                 sizePct: 100,
+                visible: true,
               });
             });
           };
@@ -947,7 +1073,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             const order = actorsRef.current.map((a) => a.id);
             for (const id of order) {
               const s = spritesByIdRef.current.get(id);
-              if (!s) continue;
+              if (!s || s.visible === false) continue;
+              ensurePaintedCostumeImage(
+                p,
+                s.paintedCostumeSrc,
+                stageImages,
+                paintedLoadPending,
+              );
               p.push();
               p.translate(s.x, s.y);
               const o = spriteDrawOrient(s, stageImages);
@@ -959,7 +1091,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             }
             for (const id of order) {
               const s = spritesByIdRef.current.get(id);
-              if (s?.bubble && Date.now() < s.bubble.until) {
+              if (
+                s?.visible !== false &&
+                s?.bubble &&
+                Date.now() < s.bubble.until
+              ) {
                 drawBubble(p, s.x, s.y, s.bubble.text, s.bubble.kind);
               }
             }
@@ -1124,12 +1260,14 @@ function animateMove(
   let frame = 0;
   const sheetDef = getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const sheetCells =
-    sheetDef.kind === "image" && sheetDef.spriteSheet
-      ? Math.max(
-          1,
-          sheetDef.spriteSheet.columns * sheetDef.spriteSheet.rows,
-        )
-      : 0;
+    sprite.paintedCostumeSrc?.trim()
+      ? 0
+      : sheetDef.kind === "image" && sheetDef.spriteSheet
+        ? Math.max(
+            1,
+            sheetDef.spriteSheet.columns * sheetDef.spriteSheet.rows,
+          )
+        : 0;
   return new Promise<void>((resolve) => {
     const step = () => {
       if (shouldCancel?.()) {

@@ -4,7 +4,6 @@
  * Call after initBlocklyLocale(), then registerOllieBlocks(), then inject().
  */
 import { Blocks, common, Events, type Block } from "blockly/core";
-
 /**
  * Stock Blockly assigns `math_change` to `variable_blocks` (orange). In Ollie we
  * surface it in the Math toolbox — use `math_blocks` so it matches other math.

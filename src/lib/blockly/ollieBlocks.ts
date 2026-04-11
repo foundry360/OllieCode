@@ -39,7 +39,8 @@ export function broadcastMessageDropdownOptions(): [string, string][] {
 export function getOllieBlockDefinitions(): Parameters<
   typeof Blockly.common.defineBlocksWithJsonArray
 >[0] {
-  return [
+  const blocks: Parameters<typeof Blockly.common.defineBlocksWithJsonArray>[0] =
+    [
   {
     type: "ollie_start",
     message0: "When %1 clicked",
@@ -287,6 +288,75 @@ export function getOllieBlockDefinitions(): Parameters<
       "Scratch-style position: x is left (−100) to right (+100); y is up (+100) to down (−100). Center is 0, 0.",
   },
   {
+    type: "ollie_go_to_target",
+    message0: "go to %1",
+    args0: [
+      {
+        type: "field_dropdown",
+        name: "TARGET",
+        options: [
+          ["random position", "random"],
+          ["mouse-pointer", "mouse"],
+        ],
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Jump to a random point on the stage, or to where the mouse is (Scratch-style).",
+  },
+  /**
+   * @deprecated Old projects only — use {@link ollie_go_to_target} with “random position”.
+   */
+  {
+    type: "ollie_go_to_random_position",
+    message0: "go to random position",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip: "Use “go to …” in the toolbox instead.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_change_x_by",
+    message0: "change x by %1",
+    args0: [
+      {
+        type: "field_number",
+        name: "DX",
+        value: 10,
+        min: -200,
+        max: 200,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Move horizontally in Scratch coordinates (adds to x: left −100 to right +100).",
+  },
+  {
+    type: "ollie_change_y_by",
+    message0: "change y by %1",
+    args0: [
+      {
+        type: "field_number",
+        name: "DY",
+        value: 10,
+        min: -200,
+        max: 200,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Move vertically in Scratch coordinates (adds to y: up +100 to down −100).",
+  },
+  {
     type: "ollie_glide_to",
     message0: "glide %1 secs to x: %2 y: %3",
     args0: [
@@ -449,6 +519,63 @@ export function getOllieBlockDefinitions(): Parameters<
     helpUrl: "",
   },
   {
+    type: "ollie_show",
+    message0: "show",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Show this sprite on the stage.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_hide",
+    message0: "hide",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Hide this sprite (still runs scripts; use Show to appear again).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_change_size_by",
+    message0: "change size by %1 %",
+    args0: [
+      {
+        type: "field_number",
+        name: "DELTA",
+        value: 10,
+        min: -500,
+        max: 500,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip:
+      "Add to the current size percent (positive grows, negative shrinks; same as Scratch).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_set_size_to",
+    message0: "set size to %1 %",
+    args0: [
+      {
+        type: "field_number",
+        name: "PCT",
+        value: 100,
+        min: 5,
+        max: 500,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Set display size to a percent (100 = normal).",
+    helpUrl: "",
+  },
+  {
     type: "ollie_switch_scene",
     message0: "switch scene to %1",
     args0: [
@@ -462,6 +589,15 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_looks",
     tooltip: "Change the stage scene (same choices as under the canvas).",
+  },
+  {
+    type: "ollie_next_scene",
+    message0: "next scene",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip: "Switch to the next backdrop in the list (wraps to the first).",
+    helpUrl: "",
   },
   {
     type: "ollie_play_animation",
@@ -590,6 +726,15 @@ export function getOllieBlockDefinitions(): Parameters<
       "Stop this script or all running scripts. Blocks below this one do not run.",
   },
   {
+    type: "ollie_delete_this_clone",
+    message0: "delete this clone",
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_control",
+    tooltip:
+      "Remove this clone from the stage (only affects clones). On the main sprite, does nothing.",
+  },
+  {
     type: "ollie_sensing_touching",
     message0: "touching %1 ?",
     args0: [
@@ -698,6 +843,7 @@ export function getOllieBlockDefinitions(): Parameters<
     helpUrl: "",
   },
   ];
+  return blocks;
 }
 
 /** Dynamic menu so new costumes in `OLLIE_SPRITE_COSTUMES` appear without stale JSON options. */

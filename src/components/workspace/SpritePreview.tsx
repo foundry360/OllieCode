@@ -7,6 +7,8 @@ import {
   canvasToPngDataUrl,
 } from "@/lib/canvas/spriteChromaKey";
 import type { CostumeDef } from "@/lib/canvas/stageAssets";
+import { resolveActorCostumeForDisplay } from "@/lib/canvas/actorCostumeDisplay";
+import type { StageActor } from "@/types/ollie";
 
 function useSpritePreviewDisplaySrc(costume: CostumeDef): {
   src: string;
@@ -56,6 +58,40 @@ type SpritePreviewProps = {
    */
   fillCard?: boolean;
 };
+
+/** Catalog costume or user-painted URL — matches stage / P5 display rules. */
+export function StageActorCostumePreview({
+  actor,
+  className = "",
+  fillCard = false,
+}: {
+  actor: StageActor;
+  className?: string;
+  fillCard?: boolean;
+}) {
+  const r = resolveActorCostumeForDisplay(actor);
+  if (r.kind === "painted") {
+    return (
+      <div
+        className={`flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
+      >
+        <img
+          src={r.src}
+          alt=""
+          className={
+            fillCard
+              ? "h-full w-full max-h-full max-w-full object-contain p-2"
+              : "max-h-[96%] max-w-[96%] object-contain"
+          }
+          draggable={false}
+        />
+      </div>
+    );
+  }
+  return (
+    <SpritePreview costume={r.def} fillCard={fillCard} className={className} />
+  );
+}
 
 /** Matches P5 stage sprite styling (see `P5Canvas` drawSpriteForCostume). */
 export function SpritePreview({
