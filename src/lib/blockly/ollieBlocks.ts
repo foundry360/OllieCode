@@ -1,10 +1,8 @@
 import * as Blockly from "blockly/core";
 import { Blocks, FieldDropdown } from "blockly/core";
 import type { Block } from "blockly/core";
-import {
-  costumeDropdownOptions,
-  sceneDropdownOptions,
-} from "@/lib/canvas/stageAssets";
+import { getSwitchCostumeDropdownOptions } from "@/lib/blockly/costumeDropdownRegistry";
+import { sceneDropdownOptions } from "@/lib/canvas/stageAssets";
 import { soundDropdownOptions } from "@/lib/sounds/ollieSounds";
 import { animationDropdownOptions } from "@/lib/canvas/ollieAnimationPresets";
 
@@ -251,6 +249,7 @@ export function getOllieBlockDefinitions(): Parameters<
           ["right", "right"],
           ["down", "down"],
           ["left", "left"],
+          ["mouse-pointer", "mouse"],
         ],
       },
     ],
@@ -258,7 +257,26 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_motion",
     tooltip:
-      "Face the top, right, bottom, or left of the stage (same as point in direction with 0°, 90°, 180°, or −90°).",
+      "Face the top, right, bottom, or left of the stage, or toward the mouse pointer (Scratch-style).",
+  },
+  {
+    type: "ollie_set_point_toward_aim",
+    message0: "set point offset sideways %1 %",
+    args0: [
+      {
+        type: "field_number",
+        name: "OFFPCT",
+        value: 0,
+        min: -100,
+        max: 100,
+        precision: 0,
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Sideways aim as a percent of half the costume width (−100…100): positive = a bit to the right when facing up, negative = left. Scales with the costume and size. Use with “point towards mouse-pointer”.",
   },
   {
     type: "ollie_go_to_xy",
@@ -855,13 +873,15 @@ function registerOllieSwitchCostumeBlock() {
         .appendField("switch costume to")
         .appendField(
           new FieldDropdown(function (this: FieldDropdown) {
-            return costumeDropdownOptions();
+            return getSwitchCostumeDropdownOptions();
           }),
           "COSTUME",
         );
       this.setPreviousStatement(true, null);
       this.setNextStatement(true, null);
-      this.setTooltip("Change how the sprite looks on the stage.");
+      this.setTooltip(
+        "Pick a library costume, or under the line, a My Sprite from this project.",
+      );
     },
   };
 }

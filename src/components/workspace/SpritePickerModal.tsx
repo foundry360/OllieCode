@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import {
+  DEFAULT_COSTUME_ID,
   getCostumeById,
   isSpritePickerEntrySelected,
   OLLIE_SPRITE_PICKER_ENTRIES,
@@ -13,14 +14,40 @@ import type {
   OllieSpriteCostumeId,
   SpriteCategoryId,
 } from "@/lib/canvas/stageAssets";
-import { SpritePreview } from "@/components/workspace/SpritePreview";
+import type { StageActor } from "@/types/ollie";
+import { ImageUp, Plus } from "lucide-react";
+import { SpritePreview, StageActorCostumePreview } from "@/components/workspace/SpritePreview";
+
+/** User-uploaded or painted costumes from the current project (deduped by image URL). */
+export type UserSpritePickerEntry = {
+  paintedCostumeUrl: string;
+  label: string;
+  paintedCostumeStoragePath?: string;
+};
+
+export type SpritePickerSelection =
+  | { kind: "catalog"; costumeId: OllieSpriteCostumeId }
+  | {
+      kind: "user";
+      label: string;
+      paintedCostumeUrl: string;
+      paintedCostumeStoragePath?: string;
+    };
 
 type SpritePickerModalProps = {
   open: boolean;
   onClose: () => void;
-  /** When null (e.g. adding a new sprite), no option is shown as the current selection. */
+  /** When null (e.g. adding a new sprite), no catalog option is shown as the current selection. */
   selectedId: OllieSpriteCostumeId | null;
-  onSelect: (id: OllieSpriteCostumeId) => void;
+  /** When the active sprite uses a user image, highlights the matching tile under All / My Sprites. */
+  selectedPaintedCostumeUrl?: string | null;
+  /** Distinct user-designed sprites (upload / paint) from the workspace. */
+  userSprites: readonly UserSpritePickerEntry[];
+  onSelect: (selection: SpritePickerSelection) => void;
+  /** Opens the upload modal (drag/drop, name); parent sets new vs replace. */
+  onOpenUpload?: () => void;
+  /** Shown as the first tile under “My Sprites” — opens paint / create-sprite flow. */
+  onOpenCreateSprite?: () => void;
 };
 
 type FilterValue = SpriteCategoryId | "all";
@@ -29,7 +56,11 @@ export function SpritePickerModal({
   open,
   onClose,
   selectedId,
+  selectedPaintedCostumeUrl = null,
+  userSprites,
   onSelect,
+  onOpenUpload,
+  onOpenCreateSprite,
 }: SpritePickerModalProps) {
   const titleId = useId();
   const filterRegionId = useId();
@@ -59,11 +90,32 @@ export function SpritePickerModal({
     };
   }, [open]);
 
-  const filteredEntries = useMemo(() => {
+  const catalogEntries = useMemo(() => {
     return OLLIE_SPRITE_PICKER_ENTRIES.filter((entry) =>
       spriteCostumeMatchesCategory(entry.costumeId, categoryFilter),
     );
   }, [categoryFilter]);
+
+  const showUserSprites =
+    categoryFilter === "all" || categoryFilter === "my_sprites";
+
+  const rows = useMemo(() => {
+    const catalog = catalogEntries.map((entry) => ({
+      kind: "catalog" as const,
+      entry,
+    }));
+    if (!showUserSprites) return catalog;
+    const user = userSprites.map((entry) => ({
+      kind: "user" as const,
+      entry,
+    }));
+    return [...catalog, ...user];
+  }, [catalogEntries, showUserSprites, userSprites]);
+
+  const showMySpritesCreateTile =
+    categoryFilter === "my_sprites" && Boolean(onOpenCreateSprite);
+
+  const gridIsEmpty = rows.length === 0 && !showMySpritesCreateTile;
 
   if (!open) return null;
 
@@ -88,15 +140,29 @@ export function SpritePickerModal({
           <h2 id={titleId} className="text-base font-bold text-white sm:text-lg">
             Choose a Sprite
           </h2>
-          <button
-            ref={closeBtnRef}
-            type="button"
-            onClick={onClose}
-            className="flex h-10 w-10 items-center justify-center rounded-lg text-xl leading-none text-white hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+            {onOpenUpload ? (
+              <button
+                type="button"
+                onClick={onOpenUpload}
+                title="Upload your own PNG"
+                className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-sm font-bold text-white hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white sm:px-3"
+              >
+                <ImageUp className="size-4 shrink-0" strokeWidth={2} aria-hidden />
+                <span className="hidden sm:inline">Upload image</span>
+                <span className="sm:hidden">Upload</span>
+              </button>
+            ) : null}
+            <button
+              ref={closeBtnRef}
+              type="button"
+              onClick={onClose}
+              className="flex h-10 w-10 items-center justify-center rounded-lg text-xl leading-none text-white hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
         <div
@@ -126,25 +192,96 @@ export function SpritePickerModal({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
-          {filteredEntries.length === 0 ? (
+          {gridIsEmpty ? (
             <p className="py-8 text-center text-sm text-[#64748b]">
-              No sprites in this category. Try another filter or All.
+              {categoryFilter === "my_sprites"
+                ? "No My Sprites yet — paint a costume, upload a PNG, or pick All to browse the library."
+                : "No sprites in this category. Try another filter or All."}
             </p>
           ) : (
             <div className="grid grid-cols-4 gap-2 sm:grid-cols-8 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
-              {filteredEntries.map((entry) => {
-                const costume = getCostumeById(entry.costumeId);
-                if (!costume) return null;
-                const selected = isSpritePickerEntrySelected(
-                  entry.costumeId,
-                  selectedId,
-                );
+              {showMySpritesCreateTile ? (
+                <button
+                  key="my-sprites-create"
+                  type="button"
+                  aria-label="Create a new sprite in the paint editor"
+                  onClick={() => {
+                    onOpenCreateSprite?.();
+                    onClose();
+                  }}
+                  className="flex min-w-0 flex-col overflow-hidden rounded-lg border-2 border-dashed border-[#cbd5e1] bg-white text-left transition hover:border-[#84c126] hover:bg-[#f7fee7] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                >
+                  <div className="relative flex aspect-square w-full min-w-0 items-center justify-center overflow-hidden rounded-md bg-[#f8fafc] p-1.5">
+                    <Plus
+                      className="size-9 text-[#cbd5e1] sm:size-10"
+                      strokeWidth={2}
+                      aria-hidden
+                    />
+                  </div>
+                  <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#365314] sm:text-[11px]">
+                    Create sprite
+                  </span>
+                </button>
+              ) : null}
+              {rows.map((row) => {
+                if (row.kind === "catalog") {
+                  const { entry } = row;
+                  const costume = getCostumeById(entry.costumeId);
+                  if (!costume) return null;
+                  const selected = isSpritePickerEntrySelected(
+                    entry.costumeId,
+                    selectedId,
+                  );
+                  return (
+                    <button
+                      key={entry.costumeId}
+                      type="button"
+                      onClick={() => {
+                        onSelect({ kind: "catalog", costumeId: entry.costumeId });
+                        onClose();
+                      }}
+                      className={[
+                        "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+                        selected
+                          ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
+                          : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
+                      ].join(" ")}
+                    >
+                      <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
+                        <SpritePreview costume={costume} fillCard />
+                      </div>
+                      <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
+                        {entry.label}
+                      </span>
+                    </button>
+                  );
+                }
+
+                const { entry } = row;
+                const key = `user:${entry.paintedCostumeUrl}`;
+                const previewActor: StageActor = {
+                  id: "sprite-picker-user-preview",
+                  label: entry.label,
+                  costumeId: DEFAULT_COSTUME_ID,
+                  paintedCostumeUrl: entry.paintedCostumeUrl,
+                  ...(entry.paintedCostumeStoragePath
+                    ? { paintedCostumeStoragePath: entry.paintedCostumeStoragePath }
+                    : {}),
+                };
+                const selected =
+                  Boolean(selectedPaintedCostumeUrl) &&
+                  entry.paintedCostumeUrl === selectedPaintedCostumeUrl;
                 return (
                   <button
-                    key={entry.costumeId}
+                    key={key}
                     type="button"
                     onClick={() => {
-                      onSelect(entry.costumeId);
+                      onSelect({
+                        kind: "user",
+                        label: entry.label,
+                        paintedCostumeUrl: entry.paintedCostumeUrl,
+                        paintedCostumeStoragePath: entry.paintedCostumeStoragePath,
+                      });
                       onClose();
                     }}
                     className={[
@@ -155,7 +292,7 @@ export function SpritePickerModal({
                     ].join(" ")}
                   >
                     <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
-                      <SpritePreview costume={costume} fillCard />
+                      <StageActorCostumePreview actor={previewActor} fillCard />
                     </div>
                     <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
                       {entry.label}

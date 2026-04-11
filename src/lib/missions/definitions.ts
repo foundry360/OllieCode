@@ -4,7 +4,7 @@ export type MissionDefinition = {
   id: string;
   title: string;
   description: string;
-  /** True when the learner’s programs satisfy this mission (after a successful Run). */
+  /** True when the learner’s programs satisfy this adventure (after a successful Run). */
   isComplete: (workspacesByActorId: Record<string, Record<string, unknown>>) => boolean;
 };
 
@@ -20,14 +20,14 @@ function hasBlockTypeInAnyWorkspace(
   return false;
 }
 
-/** User-created missions use `?mission=custom-<uuid>` for a distinct save slot per project. */
+/** User-created adventures use `?mission=custom-<uuid>` for a distinct save slot per project. */
 export const CUSTOM_MISSION_PREFIX = "custom-";
 
 export function isCustomMissionId(id: string): boolean {
   return id.startsWith(CUSTOM_MISSION_PREFIX);
 }
 
-/** New blank mission slot — call from the workspace only (uses `crypto.randomUUID`). */
+/** New blank adventure slot — call from the workspace only (uses `crypto.randomUUID`). */
 export function createCustomMissionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return `${CUSTOM_MISSION_PREFIX}${crypto.randomUUID()}`;
@@ -41,7 +41,7 @@ export const MISSIONS: MissionDefinition[] = [
     id: "first-move",
     title: "Robot path",
     description:
-      "Help Ollie follow the path: switch the backdrop to Path if you like, snap a Move block under When Run clicked, tap Run, then save your mission.",
+      "Help Ollie follow the path: switch the backdrop to Path if you like, snap a Move block under When Run clicked, tap Run, then save your adventure.",
     isComplete: (workspaces) =>
       hasBlockTypeInAnyWorkspace(workspaces, "ollie_move_forward"),
   },
@@ -51,8 +51,9 @@ const byId = new Map(MISSIONS.map((m) => [m.id, m]));
 
 const customMissionDefinition = (id: string): MissionDefinition => ({
   id,
-  title: "My mission",
-  description: "Your project. Use Save to give it a name and keep it in your list.",
+  title: "Untitled Adventure",
+  description:
+    "Your project. Use Save to give it a name and keep it in your adventures list.",
   isComplete: () => false,
 });
 

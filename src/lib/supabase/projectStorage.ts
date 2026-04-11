@@ -41,8 +41,15 @@ export async function downloadProjectJson(
   const { data, error } = await supabase.storage.from(BUCKET).download(path);
   if (error) return { data: null, error: new Error(error.message) };
   const text = await data.text();
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return {
+      data: null,
+      error: new Error("Project file is empty"),
+    };
+  }
   try {
-    return { data: JSON.parse(text) as ProjectPayload, error: null };
+    return { data: JSON.parse(trimmed) as ProjectPayload, error: null };
   } catch (e) {
     return { data: null, error: e as Error };
   }

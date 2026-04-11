@@ -2,36 +2,27 @@
  * Loads standard Blockly blocks from `blockly/blocks`, then color blocks from
  * `@blockly/field-colour` (core no longer ships those blocks or `field_colour`).
  * Call after initBlocklyLocale(), then registerOllieBlocks(), then inject().
+ *
+ * Library registration runs once per page: `OllieWorkspace` may remount Blockly when
+ * `blocklyInjectKey` changes; re-importing would redefine blocks and spam console warnings.
  */
-import { Blocks, common, Events, type Block } from "blockly/core";
+import { Blocks, Events, type Block } from "blockly/core";
+
 /**
  * Stock Blockly assigns `math_change` to `variable_blocks` (orange). In Ollie we
  * surface it in the Math toolbox — use `math_blocks` so it matches other math.
+ * Patch `init` instead of re-registering the block (avoids “overwrites previous definition”).
  */
-function redefineMathChangeAsMathStyle(): void {
-  common.defineBlocksWithJsonArray([
-    {
-      type: "math_change",
-      message0: "%{BKY_MATH_CHANGE_TITLE}",
-      args0: [
-        {
-          type: "field_variable",
-          name: "VAR",
-          variable: "%{BKY_MATH_CHANGE_TITLE_ITEM}",
-        },
-        {
-          type: "input_value",
-          name: "DELTA",
-          check: "Number",
-        },
-      ],
-      previousStatement: null,
-      nextStatement: null,
-      style: "math_blocks",
-      helpUrl: "%{BKY_MATH_CHANGE_HELPURL}",
-      extensions: ["math_change_tooltip"],
-    },
-  ]);
+function restyleMathChangeAsMathCategory(): void {
+  const def = Blocks.math_change as
+    | { init?: (this: Block) => void }
+    | undefined;
+  if (!def?.init) return;
+  const origInit = def.init;
+  def.init = function (this: Block) {
+    origInit.call(this);
+    this.setStyle("math_blocks");
+  };
 }
 
 /**
@@ -63,10 +54,17 @@ function ollieRelaxVariablesSetDynamicValueCheck(): void {
   };
 }
 
+let libraryBlocksLoadPromise: Promise<void> | null = null;
+
 export async function loadBlocklyLibraryBlocks(): Promise<void> {
-  await import("blockly/blocks");
-  const { installAllBlocks } = await import("@blockly/field-colour");
-  installAllBlocks();
-  redefineMathChangeAsMathStyle();
-  ollieRelaxVariablesSetDynamicValueCheck();
+  if (!libraryBlocksLoadPromise) {
+    libraryBlocksLoadPromise = (async () => {
+      await import("blockly/blocks");
+      const { installAllBlocks } = await import("@blockly/field-colour");
+      installAllBlocks();
+      restyleMathChangeAsMathCategory();
+      ollieRelaxVariablesSetDynamicValueCheck();
+    })();
+  }
+  await libraryBlocksLoadPromise;
 }

@@ -5,11 +5,35 @@ import {
   type CostumeDef,
 } from "@/lib/canvas/stageAssets";
 
-/** Display width for painted bitmaps on stage (matches typical catalog `width`). */
-export const PAINTED_COSTUME_DISPLAY_WIDTH = 200;
+/** Catalog sheet cells draw at `def.width` (200); square cells are 200×200 in stage space. */
+export const COSTUME_DISPLAY_BOX_PX = 200;
+
+/**
+ * Max edge (contain box) for **painted/uploaded** bitmaps on the P5 stage — below catalog
+ * (200) so user art doesn’t dwarf library sprites.
+ */
+export const PAINTED_COSTUME_FIT_BOX_PX = 96;
+
+/** @deprecated Use {@link COSTUME_DISPLAY_BOX_PX} */
+export const PAINTED_COSTUME_DISPLAY_WIDTH = COSTUME_DISPLAY_BOX_PX;
+
+/**
+ * Scale trimmed painted/uploaded pixels to fit inside a square box (default 200×200 stage units),
+ * same max extent as a typical catalog sheet cell. Uses **contain** so neither side exceeds the
+ * box — avoids huge sprites when alpha-trim is narrow but tall (`h = 200×(sh/sw)` blew up).
+ */
+export function paintedCostumeFitInBox(
+  sourceW: number,
+  sourceH: number,
+  boxPx: number = COSTUME_DISPLAY_BOX_PX,
+): { w: number; h: number } {
+  if (sourceW <= 0 || sourceH <= 0) return { w: boxPx, h: boxPx };
+  const scale = Math.min(boxPx / sourceW, boxPx / sourceH);
+  return { w: sourceW * scale, h: sourceH * scale };
+}
 
 export type ResolvedActorCostume =
-  | { kind: "painted"; src: string; displayWidth: number }
+  | { kind: "painted"; src: string; displayBoxPx: number }
   | { kind: "catalog"; def: CostumeDef };
 
 /**
@@ -21,7 +45,7 @@ export function resolveActorCostumeForDisplay(actor: StageActor): ResolvedActorC
     return {
       kind: "painted",
       src: url,
-      displayWidth: PAINTED_COSTUME_DISPLAY_WIDTH,
+      displayBoxPx: PAINTED_COSTUME_FIT_BOX_PX,
     };
   }
   const def =

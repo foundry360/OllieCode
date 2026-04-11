@@ -36,12 +36,19 @@ import { OLLIE_TOOLBOX_CATEGORY_ICON_CSS } from "@/lib/blockly/toolboxCategoryIc
 import {
   extractSpriteScriptPlan,
   extractSpriteScriptPlanFromSave,
+  spriteScriptPlanHasAnyActions,
 } from "@/lib/blockly/executeBlocks";
+import {
+  PAINTED_COSTUME_FIELD_PREFIX,
+  setSwitchCostumeDropdownExtras,
+} from "@/lib/blockly/costumeDropdownRegistry";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
 import {
+  DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
+  getCostumeById,
   getSceneById,
   normalizeSceneLayerIdsFromPayload,
 } from "@/lib/canvas/stageAssets";
@@ -55,6 +62,7 @@ import { MissionCompleteModal } from "@/components/workspace/MissionCompleteModa
 import { SaveMissionNameModal } from "@/components/workspace/SaveMissionNameModal";
 import { SavedMissionsModal } from "@/components/workspace/SavedMissionsModal";
 import { SpritePickerModal } from "@/components/workspace/SpritePickerModal";
+import { SpriteUploadModal } from "@/components/workspace/SpriteUploadModal";
 import { StageActorCostumePreview } from "@/components/workspace/SpritePreview";
 import { CostumePaintModal } from "@/components/workspace/CostumePaintModal";
 import { resolveActorCostumeForDisplay } from "@/lib/canvas/actorCostumeDisplay";
@@ -72,6 +80,7 @@ import {
   storeMissionProjectSnapshotLocal,
 } from "@/lib/missions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { hydratePaintedCostumeUrls } from "@/lib/supabase/costumePaintStorage";
 import {
   deleteProjectJson,
   downloadProjectJson,
@@ -104,16 +113,18 @@ import {
   Briefcase,
   ChevronDown,
   CopyPlus,
+  ImageUp,
   LogOut,
   Maximize2,
   Minimize2,
   PanelLeftClose,
   Paintbrush,
   PanelLeftOpen,
+  Pencil,
   Play,
   Plus,
   Redo,
-  RotateCcw,
+  RefreshCw,
   Save,
   Settings,
   Square,
@@ -126,6 +137,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 const ICON_SM = "size-5 shrink-0";
 const ICON_STROKE = 2;
+/** Max PNG size for user-uploaded sprite images (same order of magnitude as painted costume uploads). */
+const SPRITE_LABEL_MAX_LEN = 48;
+const CREATE_SPRITE_PAINT_DEFAULT_NAME = "Untitled Sprite";
 
 /** Legacy id from older saves — migrated on load to {@link ACTOR_ROBOT_ID}. */
 const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
@@ -143,7 +157,7 @@ export function OllieWorkspace() {
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
-  /** Mission used when naming a save: URL mission, or the first catalog mission on plain `/workspace`. */
+  /** Adventure used when naming a save: URL param, or the first catalog adventure on plain `/workspace`. */
   const missionForSave = useMemo(
     () => activeMission ?? MISSIONS[0],
     [activeMission],
@@ -165,11 +179,17 @@ export function OllieWorkspace() {
   const [scenePickerOpen, setScenePickerOpen] = useState(false);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [costumePaintOpen, setCostumePaintOpen] = useState(false);
+  /** Header / My Sprites “create” = blank canvas; thumbnail pencil = load existing costume. */
+  const [costumePaintMode, setCostumePaintMode] = useState<"create" | "edit">(
+    "create",
+  );
   /** Set immediately before opening the modal so onSelect is never stale vs. intent. */
   const spritePickerIntentRef = useRef<"costume" | "new">("costume");
-  const [openStagePanel, setOpenStagePanel] = useState<"scene" | "sprite">(
-    "scene",
-  );
+  const spriteUploadModeRef = useRef<"new" | "replace">("replace");
+  const [spriteUploadOpen, setSpriteUploadOpen] = useState(false);
+  const [openStagePanel, setOpenStagePanel] = useState<
+    "scene" | "sprite" | null
+  >(null);
   /** Code / Blockly column: collapsed gives more room to the stage (Blockly stays mounted off-screen). */
   const [codePanelExpanded, setCodePanelExpanded] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<
@@ -188,8 +208,14 @@ export function OllieWorkspace() {
     useState(false);
   const [saveMissionNameLoading, setSaveMissionNameLoading] = useState(false);
   const missionRewardShownRef = useRef(false);
-  /** After choosing a mission in the modal we load immediately; skip the duplicate run when `?mission=` updates. */
+  /** After choosing an adventure in the modal we load immediately; skip the duplicate run when `?mission=` updates. */
   const skipNextMissionUrlEffectRef = useRef(false);
+  /**
+   * Prevents re-running `openMissionWorkspace` when this effect fires again with the same URL
+   * mission + Blockly mount generation (e.g. callback identity churn, Strict Mode, or parent
+   * re-renders). Without this, dev logs show many repeated `GET /workspace?mission=…` lines.
+   */
+  const lastMissionUrlApplyKeyRef = useRef<string | null>(null);
   const [missionsModalOpen, setMissionsModalOpen] = useState(false);
   const [deleteMissionModalOpen, setDeleteMissionModalOpen] = useState(false);
   const [deleteMissionLoading, setDeleteMissionLoading] = useState(false);
@@ -316,11 +342,11 @@ export function OllieWorkspace() {
   }, []);
 
   /**
-   * Stage header: only show a specific mission title when `?mission=` is in the URL.
-   * Plain `/workspace` shows the generic label “Mission”.
+   * Stage header: only show a specific adventure title when `?mission=` is in the URL.
+   * Plain `/workspace` shows the generic label “Adventure”.
    */
   const canvasMissionLabel = useMemo(() => {
-    if (!activeMission) return "Mission";
+    if (!activeMission) return "Adventure";
     const saved = savedMissionEntries.find(
       (e) => e.missionId === activeMission.id,
     );
@@ -357,7 +383,57 @@ export function OllieWorkspace() {
     const r = resolveActorCostumeForDisplay(activeActor);
     return r.kind === "painted" ? "Painted costume" : r.def.label;
   }, [activeActor]);
+
+  /** Deduped painted/upload costumes for the sprite picker “My Sprites” filter. */
+  const userSpritesForPicker = useMemo(() => {
+    const seen = new Set<string>();
+    const out: {
+      paintedCostumeUrl: string;
+      label: string;
+      paintedCostumeStoragePath?: string;
+    }[] = [];
+    for (const a of actors) {
+      const url = a.paintedCostumeUrl?.trim();
+      if (!url) continue;
+      if (seen.has(url)) continue;
+      seen.add(url);
+      out.push({
+        paintedCostumeUrl: url,
+        label: a.label,
+        ...(a.paintedCostumeStoragePath
+          ? { paintedCostumeStoragePath: a.paintedCostumeStoragePath }
+          : {}),
+      });
+    }
+    return out;
+  }, [actors]);
+
+  /** Only user-painted / uploaded art loads for editing (not library costumes). */
+  const paintModalInitialImageSrc = useMemo(() => {
+    return activeActor.paintedCostumeUrl?.trim() || null;
+  }, [activeActor]);
+
   const headerAvatarAsset = getAvatarBySlug(avatarSlug);
+
+  useEffect(() => {
+    setSwitchCostumeDropdownExtras(() => {
+      const seen = new Set<string>();
+      const rows: [string, string][] = [];
+      for (const a of actors) {
+        const url = a.paintedCostumeUrl?.trim();
+        if (!url || seen.has(url)) continue;
+        seen.add(url);
+        const label =
+          a.label.length > 48 ? `${a.label.slice(0, 45)}…` : a.label;
+        rows.push([
+          label,
+          `${PAINTED_COSTUME_FIELD_PREFIX}${encodeURIComponent(url)}`,
+        ]);
+      }
+      return rows;
+    });
+    return () => setSwitchCostumeDropdownExtras(null);
+  }, [actors]);
 
   useEffect(() => {
     const client = getSupabaseBrowserClient();
@@ -581,14 +657,22 @@ export function OllieWorkspace() {
       spriteWorkspacesRef.current[activeActorId] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
       const newId = `actor-${Date.now()}`;
-      setActors((prev) => [
-        ...prev,
-        {
-          id: newId,
-          label: `Sprite ${prev.length + 1}`,
-          costumeId,
-        },
-      ]);
+      setActors((prev) => {
+        const def = getCostumeById(costumeId);
+        const fromCatalog = def?.label?.trim() ?? "";
+        const label =
+          fromCatalog.length > 0
+            ? fromCatalog.slice(0, SPRITE_LABEL_MAX_LEN)
+            : `Sprite ${prev.length + 1}`;
+        return [
+          ...prev,
+          {
+            id: newId,
+            label,
+            costumeId,
+          },
+        ];
+      });
       spriteWorkspacesRef.current[newId] = getEmptyWorkspaceSave();
       setActiveActorId(newId);
       Events.disable();
@@ -600,6 +684,74 @@ export function OllieWorkspace() {
       Events.enable();
     },
     [activeActorId],
+  );
+
+  const addSpriteWithUploadedPng = useCallback(
+    (publicUrl: string, label: string, storagePath?: string) => {
+      const ws = workspaceRef.current;
+      if (!ws) return;
+      spriteWorkspacesRef.current[activeActorId] =
+        serialization.workspaces.save(ws) as Record<string, unknown>;
+      const newId = `actor-${Date.now()}`;
+      setActors((prev) => {
+        const trimmed = label.trim().slice(0, SPRITE_LABEL_MAX_LEN);
+        const finalLabel =
+          trimmed.length > 0 ? trimmed : `Sprite ${prev.length + 1}`;
+        return [
+          ...prev,
+          {
+            id: newId,
+            label: finalLabel,
+            costumeId: DEFAULT_COSTUME_ID,
+            paintedCostumeUrl: publicUrl,
+            ...(storagePath ? { paintedCostumeStoragePath: storagePath } : {}),
+          },
+        ];
+      });
+      spriteWorkspacesRef.current[newId] = getEmptyWorkspaceSave();
+      setActiveActorId(newId);
+      Events.disable();
+      ws.clear();
+      Xml.clearWorkspaceAndLoadFromXml(
+        utils.xml.textToDom(EMPTY_START_WORKSPACE_XML),
+        ws,
+      );
+      Events.enable();
+    },
+    [activeActorId],
+  );
+
+  const handleSpriteUploadSuccess = useCallback(
+    ({
+      publicUrl,
+      displayName,
+      storagePath,
+    }: {
+      publicUrl: string;
+      displayName: string;
+      storagePath: string;
+    }) => {
+      const mode = spriteUploadModeRef.current;
+      if (mode === "new") {
+        addSpriteWithUploadedPng(publicUrl, displayName, storagePath);
+        setStatus("New sprite added!");
+      } else {
+        setActors((prev) =>
+          prev.map((a) =>
+            a.id === activeActorId
+              ? {
+                  ...a,
+                  paintedCostumeUrl: publicUrl,
+                  paintedCostumeStoragePath: storagePath,
+                }
+              : a,
+          ),
+        );
+        setStatus("Sprite image updated!");
+      }
+      setTimeout(() => setStatus(""), 2500);
+    },
+    [activeActorId, addSpriteWithUploadedPng],
   );
 
   const handleStop = useCallback(() => {
@@ -640,9 +792,29 @@ export function OllieWorkspace() {
         return { spriteId: actor.id, plan };
       });
       p5.resetSprite();
+      const hasGreenFlagActions = bundles.some((b) =>
+        b.plan.runScripts.some((chain) => chain.length > 0),
+      );
+      const hasAnyCompiledScripts = bundles.some((b) =>
+        spriteScriptPlanHasAnyActions(b.plan),
+      );
       const { aborted } = await p5.runProjectPlans(bundles);
-      setStatus(aborted ? "Stopped" : "Done!");
-      setTimeout(() => setStatus(""), 2000);
+      const doneMsg = aborted
+        ? "Stopped"
+        : !hasAnyCompiledScripts
+          ? "Nothing to run — connect blocks under “When Run clicked” or another event hat."
+          : !hasGreenFlagActions
+            ? "Ready! Press keys or click the stage — nothing is under “When Run clicked” yet."
+            : "That Run script finished — you can still use keys or the stage.";
+      setStatus(doneMsg);
+      setTimeout(
+        () => setStatus(""),
+        doneMsg.includes("Nothing to run") ||
+          doneMsg.includes("Ready!") ||
+          doneMsg.includes("That Run script")
+          ? 5500
+          : 2000,
+      );
 
       if (
         !aborted &&
@@ -678,11 +850,12 @@ export function OllieWorkspace() {
     p5Ref.current?.resetSprite();
   }, []);
 
-  const handleReset = useCallback(() => {
-    resetWorkspaceToDefaultStarter();
-    setStatus("Workspace reset");
-    setTimeout(() => setStatus(""), 1500);
-  }, [resetWorkspaceToDefaultStarter]);
+  const handleRefresh = useCallback(() => {
+    p5Ref.current?.resetRunToBeginning();
+    setProgramRunning(false);
+    setStatus("Run refreshed — stage is back to the start.");
+    setTimeout(() => setStatus(""), 2500);
+  }, []);
 
   const handleUndo = useCallback(() => {
     workspaceRef.current?.undo(false);
@@ -806,7 +979,7 @@ export function OllieWorkspace() {
     }
     if (error) return `Save failed: ${error.message}`;
     if (missionDbError) {
-      return `Saved to cloud! (Mission list not updated in database: ${missionDbError.message})`;
+      return `Saved to cloud! (Adventures list not updated in database: ${missionDbError.message})`;
     }
     return "Saved to cloud!";
   },
@@ -835,7 +1008,7 @@ export function OllieWorkspace() {
     [missionForSave, saveProject],
   );
 
-  /** Reuse the last name for this mission; only prompt when none exists yet. */
+  /** Reuse the last name for this adventure; only prompt when none exists yet. */
   const saveMissionWithExistingNameOrPrompt = useCallback(() => {
     if (!missionForSave) return;
     const existing = getSavedMissionProgress().find(
@@ -859,10 +1032,10 @@ export function OllieWorkspace() {
       (e) => e.missionId === missionId,
     );
     const defaultName =
-      entry?.displayName?.trim() || meta?.title || "Mission";
+      entry?.displayName?.trim() || meta?.title || "Adventure";
     setRenameMissionContext({
       missionId,
-      missionTitle: meta?.title ?? "Mission",
+      missionTitle: meta?.title ?? "Adventure",
       defaultName,
     });
     setRenameMissionModalOpen(true);
@@ -896,7 +1069,7 @@ export function OllieWorkspace() {
         setSavedMissionEntries(getSavedMissionProgress());
         setRenameMissionModalOpen(false);
         setRenameMissionContext(null);
-        setStatus("Mission renamed!");
+        setStatus("Adventure renamed!");
         setTimeout(() => setStatus(""), 2500);
       } finally {
         setRenameMissionLoading(false);
@@ -975,8 +1148,24 @@ export function OllieWorkspace() {
         spriteWorkspacesRef.current[firstId] ?? getEmptyWorkspaceSave();
       Events.disable();
       ws.clear();
-      serialization.workspaces.load(blob, ws, { recordUndo: false });
+      try {
+        serialization.workspaces.load(blob, ws, { recordUndo: false });
+      } catch {
+        Events.enable();
+        resetWorkspaceToDefaultStarter();
+        return;
+      }
       Events.enable();
+      void (async () => {
+        const sb = getSupabaseBrowserClient();
+        if (!sb) return;
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        if (!session?.user) return;
+        const hydrated = await hydratePaintedCostumeUrls(sb, migratedActors);
+        setActors(hydrated);
+      })();
     } else {
       setActors(DEFAULT_STAGE_ACTORS);
       setActiveActorId(ACTOR_ROBOT_ID);
@@ -988,7 +1177,15 @@ export function OllieWorkspace() {
       );
       Events.disable();
       ws.clear();
-      serialization.workspaces.load(payload.workspace, ws, { recordUndo: false });
+      try {
+        serialization.workspaces.load(payload.workspace, ws, {
+          recordUndo: false,
+        });
+      } catch {
+        Events.enable();
+        resetWorkspaceToDefaultStarter();
+        return;
+      }
       Events.enable();
       spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
@@ -996,10 +1193,10 @@ export function OllieWorkspace() {
     mergeMissionProgressIntoStorage(payload.savedMissionProgress);
     setSavedMissionEntries(getSavedMissionProgress());
     p5Ref.current?.resetSprite();
-  }, []);
+  }, [resetWorkspaceToDefaultStarter]);
 
   /**
-   * Load a mission workspace: cloud JSON → local snapshot → default starter blocks.
+   * Load an adventure workspace: cloud JSON → local snapshot → default starter blocks.
    * Call with an explicit id from the Adventures modal so we don’t rely on `useSearchParams` updating first.
    */
   const openMissionWorkspace = useCallback(
@@ -1053,22 +1250,32 @@ export function OllieWorkspace() {
         if (w) svgResize(w);
       });
       setStatus(
-        `Mission “${meta.title}” — start here, or open Save after you sign in to sync from the cloud.`,
+        `Adventure “${meta.title}” — start here, or open Save after you sign in to sync from the cloud.`,
       );
       setTimeout(() => setStatus(""), 4000);
     },
     [applyProjectPayload, resetWorkspaceToDefaultStarter],
   );
 
-  /** Open mission from URL (direct links / refresh) and when Blockly becomes ready after navigation. */
+  /** Open adventure from URL (direct links / refresh) and when Blockly becomes ready after navigation. */
   useEffect(() => {
     if (!blocklyMounted || !workspaceRef.current) return;
-    if (!missionIdParam || !getMissionById(missionIdParam)) return;
+    if (!missionIdParam || !getMissionById(missionIdParam)) {
+      lastMissionUrlApplyKeyRef.current = null;
+      return;
+    }
 
     if (skipNextMissionUrlEffectRef.current) {
       skipNextMissionUrlEffectRef.current = false;
+      lastMissionUrlApplyKeyRef.current = `${missionIdParam}:${blocklyInjectKey}`;
       return;
     }
+
+    const applyKey = `${missionIdParam}:${blocklyInjectKey}`;
+    if (lastMissionUrlApplyKeyRef.current === applyKey) {
+      return;
+    }
+    lastMissionUrlApplyKeyRef.current = applyKey;
 
     void openMissionWorkspace(missionIdParam);
   }, [
@@ -1134,7 +1341,7 @@ export function OllieWorkspace() {
     const q = new URLSearchParams();
     q.set("mission", newId);
     router.replace(`/workspace?${q.toString()}`, { scroll: false });
-    setStatus("New mission — use Save to name it.");
+    setStatus("New adventure — use Save to name it.");
     setTimeout(() => setStatus(""), 3500);
   }, [resetWorkspaceToDefaultStarter, router]);
 
@@ -1179,7 +1386,7 @@ export function OllieWorkspace() {
         );
         setTimeout(() => setStatus(""), 5000);
       } else {
-        setStatus("Mission deleted — fresh canvas!");
+        setStatus("Adventure deleted — fresh canvas!");
         setTimeout(() => setStatus(""), 3000);
       }
     } finally {
@@ -1194,13 +1401,13 @@ export function OllieWorkspace() {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       const raw = localStorage.getItem("ollie-project-local");
-      if (!raw) {
+      if (raw == null || !raw.trim()) {
         setStatus("No local project");
         setTimeout(() => setStatus(""), 2000);
         return;
       }
       try {
-        const payload = JSON.parse(raw) as ProjectPayload;
+        const payload = JSON.parse(raw.trim()) as ProjectPayload;
         applyProjectPayload(payload);
         setStatus("Loaded from browser");
       } catch {
@@ -1215,9 +1422,9 @@ export function OllieWorkspace() {
     } = await supabase.auth.getUser();
     if (!user) {
       const raw = localStorage.getItem("ollie-project-local");
-      if (raw) {
+      if (raw?.trim()) {
         try {
-          const payload = JSON.parse(raw) as ProjectPayload;
+          const payload = JSON.parse(raw.trim()) as ProjectPayload;
           applyProjectPayload(payload);
           setStatus("Loaded from browser");
         } catch {
@@ -1325,11 +1532,11 @@ export function OllieWorkspace() {
             />
           </ToolbarIconButton>
           <ToolbarIconButton
-            onClick={handleReset}
-            title="Reset"
-            aria-label="Reset"
+            onClick={handleRefresh}
+            title="Refresh"
+            aria-label="Refresh"
           >
-            <RotateCcw
+            <RefreshCw
               className={ICON_SM}
               strokeWidth={ICON_STROKE}
               aria-hidden
@@ -1358,11 +1565,28 @@ export function OllieWorkspace() {
             />
           </ToolbarIconButton>
           <ToolbarIconButton
-            onClick={() => setCostumePaintOpen(true)}
-            title="Create Sprite"
-            aria-label="Create sprite for selected sprite"
+            onClick={() => {
+              setCostumePaintMode("create");
+              setCostumePaintOpen(true);
+            }}
+            title="Create sprite"
+            aria-label="Create a new costume for the selected sprite"
           >
             <Paintbrush
+              className={ICON_SM}
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
+          </ToolbarIconButton>
+          <ToolbarIconButton
+            onClick={() => {
+              spriteUploadModeRef.current = "replace";
+              setSpriteUploadOpen(true);
+            }}
+            title="Upload sprite PNG"
+            aria-label="Upload a PNG image for the selected sprite"
+          >
+            <ImageUp
               className={ICON_SM}
               strokeWidth={ICON_STROKE}
               aria-hidden
@@ -1396,8 +1620,8 @@ export function OllieWorkspace() {
           </ToolbarIconButton>
           <ToolbarIconButton
             onClick={handleNewMission}
-            title="New mission"
-            aria-label="New mission"
+            title="New adventure"
+            aria-label="New adventure"
           >
             <Plus
               className={ICON_SM}
@@ -1410,13 +1634,13 @@ export function OllieWorkspace() {
             onClick={() => setDeleteMissionModalOpen(true)}
             title={
               canDeleteCurrentMission
-                ? "Delete mission"
-                : "Pick a mission first"
+                ? "Delete adventure"
+                : "Pick an adventure first"
             }
             aria-label={
               canDeleteCurrentMission
-                ? "Delete mission"
-                : "Delete mission (pick a mission first)"
+                ? "Delete adventure"
+                : "Delete adventure (pick an adventure first)"
             }
           >
             <Trash2
@@ -1845,15 +2069,38 @@ export function OllieWorkspace() {
                   id: a.id,
                   costumeId: a.costumeId,
                   paintedCostumeUrl: a.paintedCostumeUrl,
+                  pointTowardsAimOrigin: a.pointTowardsAimOrigin,
+                  pointTowardsForwardPx: a.pointTowardsForwardPx,
+                  pointTowardsLateralPx: a.pointTowardsLateralPx,
+                  pointTowardsLateralPct: a.pointTowardsLateralPct,
                 }))}
                 pauseActorCostumePropSync={programRunning}
                 onSceneChange={(id) => setStageSceneLayers([id])}
-                onActorCostumeChange={(actorId, costumeId) =>
+                onActorCostumeChange={(actorId, costumeId, paintedUrl) =>
                   setActors((prev) =>
                     prev.map((a) =>
                       a.id === actorId
-                        ? { ...a, costumeId, paintedCostumeUrl: undefined }
+                        ? {
+                            ...a,
+                            costumeId,
+                            ...(paintedUrl !== undefined
+                              ? {
+                                  paintedCostumeUrl: paintedUrl,
+                                  paintedCostumeStoragePath: undefined,
+                                }
+                              : {
+                                  paintedCostumeUrl: undefined,
+                                  paintedCostumeStoragePath: undefined,
+                                }),
+                          }
                         : a,
+                    ),
+                  )
+                }
+                onActorPointTowardAimChange={(actorId, patch) =>
+                  setActors((prev) =>
+                    prev.map((a) =>
+                      a.id === actorId ? { ...a, ...patch } : a,
                     ),
                   )
                 }
@@ -1868,7 +2115,9 @@ export function OllieWorkspace() {
                     id="ollie-stage-accordion-scene"
                     aria-expanded={openStagePanel === "scene"}
                     aria-controls="ollie-stage-accordion-scene-panel"
-                    onClick={() => setOpenStagePanel("scene")}
+                    onClick={() =>
+                      setOpenStagePanel((p) => (p === "scene" ? null : "scene"))
+                    }
                     className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
                   >
                     Scenes
@@ -1952,7 +2201,9 @@ export function OllieWorkspace() {
                     id="ollie-stage-accordion-sprite"
                     aria-expanded={openStagePanel === "sprite"}
                     aria-controls="ollie-stage-accordion-sprite-panel"
-                    onClick={() => setOpenStagePanel("sprite")}
+                    onClick={() =>
+                      setOpenStagePanel((p) => (p === "sprite" ? null : "sprite"))
+                    }
                     className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
                   >
                     Sprites
@@ -1969,9 +2220,9 @@ export function OllieWorkspace() {
                       id="ollie-stage-accordion-sprite-panel"
                       role="region"
                       aria-labelledby="ollie-stage-accordion-sprite"
-                      className="flex flex-col gap-2 px-2 pb-3 pt-0"
+                      className="flex flex-col gap-2 px-1.5 pb-2 pt-0"
                     >
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex flex-wrap gap-1.5">
                         {actors.map((actor) => {
                           const sel = actor.id === activeActorId;
                           const canRemoveSprite = actors.length > 1;
@@ -1979,13 +2230,13 @@ export function OllieWorkspace() {
                             <div
                               key={actor.id}
                               className={[
-                                "grid h-24 w-24 shrink-0 grid-rows-[1fr_auto] gap-1 rounded-xl border-2 p-2 text-[11px] font-semibold leading-tight",
+                                "grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border p-px text-[10px] font-semibold leading-none",
                                 sel
                                   ? "border-[#84c126] bg-[#f7fee7]"
                                   : "border-[#e5e7eb] bg-white",
                               ].join(" ")}
                             >
-                              <div className="group relative min-h-0 w-full overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9]">
+                              <div className="group relative min-h-0 min-w-0 w-full aspect-square overflow-hidden rounded-[3px] bg-[#f1f5f9]">
                                 <button
                                   type="button"
                                   tabIndex={-1}
@@ -1993,39 +2244,72 @@ export function OllieWorkspace() {
                                   className="absolute inset-0 z-0 flex items-center justify-center focus:outline-none"
                                   aria-hidden
                                 />
-                                <div className="pointer-events-none relative h-full w-full min-h-0 p-1">
+                                <div className="pointer-events-none absolute inset-0">
                                   <StageActorCostumePreview
                                     actor={actor}
                                     fillCard
                                   />
                                 </div>
-                                {canRemoveSprite ? (
-                                  <button
-                                    type="button"
-                                    aria-label={`Remove ${actor.label}`}
-                                    title="Remove sprite"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDeleteConfirm({
-                                        type: "sprite",
-                                        actorId: actor.id,
-                                        label: actor.label,
-                                      });
-                                    }}
-                                    className="absolute right-0 top-0 z-10 flex size-6 items-center justify-center rounded-bl-md rounded-tr-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
-                                  >
-                                    <Trash2
-                                      className="size-3.5 shrink-0"
-                                      strokeWidth={ICON_STROKE}
-                                      aria-hidden
-                                    />
-                                  </button>
+                                {canRemoveSprite ||
+                                actor.paintedCostumeUrl?.trim() ? (
+                                  <div className="absolute right-0 top-0 z-10 flex flex-col gap-px opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100">
+                                    {canRemoveSprite ? (
+                                      <button
+                                        type="button"
+                                        aria-label={`Remove ${actor.label}`}
+                                        title="Remove sprite"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setDeleteConfirm({
+                                            type: "sprite",
+                                            actorId: actor.id,
+                                            label: actor.label,
+                                          });
+                                        }}
+                                        className="flex size-6 items-center justify-center rounded-bl-md rounded-tr-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:opacity-100"
+                                      >
+                                        <Trash2
+                                          className="size-3.5 shrink-0"
+                                          strokeWidth={ICON_STROKE}
+                                          aria-hidden
+                                        />
+                                      </button>
+                                    ) : null}
+                                    {actor.paintedCostumeUrl?.trim() ? (
+                                      <button
+                                        type="button"
+                                        aria-label={`Edit ${actor.label} costume`}
+                                        title="Edit costume"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          e.preventDefault();
+                                          if (actor.id !== activeActorId) {
+                                            switchActor(actor.id);
+                                          }
+                                          setCostumePaintMode("edit");
+                                          setCostumePaintOpen(true);
+                                        }}
+                                        className={[
+                                          "flex size-6 items-center justify-center border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-[#84c126] hover:bg-[#f7fee7] hover:text-[#365314] focus:outline-none focus-visible:opacity-100",
+                                          canRemoveSprite
+                                            ? "rounded-br-md rounded-bl-md"
+                                            : "rounded-bl-md rounded-tr-md",
+                                        ].join(" ")}
+                                      >
+                                        <Pencil
+                                          className="size-3.5 shrink-0"
+                                          strokeWidth={ICON_STROKE}
+                                          aria-hidden
+                                        />
+                                      </button>
+                                    ) : null}
+                                  </div>
                                 ) : null}
                               </div>
                               <button
                                 type="button"
                                 onClick={() => switchActor(actor.id)}
-                                className="w-full truncate px-0.5 text-center text-[11px] font-semibold leading-snug text-[#111827] transition hover:text-[#365314] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-1"
+                                className="w-full truncate px-0 py-px text-center text-[10px] font-semibold text-[#111827] transition hover:text-[#365314] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-1"
                                 title={`${actor.label} — tap to edit code`}
                               >
                                 {actor.label}
@@ -2041,7 +2325,7 @@ export function OllieWorkspace() {
                             spritePickerIntentRef.current = "costume";
                             setSpritePickerOpen(true);
                           }}
-                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] p-1 shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] p-0.5 shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
                           title={`${activeCostumeLabel} — tap to change costume`}
                           aria-label="Change costume for selected sprite"
                         >
@@ -2088,6 +2372,12 @@ export function OllieWorkspace() {
           setScenePickerOpen(false);
         }}
       />
+      <SpriteUploadModal
+        open={spriteUploadOpen}
+        onClose={() => setSpriteUploadOpen(false)}
+        mode={spriteUploadModeRef.current}
+        onSuccess={handleSpriteUploadSuccess}
+      />
       <SpritePickerModal
         open={spritePickerOpen}
         onClose={() => setSpritePickerOpen(false)}
@@ -2096,30 +2386,86 @@ export function OllieWorkspace() {
             ? activeActor.costumeId
             : null
         }
-        onSelect={(id) => {
-          if (spritePickerIntentRef.current === "new") {
-            addSpriteWithCostume(id);
+        selectedPaintedCostumeUrl={
+          spritePickerIntentRef.current === "costume"
+            ? activeActor.paintedCostumeUrl?.trim() || null
+            : null
+        }
+        userSprites={userSpritesForPicker}
+        onOpenUpload={() => {
+          spriteUploadModeRef.current =
+            spritePickerIntentRef.current === "new" ? "new" : "replace";
+          setSpriteUploadOpen(true);
+        }}
+        onOpenCreateSprite={() => {
+          setCostumePaintMode("create");
+          setCostumePaintOpen(true);
+        }}
+        onSelect={(pick) => {
+          if (pick.kind === "catalog") {
+            const id = pick.costumeId;
+            if (spritePickerIntentRef.current === "new") {
+              addSpriteWithCostume(id);
+            } else {
+              setActors((prev) =>
+                prev.map((a) =>
+                  a.id === activeActorId
+                    ? {
+                        ...a,
+                        costumeId: id,
+                        paintedCostumeUrl: undefined,
+                        paintedCostumeStoragePath: undefined,
+                      }
+                    : a,
+                ),
+              );
+            }
           } else {
-            setActors((prev) =>
-              prev.map((a) =>
-                a.id === activeActorId
-                  ? { ...a, costumeId: id, paintedCostumeUrl: undefined }
-                  : a,
-              ),
-            );
+            if (spritePickerIntentRef.current === "new") {
+              addSpriteWithUploadedPng(
+                pick.paintedCostumeUrl,
+                pick.label,
+                pick.paintedCostumeStoragePath,
+              );
+            } else {
+              setActors((prev) =>
+                prev.map((a) =>
+                  a.id === activeActorId
+                    ? {
+                        ...a,
+                        costumeId: DEFAULT_COSTUME_ID,
+                        paintedCostumeUrl: pick.paintedCostumeUrl,
+                        paintedCostumeStoragePath: pick.paintedCostumeStoragePath,
+                      }
+                    : a,
+                ),
+              );
+            }
           }
           setSpritePickerOpen(false);
         }}
       />
       <CostumePaintModal
         open={costumePaintOpen}
-        initialSpriteLabel={activeActor.label}
+        initialSpriteLabel={
+          costumePaintMode === "create"
+            ? CREATE_SPRITE_PAINT_DEFAULT_NAME
+            : activeActor.label
+        }
+        initialImageSrc={
+          costumePaintMode === "create" ? null : paintModalInitialImageSrc
+        }
         onClose={() => setCostumePaintOpen(false)}
-        onSaved={({ publicUrl, label }) => {
+        onSaved={({ publicUrl, storagePath, label }) => {
           setActors((prev) =>
             prev.map((a) =>
               a.id === activeActorId
-                ? { ...a, paintedCostumeUrl: publicUrl, label }
+                ? {
+                    ...a,
+                    paintedCostumeUrl: publicUrl,
+                    paintedCostumeStoragePath: storagePath,
+                    label,
+                  }
                 : a,
             ),
           );
@@ -2127,7 +2473,7 @@ export function OllieWorkspace() {
       />
       <MissionCompleteModal
         open={missionCompleteOpen && !!activeMission}
-        missionTitle={activeMission?.title ?? "Mission"}
+        missionTitle={activeMission?.title ?? "Adventure"}
         saving={false}
         onDismiss={() => setMissionCompleteOpen(false)}
         onSave={() => {
@@ -2137,7 +2483,7 @@ export function OllieWorkspace() {
       />
       <SaveMissionNameModal
         open={saveMissionNameModalOpen && !!missionForSave}
-        missionTitle={missionForSave?.title ?? "Mission"}
+        missionTitle={missionForSave?.title ?? "Adventure"}
         defaultName={defaultMissionSaveName}
         saving={saveMissionNameLoading}
         onCancel={() => setSaveMissionNameModalOpen(false)}
@@ -2146,7 +2492,7 @@ export function OllieWorkspace() {
       <SaveMissionNameModal
         open={renameMissionModalOpen && !!renameMissionContext}
         variant="rename"
-        missionTitle={renameMissionContext?.missionTitle ?? "Mission"}
+        missionTitle={renameMissionContext?.missionTitle ?? "Adventure"}
         defaultName={renameMissionContext?.defaultName ?? ""}
         saving={renameMissionLoading}
         onCancel={() => {

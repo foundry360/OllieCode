@@ -65,7 +65,7 @@ export function DeleteMissionModal({
           id={titleId}
           className="font-display mt-2 text-center text-xl font-bold text-[#1f2937] sm:text-2xl"
         >
-          Sweep this mission away?
+          Sweep this adventure away?
         </h2>
         <p className="mt-4 text-center text-sm leading-relaxed text-[#4b5563] sm:text-base">
           If you tap <strong className="text-[#374151]">Delete</strong>, we’ll
@@ -73,7 +73,7 @@ export function DeleteMissionModal({
           <span className="font-semibold text-[#365314]">
             &ldquo;{missionLabel}&rdquo;
           </span>{" "}
-          and say goodbye for good — it won’t be in your mission list anymore,
+          and say goodbye for good — it won’t be in your adventures list anymore,
           and we can’t magic it back. Your coding space will get a shiny fresh
           start!
         </p>

@@ -78,13 +78,14 @@ export function SaveMissionNameModal({
           id={titleId}
           className="font-display text-lg font-bold text-[#111827]"
         >
-          {variant === "rename" ? "Rename your mission" : "Name your mission save"}
+          {variant === "rename" ? "Rename your adventure" : "Name your adventure save"}
         </h2>
         <p className="mt-1 text-sm text-[#6b7280]">
-          Mission: <span className="font-semibold text-[#374151]">{missionTitle}</span>
+          Adventure:{" "}
+          <span className="font-semibold text-[#374151]">{missionTitle}</span>
         </p>
         <label htmlFor={inputId} className="mt-4 block text-sm font-semibold text-[#374151]">
-          {variant === "rename" ? "Mission name" : "Save as"}
+          {variant === "rename" ? "Adventure name" : "Save as"}
         </label>
         <input
           id={inputId}

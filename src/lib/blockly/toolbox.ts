@@ -42,6 +42,7 @@ export const OLLIE_TOOLBOX = {
         B("ollie_turn_right"),
         B("ollie_point_in_direction"),
         B("ollie_point_towards"),
+        B("ollie_set_point_toward_aim"),
         B("ollie_go_to_xy"),
         B("ollie_go_to_target"),
         B("ollie_change_x_by"),

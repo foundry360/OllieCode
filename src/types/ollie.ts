@@ -9,6 +9,8 @@ import {
 } from "@/lib/canvas/stageAssets";
 import type { OllieSoundId } from "@/lib/sounds/ollieSounds";
 
+export type PointTowardsAimOrigin = "catalog" | "center" | "custom";
+
 /** One character on stage — each has its own Blockly script (like Scratch sprites). */
 export type StageActor = {
   id: string;
@@ -16,10 +18,31 @@ export type StageActor = {
   label: string;
   costumeId: OllieSpriteCostumeId;
   /**
-   * When set, the stage draws this image (e.g. Supabase Storage public URL) instead of the
+   * When set, the stage draws this image (often a Supabase signed URL) instead of the
    * catalog costume art. Cleared when the learner picks a library costume from the picker.
    */
   paintedCostumeUrl?: string;
+  /**
+   * `projects` bucket path for the painted PNG (e.g. `userId/painted-costumes/uuid.png`).
+   * Used to mint fresh signed URLs after load — private buckets do not serve `getPublicUrl` without auth.
+   */
+  paintedCostumeStoragePath?: string;
+  /**
+   * Where “point toward mouse-pointer” measures its angle from (sprite position is costume center).
+   * - Omitted / `center` (default): aim line from costume center — pivot tracks the pointer.
+   * - `catalog`: estimate “nose” forward from catalog costume width / painted fit (barrel, not center).
+   * - `custom`: use {@link pointTowardsForwardPx}, {@link pointTowardsLateralPx}, or {@link pointTowardsLateralPct}.
+   */
+  pointTowardsAimOrigin?: PointTowardsAimOrigin;
+  /** Pixels along Scratch forward (0° = up) from center — used when `pointTowardsAimOrigin === "custom"`. */
+  pointTowardsForwardPx?: number;
+  /** Pixels perpendicular: positive = character’s right when facing the pointer — `custom` only. */
+  pointTowardsLateralPx?: number;
+  /**
+   * Sideways aim as % of half costume width (−100…100); scales with costume and size %.
+   * When set, overrides {@link pointTowardsLateralPx} for the block-driven custom aim.
+   */
+  pointTowardsLateralPct?: number;
 };
 
 /** Legacy saves used `name` for sprite label; map to {@link StageActor.label}. */
@@ -28,6 +51,11 @@ export function normalizeStageActor(
     label?: string;
     name?: string;
     paintedCostumeUrl?: string;
+    paintedCostumeStoragePath?: string;
+    pointTowardsAimOrigin?: PointTowardsAimOrigin;
+    pointTowardsForwardPx?: number;
+    pointTowardsLateralPx?: number;
+    pointTowardsLateralPct?: number;
   },
 ): StageActor {
   const label = raw.label ?? raw.name ?? "Sprite";
@@ -35,11 +63,33 @@ export function normalizeStageActor(
     typeof raw.paintedCostumeUrl === "string" && raw.paintedCostumeUrl.length > 0
       ? raw.paintedCostumeUrl
       : undefined;
+  const path =
+    typeof raw.paintedCostumeStoragePath === "string" &&
+    raw.paintedCostumeStoragePath.length > 0
+      ? raw.paintedCostumeStoragePath
+      : undefined;
+  const aimOrigin =
+    raw.pointTowardsAimOrigin === "catalog" ||
+    raw.pointTowardsAimOrigin === "center" ||
+    raw.pointTowardsAimOrigin === "custom"
+      ? raw.pointTowardsAimOrigin
+      : undefined;
   return {
     id: raw.id,
     label,
     costumeId: migrateCostumeIdFromStorage(raw.costumeId),
     ...(painted ? { paintedCostumeUrl: painted } : {}),
+    ...(path ? { paintedCostumeStoragePath: path } : {}),
+    ...(aimOrigin ? { pointTowardsAimOrigin: aimOrigin } : {}),
+    ...(typeof raw.pointTowardsForwardPx === "number"
+      ? { pointTowardsForwardPx: raw.pointTowardsForwardPx }
+      : {}),
+    ...(typeof raw.pointTowardsLateralPx === "number"
+      ? { pointTowardsLateralPx: raw.pointTowardsLateralPx }
+      : {}),
+    ...(typeof raw.pointTowardsLateralPct === "number"
+      ? { pointTowardsLateralPct: raw.pointTowardsLateralPct }
+      : {}),
   };
 }
 
@@ -55,6 +105,20 @@ export type OllieAction =
   | { type: "moveWithBob"; distance: number; style: "walk" | "run" }
   | { type: "rotate"; degrees: number }
   | { type: "setHeading"; degrees: number }
+  /** Face the current mouse position on the stage (Scratch-style “point towards mouse-pointer”). */
+  | { type: "pointTowardsMouse" }
+  /**
+   * Where “point toward mouse” measures its angle from (center vs catalog estimate vs custom px).
+   * Synced to project actors when Run updates the sprite.
+   */
+  | {
+      type: "setPointTowardAim";
+      origin: PointTowardsAimOrigin;
+      forwardPx?: number;
+      lateralPx?: number;
+      /** Sideways offset as % of half costume width; scales with art and grow/shrink. */
+      lateralPct?: number;
+    }
   /**
    * goTo / glideTo: xPct, yPct are Scratch-style stage coords in −100…100
    * (center 0,0; +y toward top, −y toward bottom).
@@ -81,6 +145,8 @@ export type OllieAction =
   | { type: "sayDynamic"; expr: SerializedStringExpr; ms: number }
   | { type: "think"; text: string; ms: number }
   | { type: "costume"; id: OllieSpriteCostumeId }
+  /** Use a user-painted / uploaded image URL from the project (“My Sprite” in switch costume). */
+  | { type: "setPaintedCostumeUrl"; url: string }
   /** Advance to the next costume in the catalog order (like Scratch’s “next costume”). */
   | { type: "nextCostume" }
   /**
@@ -149,6 +215,10 @@ export type OllieAction =
       cond: SerializedBoolExpr;
       body: OllieAction[];
     }
+  /**
+   * Scratch-style `forever` — body runs each frame until Run stops (not unrolled at compile time).
+   */
+  | { type: "foreverLoop"; body: OllieAction[] }
   /**
    * If / else if / else where each condition may use Sensing reporters (evaluated live).
    */
@@ -245,7 +315,7 @@ export type SpriteScriptPlan = {
   broadcastScripts: { message: string; actions: OllieAction[] }[];
 };
 
-/** Adventures / missions the user has saved work for (merged across saves / devices via project JSON). */
+/** Adventures the user has saved work for (merged across saves / devices via project JSON). */
 export type SavedMissionProgressEntry = {
   missionId: string;
   savedAt: string;
@@ -266,6 +336,6 @@ export type ProjectPayload = {
   /** Project title (not a user’s real name). */
   name: string;
   updatedAt: string;
-  /** Optional: missions with saved progress (for the Adventures list + cloud sync). */
+  /** Optional: adventures with saved progress (for the Adventures list + cloud sync). */
   savedMissionProgress?: SavedMissionProgressEntry[];
 };

@@ -1,4 +1,4 @@
-/** Default blocks after Reset — Scratch-style starter chain. */
+/** Default blocks for the starter workspace — Scratch-style chain. */
 export const DEFAULT_WORKSPACE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <xml xmlns="https://developers.google.com/blockly/xml">
   <block type="ollie_start" x="48" y="48">

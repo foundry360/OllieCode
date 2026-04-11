@@ -1,6 +1,7 @@
 import * as Blockly from "blockly/core";
 import type { Block } from "blockly/core";
 import { serialization } from "blockly/core";
+import { parsePaintedCostumeFieldValue } from "@/lib/blockly/costumeDropdownRegistry";
 import {
   isOllieSceneId,
   resolveCostumeFieldForExecution,
@@ -36,7 +37,6 @@ const BASE_STEP_PX = 2.4;
 const MAX_OLLIE_ACTIONS = 8_000;
 const MAX_REPEAT_UNROLL = 2_000;
 const MAX_WHILE_UNROLL = 2_000;
-const MAX_FOREVER_UNROLL = 500;
 
 /** Text / join blocks for `ask` message (no reporters in v1). */
 function extractStaticStringFromBlock(block: Block | null): string {
@@ -96,8 +96,87 @@ function walkStatementChain(
         actions.push({ type: "setHeading", degrees: angle });
         break;
       }
+      case "ollie_set_point_toward_aim": {
+        let forwardPx = 0;
+        let lateralPx: number | undefined;
+        let lateralPct: number | undefined;
+        // #region agent log
+        {
+          const offField = current.getField("OFFPCT");
+          const rawOff = current.getFieldValue("OFFPCT");
+          fetch(
+            "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-Debug-Session-Id": "3a7dbb",
+              },
+              body: JSON.stringify({
+                sessionId: "3a7dbb",
+                runId: "pre-fix",
+                hypothesisId: "H1",
+                location: "executeBlocks.ts:ollie_set_point_toward_aim",
+                message: "compile set_point_toward_aim",
+                data: {
+                  hasOffField: !!offField,
+                  rawOff,
+                  rawType: typeof rawOff,
+                },
+                timestamp: Date.now(),
+              }),
+            },
+          ).catch(() => {});
+        }
+        // #endregion
+        if (current.getField("OFFPCT")) {
+          lateralPct = Number(current.getFieldValue("OFFPCT")) || 0;
+        } else if (current.getField("OFFSET")) {
+          lateralPx = Number(current.getFieldValue("OFFSET")) || 0;
+        } else if (current.getField("LEFT") && current.getField("RIGHT")) {
+          const left = Number(current.getFieldValue("LEFT")) || 0;
+          const right = Number(current.getFieldValue("RIGHT")) || 0;
+          lateralPx = right - left;
+        } else {
+          forwardPx = Number(current.getFieldValue("FWD")) || 0;
+          lateralPx = Number(current.getFieldValue("LAT")) || 0;
+        }
+        actions.push({
+          type: "setPointTowardAim",
+          origin: "custom",
+          forwardPx,
+          lateralPx,
+          lateralPct,
+        });
+        // #region agent log
+        fetch(
+          "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Debug-Session-Id": "3a7dbb",
+            },
+            body: JSON.stringify({
+              sessionId: "3a7dbb",
+              runId: "pre-fix",
+              hypothesisId: "H1",
+              location: "executeBlocks.ts:setPointTowardAim push",
+              message: "compiled action payload",
+              data: { forwardPx, lateralPx, lateralPct },
+              timestamp: Date.now(),
+            }),
+          },
+        ).catch(() => {});
+        // #endregion
+        break;
+      }
       case "ollie_point_towards": {
         const dir = String(current.getFieldValue("DIR") ?? "up");
+        if (dir === "mouse") {
+          actions.push({ type: "pointTowardsMouse" });
+          break;
+        }
         const deg =
           dir === "right"
             ? 90
@@ -192,6 +271,11 @@ function walkStatementChain(
       }
       case "ollie_switch_costume": {
         const raw = String(current.getFieldValue("COSTUME") ?? "");
+        const paintedUrl = parsePaintedCostumeFieldValue(raw);
+        if (paintedUrl) {
+          actions.push({ type: "setPaintedCostumeUrl", url: paintedUrl });
+          break;
+        }
         const id = resolveCostumeFieldForExecution(raw);
         if (id) {
           actions.push({ type: "costume", id });
@@ -293,10 +377,10 @@ function walkStatementChain(
       }
       case "ollie_forever": {
         const inner = current.getInputTargetBlock("DO");
-        for (let i = 0; i < MAX_FOREVER_UNROLL; i += 1) {
-          if (actions.length >= MAX_OLLIE_ACTIONS) return;
-          walkStatementChain(inner, actions);
-        }
+        actions.push({
+          type: "foreverLoop",
+          body: collectChainActions(inner),
+        });
         break;
       }
       case "ollie_stop": {
@@ -548,6 +632,16 @@ const HAT_TYPES = new Set([
 /**
  * Compile one sprite workspace into separate scripts (multiple hats, Scratch-style).
  */
+/** True if any event hat compiled to at least one action (any script type). */
+export function spriteScriptPlanHasAnyActions(plan: SpriteScriptPlan): boolean {
+  if (plan.runScripts.some((c) => c.length > 0)) return true;
+  if (plan.keyScripts.some((k) => k.actions.length > 0)) return true;
+  if (plan.stageClickScripts.some((c) => c.length > 0)) return true;
+  if (plan.backdropScripts.some((b) => b.actions.length > 0)) return true;
+  if (plan.broadcastScripts.some((b) => b.actions.length > 0)) return true;
+  return false;
+}
+
 export function extractSpriteScriptPlan(
   workspace: Blockly.Workspace,
 ): SpriteScriptPlan {

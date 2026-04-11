@@ -8,6 +8,7 @@ import {
 } from "@/lib/canvas/spriteChromaKey";
 import type { CostumeDef } from "@/lib/canvas/stageAssets";
 import { resolveActorCostumeForDisplay } from "@/lib/canvas/actorCostumeDisplay";
+import { getPaintedCostumeFillCardDataUrl } from "@/lib/canvas/paintedCostumeThumbnail";
 import type { StageActor } from "@/types/ollie";
 
 function useSpritePreviewDisplaySrc(costume: CostumeDef): {
@@ -59,6 +60,36 @@ type SpritePreviewProps = {
   fillCard?: boolean;
 };
 
+/**
+ * For modal tiles: trim transparent margins (same idea as P5 `paintedContentBoundsForKey`),
+ * then scale with **contain** into a square bitmap so the whole sprite fits (no zoom/crop).
+ */
+function usePaintedFillCardThumbnailDataUrl(
+  src: string,
+  enabled: boolean,
+): string {
+  const [processed, setProcessed] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!enabled || !src.trim()) {
+      setProcessed(null);
+      return;
+    }
+    let dead = false;
+    setProcessed(null);
+    void getPaintedCostumeFillCardDataUrl(src).then((dataUrl) => {
+      if (dead) return;
+      setProcessed(dataUrl);
+    });
+    return () => {
+      dead = true;
+    };
+  }, [src, enabled]);
+
+  if (!enabled) return src;
+  return processed ?? src;
+}
+
 /** Catalog costume or user-painted URL — matches stage / P5 display rules. */
 export function StageActorCostumePreview({
   actor,
@@ -70,17 +101,26 @@ export function StageActorCostumePreview({
   fillCard?: boolean;
 }) {
   const r = resolveActorCostumeForDisplay(actor);
+  const paintedFillCardSrc = usePaintedFillCardThumbnailDataUrl(
+    r.kind === "painted" ? r.src : "",
+    Boolean(fillCard && r.kind === "painted"),
+  );
   if (r.kind === "painted") {
+    const imgSrc = fillCard ? paintedFillCardSrc : r.src;
     return (
       <div
-        className={`flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
+        className={
+          fillCard
+            ? `flex h-full w-full min-h-0 items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()
+            : `flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()
+        }
       >
         <img
-          src={r.src}
+          src={imgSrc}
           alt=""
           className={
             fillCard
-              ? "h-full w-full max-h-full max-w-full object-contain p-2"
+              ? "h-full w-full max-h-full max-w-full object-contain object-center p-0"
               : "max-h-[96%] max-w-[96%] object-contain"
           }
           draggable={false}
@@ -131,7 +171,7 @@ export function SpritePreview({
 
   return (
     <div
-      className={`flex h-full w-full items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
+      className={`flex h-full w-full min-h-0 items-center justify-center overflow-hidden bg-[#f1f5f9] ${className}`.trim()}
     >
       {pending ? null : (
         <img
@@ -139,7 +179,7 @@ export function SpritePreview({
           alt=""
           className={
             fillCard
-              ? "h-full w-full max-h-full max-w-full object-contain p-2"
+              ? "h-full w-full max-h-full max-w-full object-cover object-center p-0"
               : "max-h-[96%] max-w-[96%] object-contain"
           }
           style={clip}

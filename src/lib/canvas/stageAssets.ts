@@ -18,6 +18,7 @@ export const SPRITE_CATEGORY_IDS = [
   "environment",
   "fantasy",
   "objects",
+  "my_sprites",
 ] as const;
 export type SpriteCategoryId = (typeof SPRITE_CATEGORY_IDS)[number];
 
@@ -29,6 +30,7 @@ export const SPRITE_CATEGORY_LABELS: Record<SpriteCategoryId, string> = {
   environment: "Environment & Nature",
   fantasy: "Fantasy & Adventure",
   objects: "Objects",
+  my_sprites: "My Sprites",
 };
 
 export const OLLIE_SCENES = [
@@ -1271,6 +1273,21 @@ export const OLLIE_SPRITE_COSTUMES = [
     spriteCategories: ["vehicles"] as const,
   },
   {
+    id: "armytank",
+    label: "Army tank",
+    kind: "image" as const,
+    src: "/images/sprites/armytank.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+    /**
+     * First two rows tilt the barrel above hull “forward” (+X); rotation aligns hull to the
+     * pointer, so the gun looked aimed high. Later rows keep the barrel level with +X.
+     */
+    defaultSheetFrame: 10,
+    spriteCategories: ["vehicles"] as const,
+  },
+  {
     id: "murry",
     label: "Murry",
     kind: "image" as const,
@@ -1549,12 +1566,53 @@ export function getCostumeById(id: string): CostumeDef | undefined {
   return OLLIE_SPRITE_COSTUMES.find((c) => c.id === id);
 }
 
+/**
+ * Initial sprite-sheet cell when switching to this costume (default 0). Used when art’s
+ * “rest” frame should not be cell 0 (e.g. army tank barrel level with hull on later rows).
+ */
+export function defaultSheetFrameForCostumeId(id: string): number {
+  const def = getCostumeById(id);
+  if (!def || def.kind !== "image" || !def.spriteSheet) return 0;
+  const n = Math.max(
+    1,
+    def.spriteSheet.columns * def.spriteSheet.rows,
+  );
+  const raw =
+    "defaultSheetFrame" in def &&
+    typeof (def as { defaultSheetFrame?: number }).defaultSheetFrame ===
+      "number"
+      ? (def as { defaultSheetFrame: number }).defaultSheetFrame
+      : 0;
+  return Math.max(0, Math.min(n - 1, Math.floor(raw)));
+}
+
+/**
+ * Scratch keeps the rotation anchor at the costume center, but side-view art has the nose /
+ * barrel forward of center. “Point toward” uses this offset (px along current heading) so the
+ * aim line runs from the visible front toward the pointer. Optional per-costume
+ * `pointTowardsOriginForwardPx` overrides the default (~14% of costume width); use `0` for center.
+ */
+export function pointTowardsForwardOffsetPxForCostumeId(id: string): number {
+  const def = getCostumeById(id) ?? getCostumeById(DEFAULT_COSTUME_ID);
+  if (!def || def.kind !== "image") return 0;
+  const d = def as {
+    pointTowardsOriginForwardPx?: number;
+    width?: number;
+  };
+  if (typeof d.pointTowardsOriginForwardPx === "number") {
+    return Math.max(0, d.pointTowardsOriginForwardPx);
+  }
+  const w = typeof d.width === "number" ? d.width : 200;
+  return Math.max(0, Math.round(w * 0.14));
+}
+
 /** Whether a catalog costume appears in the sprite picker for the given filter. */
 export function spriteCostumeMatchesCategory(
   costumeId: OllieSpriteCostumeId,
   filter: SpriteCategoryId | "all",
 ): boolean {
   if (filter === "all") return true;
+  if (filter === "my_sprites") return false;
   const c = getCostumeById(costumeId);
   if (!c || c.kind !== "image" || !("spriteCategories" in c)) return false;
   return (c.spriteCategories as readonly SpriteCategoryId[]).includes(filter);
@@ -1685,6 +1743,7 @@ export const OLLIE_COSTUME_CYCLE_GROUPS: readonly OllieSpriteCostumeId[][] = [
   ["airplane"],
   ["racecar"],
   ["rocketship"],
+  ["armytank"],
   ["murry"],
   ["dori"],
   ["hootie"],
@@ -1759,6 +1818,7 @@ export const OLLIE_SPRITE_PICKER_ENTRIES: readonly {
   { costumeId: "airplane", label: "Airplane" },
   { costumeId: "racecar", label: "Race car" },
   { costumeId: "rocketship", label: "Rocket ship" },
+  { costumeId: "armytank", label: "Army tank" },
   { costumeId: "murry", label: "Murry" },
   { costumeId: "dori", label: "Dori" },
   { costumeId: "hootie", label: "Hootie" },

@@ -25,6 +25,7 @@ import {
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
   collectStageImageUrls,
+  defaultSheetFrameForCostumeId,
   getChromaKeyForSpriteSrc,
   getCostumeById,
   getSceneById,
@@ -32,9 +33,15 @@ import {
   nextOllieSceneId,
   nextOllieSpriteCostumeId,
   normalizeSceneLayerIdsFromPayload,
+  pointTowardsForwardOffsetPxForCostumeId,
 } from "@/lib/canvas/stageAssets";
-import { PAINTED_COSTUME_DISPLAY_WIDTH } from "@/lib/canvas/actorCostumeDisplay";
+import {
+  PAINTED_COSTUME_FIT_BOX_PX,
+  paintedCostumeFitInBox,
+} from "@/lib/canvas/actorCostumeDisplay";
+import { nonTransparentPixelBounds } from "@/lib/canvas/paintedCostumeBounds";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
+import type { PointTowardsAimOrigin, StageActor } from "@/types/ollie";
 import { playOllieSound, stopOllieSounds } from "@/lib/sounds/ollieSounds";
 
 export type StageActorPaint = {
@@ -42,6 +49,10 @@ export type StageActorPaint = {
   costumeId: OllieSpriteCostumeId;
   /** Supabase (or other) URL for user-painted costume bitmap. */
   paintedCostumeUrl?: string;
+  pointTowardsAimOrigin?: PointTowardsAimOrigin;
+  pointTowardsForwardPx?: number;
+  pointTowardsLateralPx?: number;
+  pointTowardsLateralPct?: number;
 };
 
 export type P5CanvasHandle = {
@@ -52,6 +63,11 @@ export type P5CanvasHandle = {
   /** Request an immediate stop of in-flight scripts (same effect as the “stop all” block). */
   stopRun: () => void;
   resetSprite: () => void;
+  /**
+   * Stop sounds, clear key / stage / backdrop session hooks from the last Run, and reset
+   * sprites on the stage so the next Run starts from the same visual state as the first Run.
+   */
+  resetRunToBeginning: () => void;
 };
 
 export type P5CanvasProps = {
@@ -68,6 +84,19 @@ export type P5CanvasProps = {
   onActorCostumeChange: (
     actorId: string,
     costumeId: OllieSpriteCostumeId,
+    /** When set, show this user-painted image (from “switch costume” → My Sprite). */
+    paintedUrl?: string,
+  ) => void;
+  /** Persist “point toward” aim origin when a script runs `setPointTowardAim`. */
+  onActorPointTowardAimChange?: (
+    actorId: string,
+    patch: Pick<
+      StageActor,
+      | "pointTowardsAimOrigin"
+      | "pointTowardsForwardPx"
+      | "pointTowardsLateralPx"
+      | "pointTowardsLateralPct"
+    >,
   ) => void;
   /**
    * When set, `ask` / number prompts use this instead of `window.prompt`
@@ -95,7 +124,61 @@ type Sprite = {
   /** Runtime clones only — used by “delete this clone”. */
   isClone?: boolean;
   bubble?: { text: string; kind: "say" | "think"; until: number };
+  pointTowardsAimOrigin?: PointTowardsAimOrigin;
+  pointTowardsForwardPx?: number;
+  pointTowardsLateralPx?: number;
+  pointTowardsLateralPct?: number;
 };
+
+/** Matches {@link drawSpriteForCostume} scale — aim offsets must be in stage px after scaling. */
+function spriteSizeScale(s: Sprite): number {
+  const raw = s.sizePct ?? 100;
+  return Math.max(
+    MIN_SPRITE_SIZE_PCT / 100,
+    Math.min(MAX_SPRITE_SIZE_PCT / 100, raw / 100),
+  );
+}
+
+function costumeHalfWidthPxForAim(s: Sprite): number {
+  const painted = s.paintedCostumeSrc?.trim();
+  if (painted) return PAINTED_COSTUME_FIT_BOX_PX / 2;
+  const def =
+    getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
+  const w =
+    def.kind === "image" && typeof (def as { width?: number }).width === "number"
+      ? (def as { width: number }).width
+      : 200;
+  return w / 2;
+}
+
+function resolvePointTowardFwdLat(s: Sprite): { fwd: number; lat: number } {
+  const sc = spriteSizeScale(s);
+  /** Center pivot → pointer; use `catalog` or `custom` only when the learner opts in. */
+  const mode = s.pointTowardsAimOrigin ?? "center";
+  if (mode === "center") return { fwd: 0, lat: 0 };
+  if (mode === "custom") {
+    const fwd =
+      (typeof s.pointTowardsForwardPx === "number"
+        ? s.pointTowardsForwardPx
+        : 0) * sc;
+    let lat: number;
+    if (typeof s.pointTowardsLateralPct === "number") {
+      const halfW = costumeHalfWidthPxForAim(s);
+      lat = (s.pointTowardsLateralPct / 100) * halfW * sc;
+    } else {
+      lat =
+        (typeof s.pointTowardsLateralPx === "number"
+          ? s.pointTowardsLateralPx
+          : 0) * sc;
+    }
+    return { fwd, lat };
+  }
+  const painted = s.paintedCostumeSrc?.trim();
+  const fwd = painted
+    ? Math.round(PAINTED_COSTUME_FIT_BOX_PX * 0.14)
+    : pointTowardsForwardOffsetPxForCostumeId(s.costume);
+  return { fwd: fwd * sc, lat: 0 };
+}
 
 const MOVE_FRAMES = 18;
 const CANVAS_MAX_PX = 4096;
@@ -106,6 +189,12 @@ const MAX_SPRITE_SIZE_PCT = 500;
 const MAX_REPEAT_DYNAMIC_ITER = 2_000;
 /** Cap for `while` / `until` with live conditions. */
 const MAX_DYNAMIC_WHILE_ITER = 10_000;
+
+/**
+ * Use capture so Run key handlers run before Blockly (which otherwise consumes arrow keys
+ * for workspace navigation while the editor is focused).
+ */
+const KEY_LISTENER_CAPTURE = true;
 
 /** Scratch-style “face right” at rest; pairs with {@link CostumeDef} `spriteRotationOffsetDeg` for Ollie Bot. */
 const DEFAULT_SPRITE_HEADING_DEG = 90;
@@ -178,8 +267,232 @@ async function loadStageImage(
   }
 }
 
+/**
+ * Same as {@link loadSvgOrRasterViaDom} but without `crossOrigin` — some hosts omit CORS;
+ * the bitmap may still decode for drawing (used after fetch/DOM+cors paths fail).
+ */
+function loadSvgOrRasterViaDomNoCors(
+  p: p5Types,
+  url: string,
+): Promise<p5Types.Image | null> {
+  return new Promise((resolve) => {
+    const el = new Image();
+    el.onload = () => {
+      try {
+        const w = Math.max(1, el.naturalWidth || el.width);
+        const h = Math.max(1, el.naturalHeight || el.height);
+        const g = p.createGraphics(w, h);
+        g.pixelDensity(1);
+        const ctx = g.drawingContext as CanvasRenderingContext2D;
+        ctx.drawImage(el, 0, 0, w, h);
+        const pimg = g.get(0, 0, w, h);
+        g.remove();
+        resolve(pimg.width > 0 ? pimg : null);
+      } catch {
+        resolve(null);
+      }
+    };
+    el.onerror = () => resolve(null);
+    el.src = url;
+  });
+}
+
+/**
+ * Remote PNG (e.g. user-painted Supabase URL) → p5.Image.
+ * `p.loadImage(url)` alone often fails cross-origin or yields width 0; catalog art uses
+ * `fetch`/DOM fallbacks — painted costumes need the same.
+ */
+async function loadRemoteBitmapForP5(
+  p: p5Types,
+  url: string,
+): Promise<p5Types.Image | null> {
+  try {
+    const res = await fetch(url, { mode: "cors", credentials: "omit" });
+    if (res.ok) {
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const img = await new Promise<p5Types.Image | null>((resolve) => {
+        p.loadImage(
+          objUrl,
+          (loaded) => {
+            URL.revokeObjectURL(objUrl);
+            resolve(loaded && loaded.width > 0 ? loaded : null);
+          },
+          () => {
+            URL.revokeObjectURL(objUrl);
+            resolve(null);
+          },
+        );
+      });
+      if (img) return img;
+    }
+  } catch {
+    /* fall through */
+  }
+  let viaDom = await loadSvgOrRasterViaDom(p, url);
+  if (viaDom && viaDom.width > 0) return viaDom;
+  viaDom = await loadSvgOrRasterViaDomNoCors(p, url);
+  if (viaDom && viaDom.width > 0) return viaDom;
+  return new Promise((resolve) => {
+    p.loadImage(
+      url,
+      (loaded) => resolve(loaded && loaded.width > 0 ? loaded : null),
+      () => resolve(null),
+    );
+  });
+}
+
 function normHeading(deg: number) {
   return ((deg % 360) + 360) % 360;
+}
+
+/** Scratch-style angle from (ax,ay) to (mx,my); 0° = up, 90° = right (y down on canvas). */
+function scratchAngleDegTowardPoint(
+  ax: number,
+  ay: number,
+  mx: number,
+  my: number,
+): number {
+  return (Math.atan2(mx - ax, -(my - ay)) * 180) / Math.PI;
+}
+
+/**
+ * Advance heading toward the Scratch direction `rawDeg` without collapsing to [0,360) each
+ * step, so atan2’s π boundary doesn’t fight the stored angle frame-to-frame.
+ */
+function stepHeadingTowardScratchRaw(prevDeg: number, rawDeg: number): number {
+  const tgt = normHeading(rawDeg);
+  const prevN = normHeading(prevDeg);
+  let d = tgt - prevN;
+  if (d > 180) d -= 360;
+  if (d < -180) d += 360;
+  return prevDeg + d;
+}
+
+function resolveMouseOnStagePx(
+  p: p5Types | null,
+  ptr: { x: number; y: number } | null,
+  cw: number,
+  ch: number,
+): { mx: number; my: number } | null {
+  /**
+   * Prefer p5’s mouse — it updates with the sketch and matches `sprite` pixel coords, which
+   * reduces one-frame lag vs `pointermove` on `document` during async `forever` loops.
+   */
+  if (
+    p &&
+    Number.isFinite(p.mouseX) &&
+    Number.isFinite(p.mouseY) &&
+    p.mouseX >= 0 &&
+    p.mouseX <= cw &&
+    p.mouseY >= 0 &&
+    p.mouseY <= ch
+  ) {
+    return { mx: p.mouseX, my: p.mouseY };
+  }
+  if (ptr) {
+    return {
+      mx: Math.max(0, Math.min(cw, ptr.x)),
+      my: Math.max(0, Math.min(ch, ptr.y)),
+    };
+  }
+  if (p && Number.isFinite(p.mouseX) && Number.isFinite(p.mouseY)) {
+    return {
+      mx: Math.max(0, Math.min(cw, p.mouseX)),
+      my: Math.max(0, Math.min(ch, p.mouseY)),
+    };
+  }
+  return null;
+}
+
+/** Debug session: cap aim-resolve logs (see agent instrumentation). */
+let applyAimDbgLogCount = 0;
+let actorsRunDbgLogCount = 0;
+
+/** Squared distance below this → skip heading update (atan2 is unstable on the pivot). Keep tiny so tracking doesn’t trail. */
+const AIM_MOUSE_DEAD_ZONE_SQ = 1;
+
+function isTooCloseToAimPivot(
+  ax: number,
+  ay: number,
+  mx: number,
+  my: number,
+): boolean {
+  const dx = mx - ax;
+  const dy = my - ay;
+  return dx * dx + dy * dy < AIM_MOUSE_DEAD_ZONE_SQ;
+}
+
+/** Scratch 0° = up — aim from catalog/center/custom origin toward stage mouse px. */
+function applyHeadingTowardsResolvedMouse(
+  s: Sprite,
+  mouse: { mx: number; my: number } | null,
+): void {
+  if (!mouse) return;
+  const { mx, my } = mouse;
+  const { fwd, lat } = resolvePointTowardFwdLat(s);
+  // #region agent log
+  if (applyAimDbgLogCount < 8) {
+    applyAimDbgLogCount += 1;
+    fetch(
+      "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Debug-Session-Id": "3a7dbb",
+        },
+        body: JSON.stringify({
+          sessionId: "3a7dbb",
+          runId: "pre-fix",
+          hypothesisId: "H3",
+          location: "P5Canvas.tsx:applyHeadingTowardsResolvedMouse",
+          message: "resolved aim offsets",
+          data: {
+            aimOrigin: s.pointTowardsAimOrigin,
+            lateralPct: s.pointTowardsLateralPct,
+            lateralPx: s.pointTowardsLateralPx,
+            fwd,
+            lat,
+            fwdLatZero: fwd === 0 && lat === 0,
+          },
+          timestamp: Date.now(),
+        }),
+      },
+    ).catch(() => {});
+  }
+  // #endregion
+  const aimPoint = (hDeg: number) => {
+    const h = normHeading(hDeg);
+    const rad = (h * Math.PI) / 180;
+    const fx = Math.sin(rad);
+    const fy = -Math.cos(rad);
+    const lx = Math.cos(rad);
+    const ly = Math.sin(rad);
+    return {
+      ax: s.x + fwd * fx + lat * lx,
+      ay: s.y + fwd * fy + lat * ly,
+    };
+  };
+  if (fwd === 0 && lat === 0) {
+    if (isTooCloseToAimPivot(s.x, s.y, mx, my)) return;
+    const raw = scratchAngleDegTowardPoint(s.x, s.y, mx, my);
+    s.heading = stepHeadingTowardScratchRaw(s.heading, raw);
+  } else {
+    const seed = aimPoint(s.heading);
+    if (isTooCloseToAimPivot(seed.ax, seed.ay, mx, my)) return;
+    let h = stepHeadingTowardScratchRaw(
+      s.heading,
+      scratchAngleDegTowardPoint(s.x, s.y, mx, my),
+    );
+    for (let i = 0; i < 12; i += 1) {
+      const { ax, ay } = aimPoint(h);
+      if (isTooCloseToAimPivot(ax, ay, mx, my)) return;
+      const raw = scratchAngleDegTowardPoint(ax, ay, mx, my);
+      h = stepHeadingTowardScratchRaw(h, raw);
+    }
+    s.heading = h;
+  }
 }
 
 /** Lazy-load user-painted costume URLs into the shared stage image map. */
@@ -192,16 +505,13 @@ function ensurePaintedCostumeImage(
   const u = url?.trim();
   if (!u || images.has(u) || pending.has(u)) return;
   pending.add(u);
-  p.loadImage(
-    u,
-    (img) => {
-      pending.delete(u);
+  void loadRemoteBitmapForP5(p, u)
+    .then((img) => {
       if (img && img.width > 0) images.set(u, img);
-    },
-    () => {
+    })
+    .finally(() => {
       pending.delete(u);
-    },
-  );
+    });
 }
 
 type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
@@ -221,21 +531,24 @@ function spriteDrawOrient(
     if (img && img.width > 0) {
       return { rotationDeg: normHeading(s.heading), mirrorX: false };
     }
+    /** User bitmap: same as loaded path (no catalog sheet −90° offset). Don’t fall through. */
+    return { rotationDeg: normHeading(s.heading), mirrorX: false };
   }
   const def =
     getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
-  const img = images.get(def.src);
-  if (!img || img.width <= 0) {
-    return { rotationDeg: normHeading(s.heading), mirrorX: false };
-  }
   const off =
     typeof def.spriteRotationOffsetDeg === "number"
       ? def.spriteRotationOffsetDeg
       : 0;
+  /**
+   * Align Scratch heading with bitmap facing (see `spriteRotationOffsetDeg`) even before
+   * `p5.Image` is ready — the old path used raw heading only and caused a visible snap.
+   */
   const net = normHeading(s.heading + off);
-  if (off !== 0 && net === 180) {
-    return { rotationDeg: 0, mirrorX: true };
-  }
+  /**
+   * Always rotate by `net`. The old `net === 180` + mirror branch caused a one-frame flip
+   * (exact float equality + different transform) while tracking the pointer.
+   */
   return { rotationDeg: net, mirrorX: false };
 }
 
@@ -337,13 +650,13 @@ function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
     case "space":
       return e.code === "Space" || e.key === " ";
     case "up":
-      return e.key === "ArrowUp";
+      return e.code === "ArrowUp" || e.key === "ArrowUp";
     case "down":
-      return e.key === "ArrowDown";
+      return e.code === "ArrowDown" || e.key === "ArrowDown";
     case "left":
-      return e.key === "ArrowLeft";
+      return e.code === "ArrowLeft" || e.key === "ArrowLeft";
     case "right":
-      return e.key === "ArrowRight";
+      return e.code === "ArrowRight" || e.key === "ArrowRight";
     default:
       return (
         e.key.length === 1 && e.key.toLowerCase() === keyId.toLowerCase()
@@ -354,12 +667,41 @@ function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
 /** Normalized key id for Sensing — must match {@link keyEventMatches} / toolbox dropdowns. */
 function keyIdFromKeyboardEvent(e: KeyboardEvent): string | null {
   if (e.code === "Space" || e.key === " ") return "space";
-  if (e.key === "ArrowUp") return "up";
-  if (e.key === "ArrowDown") return "down";
-  if (e.key === "ArrowLeft") return "left";
-  if (e.key === "ArrowRight") return "right";
+  if (e.code === "ArrowUp" || e.key === "ArrowUp") return "up";
+  if (e.code === "ArrowDown" || e.key === "ArrowDown") return "down";
+  if (e.code === "ArrowLeft" || e.key === "ArrowLeft") return "left";
+  if (e.code === "ArrowRight" || e.key === "ArrowRight") return "right";
   if (e.key.length === 1) return e.key.toLowerCase();
   return null;
+}
+
+/** Trim transparent margins once per URL so paint exports aren’t dominated by empty canvas. */
+const paintedContentBoundsCache = new Map<
+  string,
+  { sx: number; sy: number; sw: number; sh: number }
+>();
+
+function paintedContentBoundsForKey(
+  urlKey: string,
+  img: p5Types.Image,
+): { sx: number; sy: number; sw: number; sh: number } {
+  const hit = paintedContentBoundsCache.get(urlKey);
+  if (hit) return hit;
+  img.loadPixels();
+  const px = img.pixels;
+  const iw = img.width;
+  const ih = img.height;
+  let b: { sx: number; sy: number; sw: number; sh: number };
+  if (px && px.length >= iw * ih * 4) {
+    b = nonTransparentPixelBounds(px, iw, ih);
+  } else {
+    b = { sx: 0, sy: 0, sw: iw, sh: ih };
+  }
+  if (b.sw <= 0 || b.sh <= 0 || b.sw > iw || b.sh > ih) {
+    b = { sx: 0, sy: 0, sw: iw, sh: ih };
+  }
+  paintedContentBoundsCache.set(urlKey, b);
+  return b;
 }
 
 function drawSpriteForCostume(
@@ -377,9 +719,13 @@ function drawSpriteForCostume(
   if (painted) {
     const img = images.get(painted);
     if (img && img.width > 0) {
-      const w = PAINTED_COSTUME_DISPLAY_WIDTH;
-      const h = w * (img.height / img.width);
-      p.image(img, 0, 0, w, h);
+      const b = paintedContentBoundsForKey(painted, img);
+      const { w, h } = paintedCostumeFitInBox(
+        b.sw,
+        b.sh,
+        PAINTED_COSTUME_FIT_BOX_PX,
+      );
+      p.image(img, 0, 0, w, h, b.sx, b.sy, b.sw, b.sh);
       return;
     }
     p.stroke(255);
@@ -422,6 +768,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       pauseActorCostumePropSync = false,
       onSceneChange,
       onActorCostumeChange,
+      onActorPointTowardAimChange,
       requestNumberInput,
     },
     ref,
@@ -442,9 +789,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     const timerStartMsRef = useRef(0);
     const onSceneChangeRef = useRef(onSceneChange);
     const onActorCostumeChangeRef = useRef(onActorCostumeChange);
+    const onActorPointTowardAimChangeRef = useRef(
+      onActorPointTowardAimChange,
+    );
     const actorsRef = useRef(actors);
     onSceneChangeRef.current = onSceneChange;
     onActorCostumeChangeRef.current = onActorCostumeChange;
+    onActorPointTowardAimChangeRef.current = onActorPointTowardAimChange;
     actorsRef.current = actors;
 
     const requestNumberInputRef = useRef<
@@ -474,6 +825,41 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
      * {@link DEFAULT_SPRITE_HEADING_DEG}.
      */
     const headingLegacyMigratedRef = useRef<Set<string>>(new Set());
+
+    /**
+     * Last pointer position in **p5 logical canvas space** (same as `sprite.x` / `mouseX`).
+     * Must not use the outer div’s rect alone: on HiDPI or when the canvas CSS size ≠ buffer
+     * size, container coords and sprite coords diverge and “point toward” looks ~90° wrong.
+     */
+    const lastPointerOnStageRef = useRef<{ x: number; y: number } | null>(
+      null,
+    );
+
+    useEffect(() => {
+      const onMove = (e: PointerEvent) => {
+        const pInst = p5Ref.current;
+        const cv = pInst?.drawingContext?.canvas as
+          | HTMLCanvasElement
+          | undefined;
+        if (!pInst || !cv || pInst.width <= 0 || pInst.height <= 0) return;
+        const r = cv.getBoundingClientRect();
+        if (r.width <= 0 || r.height <= 0) return;
+        const rawX = e.clientX - r.left;
+        const rawY = e.clientY - r.top;
+        if (rawX < 0 || rawY < 0 || rawX > r.width || rawY > r.height) {
+          lastPointerOnStageRef.current = null;
+          return;
+        }
+        const sx = pInst.width / r.width;
+        const sy = pInst.height / r.height;
+        lastPointerOnStageRef.current = {
+          x: rawX * sx,
+          y: rawY * sy,
+        };
+      };
+      document.addEventListener("pointermove", onMove, { passive: true });
+      return () => document.removeEventListener("pointermove", onMove);
+    }, []);
 
     useEffect(() => {
       currentSceneRef.current = topSceneId;
@@ -517,9 +903,46 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           existing.sizePct = existing.sizePct ?? 100;
           existing.visible = existing.visible !== false;
           existing.paintedCostumeSrc = nextPainted;
-          if (!pauseActorCostumePropSync) {
+          // #region agent log
+          if (runningRef.current && actorsRunDbgLogCount < 12) {
+            actorsRunDbgLogCount += 1;
+            fetch(
+              "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
+              {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Debug-Session-Id": "3a7dbb",
+                },
+                body: JSON.stringify({
+                  sessionId: "3a7dbb",
+                  runId: "pre-fix",
+                  hypothesisId: "H4",
+                  location: "P5Canvas.tsx:actors-sync",
+                  message: "actors effect while run (no aim stomp)",
+                  data: {
+                    actorId: a.id,
+                    propPct: a.pointTowardsLateralPct,
+                    spritePct: existing.pointTowardsLateralPct,
+                  },
+                  timestamp: Date.now(),
+                }),
+              },
+            ).catch(() => {});
+          }
+          // #endregion
+          /**
+           * `runningRef` is set true synchronously at the start of `runProjectPlans`, before any
+           * `await`. `programRunning` / `pauseActorCostumePropSync` only updates after React commits,
+           * so relying on it alone let this effect overwrite script-driven aim from stale props.
+           */
+          if (!runningRef.current) {
+            existing.pointTowardsAimOrigin = a.pointTowardsAimOrigin;
+            existing.pointTowardsForwardPx = a.pointTowardsForwardPx;
+            existing.pointTowardsLateralPx = a.pointTowardsLateralPx;
+            existing.pointTowardsLateralPct = a.pointTowardsLateralPct;
             if (existing.costume !== a.costumeId) {
-              existing.sheetFrame = 0;
+              existing.sheetFrame = defaultSheetFrameForCostumeId(a.costumeId);
             }
             existing.costume = a.costumeId;
           }
@@ -538,21 +961,62 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             heading: DEFAULT_SPRITE_HEADING_DEG,
             costume: a.costumeId,
             paintedCostumeSrc: nextPainted,
-            sheetFrame: 0,
+            sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
             sizePct: 100,
             visible: true,
+            pointTowardsAimOrigin: a.pointTowardsAimOrigin,
+            pointTowardsForwardPx: a.pointTowardsForwardPx,
+            pointTowardsLateralPx: a.pointTowardsLateralPx,
+            pointTowardsLateralPct: a.pointTowardsLateralPct,
           });
         }
       });
     }, [actors, pauseActorCostumePropSync]);
 
-    useImperativeHandle(ref, () => ({
+    useImperativeHandle(ref, () => {
+      const resetSpriteImpl = () => {
+        const el = containerRef.current;
+        const w = Math.min(
+          CANVAS_MAX_PX,
+          Math.max(1, el?.clientWidth ?? 320),
+        );
+        const h = Math.min(
+          CANVAS_MAX_PX,
+          Math.max(1, el?.clientHeight ?? 240),
+        );
+        const list = actorsRef.current;
+        const map = spritesByIdRef.current;
+        list.forEach((a, i) => {
+          const s = map.get(a.id);
+          if (!s) return;
+          const pos = layoutSlot(i, list.length, w, h);
+          s.x = pos.x;
+          s.y = pos.y;
+          s.heading = DEFAULT_SPRITE_HEADING_DEG;
+          s.bubble = undefined;
+          s.costume = a.costumeId;
+          s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
+          s.sheetFrame = defaultSheetFrameForCostumeId(a.costumeId);
+          s.sizePct = 100;
+          s.visible = true;
+          s.pointTowardsAimOrigin = a.pointTowardsAimOrigin;
+          s.pointTowardsForwardPx = a.pointTowardsForwardPx;
+          s.pointTowardsLateralPx = a.pointTowardsLateralPx;
+          s.pointTowardsLateralPct = a.pointTowardsLateralPct;
+        });
+      };
+
+      return {
       async runProjectPlans(
         plans: { spriteId: string; plan: SpriteScriptPlan }[],
       ) {
         if (runningRef.current) return { aborted: false };
         if (keyDownHandlerRef.current) {
-          window.removeEventListener("keydown", keyDownHandlerRef.current);
+          window.removeEventListener(
+            "keydown",
+            keyDownHandlerRef.current,
+            KEY_LISTENER_CAPTURE,
+          );
           keyDownHandlerRef.current = null;
         }
         sessionActiveRef.current = false;
@@ -580,8 +1044,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           const id = keyIdFromKeyboardEvent(e);
           if (id) keysHeldRef.current.delete(id);
         };
-        window.addEventListener("keydown", onSensingKeyDown);
-        window.addEventListener("keyup", onSensingKeyUp);
+        window.addEventListener(
+          "keydown",
+          onSensingKeyDown,
+          KEY_LISTENER_CAPTURE,
+        );
+        window.addEventListener("keyup", onSensingKeyUp, KEY_LISTENER_CAPTURE);
 
         /**
          * Always returns a context with `vars` so `setVar` / `if` never silently skip while
@@ -590,17 +1058,39 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         function buildSensingCtx(sid: string): SensingEvalContext {
           const sprite = spritesByIdRef.current.get(sid);
           const box = containerRef.current?.getBoundingClientRect();
-          const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
-          const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
           const p = p5Ref.current;
+          const cw =
+            p && p.width > 0
+              ? p.width
+              : Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
+          const ch =
+            p && p.height > 0
+              ? p.height
+              : Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
+          const ptr = lastPointerOnStageRef.current;
+          let mouseX = p?.mouseX ?? 0;
+          let mouseY = p?.mouseY ?? 0;
+          if (ptr) {
+            mouseX = Math.max(0, Math.min(cw, ptr.x));
+            mouseY = Math.max(0, Math.min(ch, ptr.y));
+          } else if (
+            p &&
+            p.mouseX >= 0 &&
+            p.mouseX <= cw &&
+            p.mouseY >= 0 &&
+            p.mouseY <= ch
+          ) {
+            mouseX = p.mouseX;
+            mouseY = p.mouseY;
+          }
           return {
             cw,
             ch,
             spriteId: sid,
             spriteX: sprite?.x ?? 0,
             spriteY: sprite?.y ?? 0,
-            mouseX: p?.mouseX ?? 0,
-            mouseY: p?.mouseY ?? 0,
+            mouseX,
+            mouseY,
             mouseIsPressed: p?.mouseIsPressed ?? false,
             keysDown: keysHeldRef.current,
             timerSecs: (performance.now() - timerStartMsRef.current) / 1000,
@@ -637,8 +1127,15 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           const s = spritesByIdRef.current.get(spriteId);
           if (!s) return;
           const box = containerRef.current?.getBoundingClientRect();
-          const cw = Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
-          const ch = Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
+          const pStage = p5Ref.current;
+          const cw =
+            pStage && pStage.width > 0
+              ? pStage.width
+              : Math.min(CANVAS_MAX_PX, Math.max(1, box?.width ?? 400));
+          const ch =
+            pStage && pStage.height > 0
+              ? pStage.height
+              : Math.min(CANVAS_MAX_PX, Math.max(1, box?.height ?? 300));
 
           for (const a of actions) {
             if (shouldCancel()) return;
@@ -646,6 +1143,18 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               s.heading = normHeading(s.heading + a.degrees);
             } else if (a.type === "setHeading") {
               s.heading = normHeading(a.degrees);
+            } else if (a.type === "pointTowardsMouse") {
+              const mouse = resolveMouseOnStagePx(
+                p5Ref.current,
+                lastPointerOnStageRef.current,
+                cw,
+                ch,
+              );
+              if (!mouse) {
+                /** Run tapped off-stage — avoid using p5’s (0,0) as the target. */
+                continue;
+              }
+              applyHeadingTowardsResolvedMouse(s, mouse);
             } else if (a.type === "move") {
               const rad = (s.heading * Math.PI) / 180;
               const dx = Math.sin(rad) * a.distance;
@@ -682,10 +1191,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               s.y = pos.y;
             } else if (a.type === "goToTarget") {
               if (a.target === "mouse") {
-                const p = p5Ref.current;
-                if (p) {
-                  s.x = Math.max(0, Math.min(cw, p.mouseX));
-                  s.y = Math.max(0, Math.min(ch, p.mouseY));
+                const ptr = lastPointerOnStageRef.current;
+                if (ptr) {
+                  s.x = Math.max(0, Math.min(cw, ptr.x));
+                  s.y = Math.max(0, Math.min(ch, ptr.y));
                 }
               } else {
                 const xPct = Math.random() * 200 - 100;
@@ -798,10 +1307,93 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               );
             } else if (a.type === "setVisible") {
               s.visible = a.visible;
+            } else if (a.type === "setPointTowardAim") {
+              s.pointTowardsAimOrigin = a.origin;
+              // #region agent log
+              fetch(
+                "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "X-Debug-Session-Id": "3a7dbb",
+                  },
+                  body: JSON.stringify({
+                    sessionId: "3a7dbb",
+                    runId: "pre-fix",
+                    hypothesisId: "H2",
+                    location: "P5Canvas.tsx:setPointTowardAim",
+                    message: "runtime setPointTowardAim action",
+                    data: {
+                      origin: a.origin,
+                      lateralPct: a.lateralPct,
+                      lateralPctType: typeof a.lateralPct,
+                      forwardPx: a.forwardPx,
+                      lateralPx: a.lateralPx,
+                    },
+                    timestamp: Date.now(),
+                  }),
+                },
+              ).catch(() => {});
+              // #endregion
+              if (a.origin === "custom") {
+                if (typeof a.lateralPct === "number") {
+                  s.pointTowardsLateralPct = a.lateralPct;
+                  s.pointTowardsForwardPx = 0;
+                  s.pointTowardsLateralPx = undefined;
+                } else {
+                  s.pointTowardsForwardPx = a.forwardPx ?? 0;
+                  s.pointTowardsLateralPx = a.lateralPx ?? 0;
+                  s.pointTowardsLateralPct = undefined;
+                }
+              } else {
+                s.pointTowardsForwardPx = undefined;
+                s.pointTowardsLateralPx = undefined;
+                s.pointTowardsLateralPct = undefined;
+              }
+              onActorPointTowardAimChangeRef.current?.(spriteId, {
+                pointTowardsAimOrigin: a.origin,
+                ...(a.origin === "custom"
+                  ? typeof a.lateralPct === "number"
+                    ? {
+                        pointTowardsForwardPx: 0,
+                        pointTowardsLateralPx: undefined,
+                        pointTowardsLateralPct: a.lateralPct,
+                      }
+                    : {
+                        pointTowardsForwardPx: a.forwardPx ?? 0,
+                        pointTowardsLateralPx: a.lateralPx ?? 0,
+                        pointTowardsLateralPct: undefined,
+                      }
+                  : {
+                      pointTowardsForwardPx: undefined,
+                      pointTowardsLateralPx: undefined,
+                      pointTowardsLateralPct: undefined,
+                    }),
+              });
+              const mouse = resolveMouseOnStagePx(
+                p5Ref.current,
+                lastPointerOnStageRef.current,
+                cw,
+                ch,
+              );
+              applyHeadingTowardsResolvedMouse(s, mouse);
+            } else if (a.type === "setPaintedCostumeUrl") {
+              const url = a.url.trim();
+              if (url) {
+                s.costume = DEFAULT_COSTUME_ID;
+                s.sheetFrame = 0;
+                s.paintedCostumeSrc = url;
+                onActorCostumeChangeRef.current(
+                  spriteId,
+                  DEFAULT_COSTUME_ID,
+                  url,
+                );
+              }
             } else if (a.type === "costume") {
               const id = migrateCostumeIdFromStorage(a.id);
               s.costume = id;
-              s.sheetFrame = 0;
+              s.sheetFrame = defaultSheetFrameForCostumeId(id);
               s.paintedCostumeSrc = undefined;
               onActorCostumeChangeRef.current(spriteId, id);
             } else if (a.type === "nextCostume") {
@@ -818,7 +1410,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 const nextId = nextOllieSpriteCostumeId(s.costume);
                 if (nextId !== s.costume) {
                   s.costume = nextId;
-                  s.sheetFrame = 0;
+                  s.sheetFrame = defaultSheetFrameForCostumeId(nextId);
                   s.paintedCostumeSrc = undefined;
                   onActorCostumeChangeRef.current(spriteId, nextId);
                 }
@@ -922,6 +1514,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 await runSequenceForSprite(spriteId, a.body);
                 w += 1;
               }
+            } else if (a.type === "foreverLoop") {
+              while (!shouldCancel()) {
+                await runSequenceForSprite(spriteId, a.body);
+                if (shouldCancel()) return;
+                await waitNextAnimationFrame(shouldCancel);
+              }
             } else if (a.type === "resetTimer") {
               timerStartMsRef.current = performance.now();
             } else if (a.type === "broadcast") {
@@ -948,17 +1546,24 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         backdropPackRef.current = { plans, runSequence: runSequenceForSprite };
 
         const keyHandler = (e: KeyboardEvent) => {
+          let handled = false;
           for (const { spriteId: sid, plan } of plans) {
             for (const ks of plan.keyScripts) {
               if (keyEventMatches(ks.keyId, e)) {
                 e.preventDefault();
+                handled = true;
                 void runSequenceForSprite(sid, ks.actions);
               }
             }
           }
+          if (handled) e.stopPropagation();
         };
         keyDownHandlerRef.current = keyHandler;
-        window.addEventListener("keydown", keyHandler);
+        window.addEventListener(
+          "keydown",
+          keyHandler,
+          KEY_LISTENER_CAPTURE,
+        );
 
         stageClickHandlerRef.current = () => {
           for (const { spriteId: sid, plan } of plans) {
@@ -978,8 +1583,16 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           }
           await Promise.all(greenRunners);
         } finally {
-          window.removeEventListener("keydown", onSensingKeyDown);
-          window.removeEventListener("keyup", onSensingKeyUp);
+          window.removeEventListener(
+            "keydown",
+            onSensingKeyDown,
+            KEY_LISTENER_CAPTURE,
+          );
+          window.removeEventListener(
+            "keyup",
+            onSensingKeyUp,
+            KEY_LISTENER_CAPTURE,
+          );
           aborted = abortRunRef.current;
           abortRunRef.current = false;
           runningRef.current = false;
@@ -990,34 +1603,25 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         abortRunRef.current = true;
         stopOllieSounds();
       },
-      resetSprite() {
-        const el = containerRef.current;
-        const w = Math.min(
-          CANVAS_MAX_PX,
-          Math.max(1, el?.clientWidth ?? 320),
-        );
-        const h = Math.min(
-          CANVAS_MAX_PX,
-          Math.max(1, el?.clientHeight ?? 240),
-        );
-        const list = actorsRef.current;
-        const map = spritesByIdRef.current;
-        list.forEach((a, i) => {
-          const s = map.get(a.id);
-          if (!s) return;
-          const pos = layoutSlot(i, list.length, w, h);
-          s.x = pos.x;
-          s.y = pos.y;
-          s.heading = DEFAULT_SPRITE_HEADING_DEG;
-          s.bubble = undefined;
-          s.costume = a.costumeId;
-          s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
-          s.sheetFrame = 0;
-          s.sizePct = 100;
-          s.visible = true;
-        });
+      resetSprite: resetSpriteImpl,
+      resetRunToBeginning() {
+        abortRunRef.current = true;
+        stopOllieSounds();
+        if (keyDownHandlerRef.current) {
+          window.removeEventListener(
+            "keydown",
+            keyDownHandlerRef.current,
+            KEY_LISTENER_CAPTURE,
+          );
+          keyDownHandlerRef.current = null;
+        }
+        sessionActiveRef.current = false;
+        backdropPackRef.current = null;
+        stageClickHandlerRef.current = null;
+        resetSpriteImpl();
       },
-    }));
+    };
+    });
 
     useEffect(() => {
       let disposed = false;
@@ -1037,6 +1641,8 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             const cw = Math.min(CANVAS_MAX_PX, Math.max(1, el.clientWidth));
             const ch = Math.min(CANVAS_MAX_PX, Math.max(1, el.clientHeight));
             p.createCanvas(cw, ch);
+            /** Keep logical coords === backing-store coords so pointer ↔ sprite math stays aligned. */
+            p.pixelDensity(1);
             p.angleMode(p.DEGREES);
             const urls = collectStageImageUrls();
             await Promise.all(
@@ -1054,9 +1660,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 heading: DEFAULT_SPRITE_HEADING_DEG,
                 costume: a.costumeId,
                 paintedCostumeSrc: a.paintedCostumeUrl?.trim() || undefined,
-                sheetFrame: 0,
+                sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
                 sizePct: 100,
                 visible: true,
+                pointTowardsAimOrigin: a.pointTowardsAimOrigin,
+                pointTowardsForwardPx: a.pointTowardsForwardPx,
+                pointTowardsLateralPx: a.pointTowardsLateralPx,
+                pointTowardsLateralPct: a.pointTowardsLateralPct,
               });
             });
           };
@@ -1108,6 +1718,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               Math.min(CANVAS_MAX_PX, Math.max(1, el.clientWidth)),
               Math.min(CANVAS_MAX_PX, Math.max(1, el.clientHeight)),
             );
+            p.pixelDensity(1);
           };
 
           p.mousePressed = () => {
@@ -1137,6 +1748,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             );
             if (w === p.width && h === p.height) return;
             p.resizeCanvas(w, h);
+            p.pixelDensity(1);
           });
         });
         resizeObserver.observe(el);
@@ -1155,7 +1767,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       <div
         ref={containerRef}
         className={["min-h-0 min-w-0", className].filter(Boolean).join(" ")}
-        aria-label="Mission preview"
+        aria-label="Adventure preview"
       />
     );
   },
@@ -1242,6 +1854,19 @@ function waitMs(ms: number, shouldCancel?: () => boolean) {
   });
 }
 
+/** Yields so keyboard / pointer sensing updates between Scratch-style `forever` iterations. */
+function waitNextAnimationFrame(shouldCancel?: () => boolean) {
+  return new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      if (shouldCancel?.()) {
+        resolve();
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 type MoveBobOpts = {
   amplitude: number;
   cycles: number;
@@ -1297,7 +1922,7 @@ function animateMove(
         sprite.x = tx;
         sprite.y = ty;
         if (sheetCells > 0) {
-          sprite.sheetFrame = 0;
+          sprite.sheetFrame = defaultSheetFrameForCostumeId(sprite.costume);
         }
         resolve();
         return;

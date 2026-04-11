@@ -58,7 +58,7 @@ export function MissionCompleteModal({
         className="relative z-10 w-full max-w-sm rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-2xl sm:max-w-md"
       >
         <p className="text-xs font-bold uppercase tracking-wide text-[#84c126]">
-          Mission complete
+          Adventure complete
         </p>
         <h2
           id={titleId}

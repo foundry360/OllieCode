@@ -27,8 +27,10 @@ export function loadMissionProjectSnapshotLocal(
   if (typeof window === "undefined") return null;
   try {
     const raw = localStorage.getItem(missionSnapshotStorageKey(missionId));
-    if (!raw) return null;
-    return JSON.parse(raw) as ProjectPayload;
+    if (raw == null) return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    return JSON.parse(trimmed) as ProjectPayload;
   } catch {
     return null;
   }
@@ -43,7 +45,7 @@ export function clearMissionProjectSnapshotLocal(missionId: string): void {
   }
 }
 
-/** Supabase project id for a mission workspace file (path stays {userId}/{id}.json). */
+/** Supabase project id for an adventure workspace file (path stays {userId}/{id}.json). */
 export function missionCloudProjectId(missionId: string): string {
   return `mission-${missionId}`;
 }

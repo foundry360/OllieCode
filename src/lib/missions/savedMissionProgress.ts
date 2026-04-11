@@ -28,8 +28,8 @@ export function getSavedMissionProgress(): SavedMissionProgressEntry[] {
   if (typeof window === "undefined") return [];
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
+    if (raw == null || !raw.trim()) return [];
+    const parsed = JSON.parse(raw.trim()) as unknown;
     if (!Array.isArray(parsed)) return [];
     return mergeByLatestSavedAt(
       parsed.filter(
@@ -63,13 +63,13 @@ export function mergeMissionProgressIntoStorage(
   persist(mergeMissionProgressLists(getSavedMissionProgress(), incoming));
 }
 
-/** Remove one mission from the local named-save list (browser). */
+/** Remove one adventure from the local named-save list (browser). */
 export function removeSavedMissionProgressEntry(missionId: string): void {
   const next = getSavedMissionProgress().filter((e) => e.missionId !== missionId);
   persist(next);
 }
 
-/** Record a named save for a mission (one row per missionId, latest wins). */
+/** Record a named save for an adventure (one row per missionId, latest wins). */
 export function recordMissionSaved(
   missionId: string,
   displayName: string,

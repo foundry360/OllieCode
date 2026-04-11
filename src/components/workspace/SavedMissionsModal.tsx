@@ -22,7 +22,7 @@ type SavedMissionsModalProps = {
   onClose: () => void;
   entries: SavedMissionProgressEntry[];
   onSelectMission: (missionId: string) => void;
-  /** Mission id from the URL — highlights the active row. */
+  /** Adventure id from the URL — highlights the active row. */
   activeMissionId: string | null;
   /** Open rename dialog (adventures with at least one save). */
   onRenameMission?: (missionId: string) => void;
@@ -261,7 +261,7 @@ export function SavedMissionsModal({
               {extraSavedEntries.map((entry) => {
                 const isActive = activeMissionId === entry.missionId;
                 const displayName =
-                  entry.displayName?.trim() || "Untitled mission";
+                  entry.displayName?.trim() || "Untitled adventure";
                 const metaLine = isCustomMissionId(entry.missionId)
                   ? "Your Adventure"
                   : null;

@@ -41,6 +41,45 @@ const BRUSH_WIDTH_OPTIONS = Array.from(
 );
 
 /**
+ * Decodes costume pixels for editing. Prefer fetch→blob (CORS-friendly for Supabase);
+ * fall back to decoding an `<img>` if fetch fails (e.g. some same-origin paths).
+ */
+async function loadImageBitmapForPaint(src: string): Promise<ImageBitmap> {
+  try {
+    const res = await fetch(src, { mode: "cors", credentials: "omit" });
+    if (!res.ok) throw new Error(String(res.status));
+    return await createImageBitmap(await res.blob());
+  } catch {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("img"));
+      img.src = src;
+    });
+    return createImageBitmap(img);
+  }
+}
+
+/** Scales image uniformly to fit inside the raster, centered (letterboxed with transparency). */
+function drawImageContainOnRaster(
+  rctx: CanvasRenderingContext2D,
+  im: ImageBitmap | HTMLImageElement,
+  cw: number,
+  ch: number,
+) {
+  rctx.clearRect(0, 0, cw, ch);
+  const iw = im instanceof ImageBitmap ? im.width : im.naturalWidth;
+  const ih = im instanceof ImageBitmap ? im.height : im.naturalHeight;
+  if (iw < 1 || ih < 1) return;
+  const scale = Math.min(cw / iw, ch / ih);
+  const dw = iw * scale;
+  const dh = ih * scale;
+  const dx = (cw - dw) / 2;
+  const dy = (ch - dh) / 2;
+  rctx.drawImage(im, 0, 0, iw, ih, dx, dy, dw, dh);
+}
+
+/**
  * Dot pattern in the drawable frame (not square grid lines), visible wherever the canvas is transparent.
  */
 const DOT_WORKSPACE_LAYER_STYLE: CSSProperties = {
@@ -476,6 +515,8 @@ function floodFill(
 
 export type CostumePaintSaveResult = {
   publicUrl: string;
+  /** `projects` bucket path — refresh signed URLs on load. */
+  storagePath: string;
   /** Trimmed sprite label for the stage actor. */
   label: string;
 };
@@ -485,6 +526,11 @@ type CostumePaintModalProps = {
   onClose: () => void;
   /** Seed for the name field when the modal opens (usually the selected sprite label). */
   initialSpriteLabel: string;
+  /**
+   * When set (painted/upload URL or catalog PNG `src`), loads into the canvas so the user can
+   * keep editing. Omit for a blank canvas.
+   */
+  initialImageSrc?: string | null;
   /** Called after a successful Supabase upload. */
   onSaved: (result: CostumePaintSaveResult) => void;
 };
@@ -493,6 +539,7 @@ export function CostumePaintModal({
   open,
   onClose,
   initialSpriteLabel,
+  initialImageSrc = null,
   onSaved,
 }: CostumePaintModalProps) {
   const titleId = useId();
@@ -622,8 +669,47 @@ export function CostumePaintModal({
     setSaving(false);
     const seed = initialSpriteLabel.trim();
     setSpriteName(seed.length > 0 ? seed.slice(0, SPRITE_LABEL_MAX) : "Sprite");
-    requestAnimationFrame(() => resetSessionOnOpen());
-  }, [open, resetSessionOnOpen, initialSpriteLabel]);
+
+    let cancelled = false;
+    const raf = requestAnimationFrame(() => {
+      resetSessionOnOpen();
+      const src = initialImageSrc?.trim();
+      if (!src) return;
+
+      void loadImageBitmapForPaint(src)
+        .then((bmp) => {
+          if (cancelled) {
+            bmp.close();
+            return;
+          }
+          const rctx = rasterCanvasRef.current?.getContext("2d", {
+            alpha: true,
+          });
+          if (!rctx) {
+            bmp.close();
+            return;
+          }
+          try {
+            drawImageContainOnRaster(rctx, bmp, CANVAS_W, CANVAS_H);
+            redraw();
+          } finally {
+            bmp.close();
+          }
+        })
+        .catch(() => {
+          if (!cancelled) {
+            setError(
+              "Could not load the costume image to edit. You can still paint from scratch.",
+            );
+          }
+        });
+    });
+
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(raf);
+    };
+  }, [open, resetSessionOnOpen, initialSpriteLabel, initialImageSrc, redraw]);
 
   useEffect(() => {
     if (!open) return;
@@ -974,12 +1060,9 @@ export function CostumePaintModal({
         setSaving(false);
         return;
       }
-      const { publicUrl, error: upErr } = await uploadPaintedCostumePng(
-        supabase,
-        uid,
-        blob,
-      );
-      if (upErr || !publicUrl) {
+      const { publicUrl, storagePath, error: upErr } =
+        await uploadPaintedCostumePng(supabase, uid, blob);
+      if (upErr || !publicUrl || !storagePath) {
         setError(upErr?.message ?? "Upload failed.");
         setSaving(false);
         return;
@@ -987,7 +1070,7 @@ export function CostumePaintModal({
       const trimmed = spriteName.trim();
       const label =
         trimmed.length > 0 ? trimmed.slice(0, SPRITE_LABEL_MAX) : "Sprite";
-      onSaved({ publicUrl, label });
+      onSaved({ publicUrl, storagePath, label });
       onClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed.");
@@ -1018,7 +1101,7 @@ export function CostumePaintModal({
       <div className="relative z-10 flex h-[min(88dvh,calc(100svh-4.5rem))] w-full max-w-6xl min-h-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-xl">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-[#f8fafc] px-4 py-3">
           <h2 id={titleId} className="font-display text-lg font-bold text-[#111827]">
-            Create Sprite
+            {initialImageSrc?.trim() ? "Edit Sprite" : "Create Sprite"}
           </h2>
           <button
             type="button"

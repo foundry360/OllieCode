@@ -23,7 +23,7 @@ export function GamificationPanel() {
           href="/workspace?mission=first-move"
           className="font-semibold text-[#3f6212] underline decoration-[#84c126]/50 underline-offset-2 hover:text-[#84c126]"
         >
-          Robot path mission
+          Robot path adventure
         </Link>
         : add a Move block, tap Run, then save your work.
       </p>
