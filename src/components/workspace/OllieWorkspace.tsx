@@ -10,11 +10,9 @@ import {
 } from "react";
 import { useIsClient } from "@/hooks/useIsClient";
 import {
-  Block,
   Events,
   Scrollbar,
   Xml,
-  common,
   dialog,
   inject,
   serialization,
@@ -92,12 +90,19 @@ import {
   upsertSavedMissionProgress,
 } from "@/lib/supabase/savedMissionProgress";
 import {
+  fetchUserSpriteLibrary,
+  insertUserSpriteRow,
+  mergeUserSpritePickerEntries,
+  type UserSpriteLibraryRow,
+} from "@/lib/supabase/userSprites";
+import {
   normalizeStageActor,
   type SpriteScriptPlan,
   type ProjectPayload,
   type SavedMissionProgressEntry,
   type StageActor,
 } from "@/types/ollie";
+import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLinks";
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { GamificationPanel } from "@/components/workspace/GamificationPanel";
 import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
@@ -117,9 +122,7 @@ import {
   LogOut,
   Maximize2,
   Minimize2,
-  PanelLeftClose,
   Paintbrush,
-  PanelLeftOpen,
   Pencil,
   Play,
   Plus,
@@ -190,8 +193,6 @@ export function OllieWorkspace() {
   const [openStagePanel, setOpenStagePanel] = useState<
     "scene" | "sprite" | null
   >(null);
-  /** Code / Blockly column: collapsed gives more room to the stage (Blockly stays mounted off-screen). */
-  const [codePanelExpanded, setCodePanelExpanded] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState<
     | null
     | { type: "scene" }
@@ -216,6 +217,17 @@ export function OllieWorkspace() {
    * re-renders). Without this, dev logs show many repeated `GET /workspace?mission=…` lines.
    */
   const lastMissionUrlApplyKeyRef = useRef<string | null>(null);
+  /**
+   * Supabase’s browser client uses a navigator lock for auth. Concurrent `getUser` / `getSession`
+   * calls (e.g. sync + sprite save) can throw “Lock … was released because another request stole it”.
+   * Queue auth work on a single chain.
+   */
+  const authChainRef = useRef<Promise<unknown>>(Promise.resolve());
+  const runAuthSerialized = useCallback(<T,>(fn: () => Promise<T>): Promise<T> => {
+    const next = authChainRef.current.then(fn);
+    authChainRef.current = next.catch(() => undefined);
+    return next;
+  }, []);
   const [missionsModalOpen, setMissionsModalOpen] = useState(false);
   const [deleteMissionModalOpen, setDeleteMissionModalOpen] = useState(false);
   const [deleteMissionLoading, setDeleteMissionLoading] = useState(false);
@@ -225,6 +237,10 @@ export function OllieWorkspace() {
     missionTitle: string;
     defaultName: string;
   } | null>(null);
+  /** Supabase `user_sprites` — survives mission deletion; merged into My Sprites. */
+  const [libraryUserSprites, setLibraryUserSprites] = useState<
+    UserSpriteLibraryRow[]
+  >([]);
   const [renameMissionLoading, setRenameMissionLoading] = useState(false);
   const [savedMissionEntries, setSavedMissionEntries] = useState<
     SavedMissionProgressEntry[]
@@ -384,29 +400,39 @@ export function OllieWorkspace() {
     return r.kind === "painted" ? "Painted costume" : r.def.label;
   }, [activeActor]);
 
-  /** Deduped painted/upload costumes for the sprite picker “My Sprites” filter. */
-  const userSpritesForPicker = useMemo(() => {
-    const seen = new Set<string>();
-    const out: {
-      paintedCostumeUrl: string;
-      label: string;
-      paintedCostumeStoragePath?: string;
-    }[] = [];
-    for (const a of actors) {
-      const url = a.paintedCostumeUrl?.trim();
-      if (!url) continue;
-      if (seen.has(url)) continue;
-      seen.add(url);
-      out.push({
-        paintedCostumeUrl: url,
-        label: a.label,
-        ...(a.paintedCostumeStoragePath
-          ? { paintedCostumeStoragePath: a.paintedCostumeStoragePath }
-          : {}),
+  /** My Sprites: cloud library (all adventures) merged with this project’s actors. */
+  const userSpritesForPicker = useMemo(
+    () => mergeUserSpritePickerEntries(libraryUserSprites, actors),
+    [libraryUserSprites, actors],
+  );
+
+  /** Record a new paint/upload in `user_sprites` and refresh My Sprites (signed-in only). */
+  const registerSpriteInCloudLibrary = useCallback(
+    (payload: {
+      storagePath: string;
+      displayName: string;
+      source: "paint" | "upload";
+    }) => {
+      void runAuthSerialized(async () => {
+        const sb = getSupabaseBrowserClient();
+        if (!sb) return;
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        const user = session?.user;
+        if (!user) return;
+        const { error } = await insertUserSpriteRow(sb, user.id, {
+          storage_path: payload.storagePath,
+          display_name: payload.displayName,
+          source: payload.source,
+        });
+        if (error) return;
+        const lib = await fetchUserSpriteLibrary(sb, user.id);
+        setLibraryUserSprites(lib);
       });
-    }
-    return out;
-  }, [actors]);
+    },
+    [runAuthSerialized],
+  );
 
   /** Only user-painted / uploaded art loads for editing (not library costumes). */
   const paintModalInitialImageSrc = useMemo(() => {
@@ -437,42 +463,52 @@ export function OllieWorkspace() {
 
   useEffect(() => {
     const client = getSupabaseBrowserClient();
-    if (!client) return;
-
-    async function syncAccount() {
-      const sb = getSupabaseBrowserClient();
-      if (!sb) {
-        setUserCodename(null);
-        setAvatarSlug(null);
-        return;
-      }
-      const {
-        data: { user },
-      } = await sb.auth.getUser();
-      if (!user) {
-        setUserCodename(null);
-        setAvatarSlug(null);
-        return;
-      }
-      const { data: profile } = await sb
-        .from("profiles")
-        .select("username, avatar_slug")
-        .eq("id", user.id)
-        .maybeSingle();
-      const fromProfile = profile?.username?.trim();
-      setUserCodename(fromProfile || authEmailLocalPart(user.email));
-      const rawSlug = profile?.avatar_slug;
-      setAvatarSlug(isOllieAvatarSlug(rawSlug) ? rawSlug : null);
+    if (!client) {
+      setLibraryUserSprites([]);
+      return;
     }
 
-    void syncAccount();
+    function syncAccount() {
+      void runAuthSerialized(async () => {
+        const sb = getSupabaseBrowserClient();
+        if (!sb) {
+          setUserCodename(null);
+          setAvatarSlug(null);
+          setLibraryUserSprites([]);
+          return;
+        }
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        const user = session?.user ?? null;
+        if (!user) {
+          setUserCodename(null);
+          setAvatarSlug(null);
+          setLibraryUserSprites([]);
+          return;
+        }
+        const { data: profile } = await sb
+          .from("profiles")
+          .select("username, avatar_slug")
+          .eq("id", user.id)
+          .maybeSingle();
+        const fromProfile = profile?.username?.trim();
+        setUserCodename(fromProfile || authEmailLocalPart(user.email));
+        const rawSlug = profile?.avatar_slug;
+        setAvatarSlug(isOllieAvatarSlug(rawSlug) ? rawSlug : null);
+        const lib = await fetchUserSpriteLibrary(sb, user.id);
+        setLibraryUserSprites(lib);
+      });
+    }
+
+    syncAccount();
     const {
       data: { subscription },
     } = client.auth.onAuthStateChange(() => {
-      void syncAccount();
+      syncAccount();
     });
     return () => subscription.unsubscribe();
-  }, []);
+  }, [runAuthSerialized]);
 
   useEffect(() => {
     missionRewardShownRef.current = false;
@@ -750,8 +786,13 @@ export function OllieWorkspace() {
         setStatus("Sprite image updated!");
       }
       setTimeout(() => setStatus(""), 2500);
+      void registerSpriteInCloudLibrary({
+        storagePath,
+        displayName: displayName.trim().slice(0, SPRITE_LABEL_MAX_LEN),
+        source: "upload",
+      });
     },
-    [activeActorId, addSpriteWithUploadedPng],
+    [activeActorId, addSpriteWithUploadedPng, registerSpriteInCloudLibrary],
   );
 
   const handleStop = useCallback(() => {
@@ -865,27 +906,6 @@ export function OllieWorkspace() {
     workspaceRef.current?.undo(true);
   }, []);
 
-  /**
-   * Duplicate selected block — Blockly also supports this from the block context menu.
-   * Future: plug into Blockly shortcuts registry for keyboard duplicate.
-   */
-  const handleDuplicate = useCallback(() => {
-    const ws = workspaceRef.current;
-    if (!ws) return;
-    const selected = common.getSelected();
-    if (!selected || !(selected instanceof Block) || selected.isShadow()) return;
-    const dom = Xml.blockToDomWithXY(selected);
-    const el =
-      dom instanceof Element
-        ? dom
-        : dom instanceof DocumentFragment
-          ? dom.firstElementChild
-          : null;
-    if (!el) return;
-    const newBlock = Xml.domToBlock(el, ws);
-    newBlock.moveBy(32, 32);
-  }, []);
-
   const saveProject = useCallback(
     async (opts?: {
       missionRecord?: { missionId: string; displayName: string };
@@ -985,6 +1005,46 @@ export function OllieWorkspace() {
   },
     [actors, activeActorId, stageSceneLayers, topStageSceneId],
   );
+
+  /**
+   * Save the current canvas + blocks as a new custom adventure, then open it in the URL.
+   * (Blockly still supports duplicating a block from the block’s right‑click menu.)
+   */
+  const handleDuplicateAdventure = useCallback(async () => {
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const newId = createCustomMissionId();
+    const baseName =
+      canvasMissionLabel.trim() && canvasMissionLabel !== "Adventure"
+        ? canvasMissionLabel
+        : activeMission?.title?.trim() || "Adventure";
+    const copyName = `Copy of ${baseName}`.slice(0, 48);
+
+    const msg = await saveProject({
+      missionRecord: { missionId: newId, displayName: copyName },
+    });
+    if (msg === "Nothing to save") return;
+    if (
+      msg.startsWith("Save failed") ||
+      msg === "Could not save"
+    ) {
+      setStatus(msg);
+      setTimeout(() => setStatus(""), 5000);
+      return;
+    }
+
+    skipNextMissionUrlEffectRef.current = true;
+    const q = new URLSearchParams();
+    q.set("mission", newId);
+    router.replace(`/workspace?${q.toString()}`, { scroll: false });
+    setSavedMissionEntries(getSavedMissionProgress());
+    setStatus(`Opened a copy — “${copyName}”`);
+    setTimeout(() => setStatus(""), 4000);
+    requestAnimationFrame(() => {
+      const w = workspaceRef.current;
+      if (w) svgResize(w);
+    });
+  }, [saveProject, router, canvasMissionLabel, activeMission?.title]);
 
   const confirmSaveMissionName = useCallback(
     async (displayName: string) => {
@@ -1460,8 +1520,8 @@ export function OllieWorkspace() {
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-[#111827]">
-      <header className="sticky top-0 z-[100000] flex flex-wrap items-center justify-between gap-3 border-b border-[#e5e7eb] bg-white/95 px-4 py-3 backdrop-blur">
-        <div className="flex min-w-0 items-center gap-2">
+      <header className="sticky top-0 z-[100000] flex flex-wrap items-center justify-start gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+        <div className="flex min-w-0 items-center justify-start gap-2">
           <Link
             href="/"
             className="block shrink-0"
@@ -1476,12 +1536,10 @@ export function OllieWorkspace() {
               priority
             />
           </Link>
-          <span className="hidden rounded-full bg-[#ecfccb] px-3 py-1 text-xs font-semibold text-[#3f6212] sm:inline">
-            Learn &amp; play
-          </span>
+          <WorkspaceHeaderNavLinks />
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:ml-auto sm:gap-2">
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
           {programRunning ? (
             <ToolbarIconButton
               variant="stop"
@@ -1593,9 +1651,9 @@ export function OllieWorkspace() {
             />
           </ToolbarIconButton>
           <ToolbarIconButton
-            onClick={handleDuplicate}
-            title="Duplicate"
-            aria-label="Duplicate"
+            onClick={() => void handleDuplicateAdventure()}
+            title="Duplicate adventure"
+            aria-label="Duplicate the current adventure into a new adventure"
           >
             <CopyPlus
               className={ICON_SM}
@@ -1776,32 +1834,10 @@ export function OllieWorkspace() {
       <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
         <div
           id="ollie-code-workspace-shell"
-          className={[
-            "flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm transition-[opacity,transform] duration-200",
-            codePanelExpanded
-              ? "relative min-h-[50vh] flex-1 lg:min-h-[calc(100dvh-9rem)]"
-              : "pointer-events-none fixed -left-[9999px] top-0 z-0 flex h-[calc(100dvh-8rem)] w-[min(960px,calc(100vw-2rem))] flex-col opacity-0",
-          ].join(" ")}
-          aria-hidden={!codePanelExpanded}
+          className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]"
         >
-          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
             <span className="text-sm font-semibold text-[#365314]">Workspace</span>
-            <WorkspaceHeaderTooltip text="Hide code panel">
-              <button
-                type="button"
-                onClick={() => setCodePanelExpanded(false)}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[#365314] transition hover:bg-white/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                aria-label="Hide code panel"
-                aria-expanded={codePanelExpanded}
-                aria-controls="ollie-code-workspace-shell"
-              >
-                <PanelLeftClose
-                  className="size-5 shrink-0"
-                  strokeWidth={ICON_STROKE}
-                  aria-hidden
-                />
-              </button>
-            </WorkspaceHeaderTooltip>
           </div>
           <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
             <style
@@ -1822,42 +1858,7 @@ export function OllieWorkspace() {
           </div>
         </div>
 
-        {!codePanelExpanded ? (
-          <div className="flex w-full shrink-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:w-14 lg:shrink-0">
-            <WorkspaceHeaderTooltip text="Show code panel">
-              <button
-                type="button"
-                onClick={() => setCodePanelExpanded(true)}
-                className="flex w-full items-center justify-center gap-2 px-3 py-3 text-[#365314] transition hover:bg-[#f7fee7] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126] lg:flex-col lg:px-2 lg:py-5"
-                aria-label="Show code panel"
-                aria-expanded={false}
-                aria-controls="ollie-code-workspace-shell"
-              >
-                <PanelLeftOpen
-                  className="size-5 shrink-0"
-                  strokeWidth={ICON_STROKE}
-                  aria-hidden
-                />
-                <span className="text-sm font-semibold lg:hidden">Show code</span>
-                <span
-                  className="hidden max-h-[12rem] text-center text-[11px] font-bold uppercase tracking-wider text-[#365314] lg:block"
-                  style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
-                >
-                  Code
-                </span>
-              </button>
-            </WorkspaceHeaderTooltip>
-          </div>
-        ) : null}
-
-        <div
-          className={[
-            "flex min-h-0 w-full flex-col gap-3",
-            codePanelExpanded
-              ? "lg:w-[420px] lg:max-w-[42vw]"
-              : "lg:min-w-0 lg:flex-1 lg:max-w-none",
-          ].join(" ")}
-        >
+        <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[620px] lg:max-w-[50vw]">
           <div className="flex h-[min(720px,72vh)] min-h-[520px] shrink-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
             <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
               <span
@@ -2469,6 +2470,11 @@ export function OllieWorkspace() {
                 : a,
             ),
           );
+          void registerSpriteInCloudLibrary({
+            storagePath,
+            displayName: label.trim().slice(0, SPRITE_LABEL_MAX_LEN),
+            source: "paint",
+          });
         }}
       />
       <MissionCompleteModal

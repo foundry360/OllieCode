@@ -20,7 +20,8 @@ const SIGN_URL_EXPIRY_ATTEMPTS_SEC = [
   60 * 60 * 24,
 ] as const;
 
-async function mintProjectsObjectSignedUrl(
+/** Signed URL for a private `projects` bucket object (used by costumes + user sprite library). */
+export async function mintProjectsObjectSignedUrl(
   supabase: SupabaseClient,
   path: string,
 ): Promise<string | null> {

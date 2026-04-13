@@ -1,22 +1,27 @@
 import Link from "next/link";
 
 const FOOTER_LINKS = [
-  { href: "#features", label: "Programs" },
+  { href: "/#features", label: "Programs" },
   { href: "/auth/login?next=/workspace", label: "Workspace" },
   { href: "/auth/login?next=/workspace", label: "Sign in" },
+  { href: "/staff/login", label: "Staff login" },
 ];
 
 export function Footer() {
   return (
-    <footer className="border-t border-[#e5e7eb] bg-white px-4 py-12">
+    <footer className="border-t border-[#6b9e1f] bg-[#84c126] px-4 py-12">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 sm:flex-row sm:justify-between">
         <div className="text-center sm:text-left">
-          <p className="font-display text-xl font-bold text-[#111827]">Ollie Code</p>
-          <p className="mt-1 text-sm text-[#6b7280]">Fun coding for kids 7–13.</p>
+          <p className="font-display text-xl font-bold text-white">Ollie Code</p>
+          <p className="mt-1 text-sm text-white/90">Fun coding for kids 7–13.</p>
         </div>
-        <nav className="flex flex-wrap justify-center gap-6 text-sm font-semibold text-[#374151]">
+        <nav className="flex flex-wrap justify-center gap-6 text-sm font-semibold text-white">
           {FOOTER_LINKS.map((l) => (
-            <Link key={l.label} href={l.href} className="hover:text-[#84c126]">
+            <Link
+              key={l.label}
+              href={l.href}
+              className="transition hover:text-[#ecfccb] hover:underline"
+            >
               {l.label}
             </Link>
           ))}
@@ -26,7 +31,7 @@ export function Footer() {
             href="https://youtube.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3f4f6] text-[#111827] transition hover:bg-[#84c126] hover:text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
             aria-label="YouTube"
           >
             <SocialIconYouTube />
@@ -35,7 +40,7 @@ export function Footer() {
             href="https://instagram.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3f4f6] text-[#111827] transition hover:bg-[#84c126] hover:text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
             aria-label="Instagram"
           >
             <SocialIconInstagram />
@@ -44,14 +49,14 @@ export function Footer() {
             href="https://facebook.com"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f3f4f6] text-[#111827] transition hover:bg-[#84c126] hover:text-white"
+            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
             aria-label="Facebook"
           >
             <SocialIconFacebook />
           </a>
         </div>
       </div>
-      <p className="mx-auto mt-10 max-w-6xl text-center text-xs text-[#9ca3af]">
+      <p className="mx-auto mt-10 max-w-6xl text-center text-xs text-white/75">
         ©{" "}
         <span suppressHydrationWarning>{new Date().getFullYear()}</span> Ollie
         Code. Scaffold for demos — replace links and copy for production.

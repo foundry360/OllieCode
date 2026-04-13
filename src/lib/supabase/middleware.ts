@@ -44,10 +44,16 @@ export async function updateSession(request: NextRequest) {
 
     const path = request.nextUrl.pathname;
     /** Only enforce login when Supabase is configured (otherwise workspace stays usable offline). */
-    if (env && !session && path.startsWith("/workspace")) {
+    const requiresAuth =
+      path.startsWith("/workspace") ||
+      path.startsWith("/learn") ||
+      path.startsWith("/profile") ||
+      path.startsWith("/settings") ||
+      path.startsWith("/admin");
+    if (env && !session && requiresAuth) {
       const url = request.nextUrl.clone();
-      url.pathname = "/auth/login";
-      url.searchParams.set("next", "/workspace");
+      url.pathname = path.startsWith("/admin") ? "/staff/login" : "/auth/login";
+      url.searchParams.set("next", path);
       const redirectResponse = NextResponse.redirect(url);
       supabaseResponse.cookies.getAll().forEach((c) => {
         redirectResponse.cookies.set(c.name, c.value);

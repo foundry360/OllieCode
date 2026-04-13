@@ -518,8 +518,8 @@ type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
 
 /**
  * Scratch heading + optional costume bitmap offset (see `spriteRotationOffsetDeg`).
- * For side-view art, net 180° would rotate the whole costume upside down; use mirror
- * instead so “face left” stays upright.
+ * For side-view catalog art (−90° offset), “face left” is implemented with mirror + 0° net
+ * rotation instead of 180° rotation (which would flip the sprite upside down).
  */
 function spriteDrawOrient(
   s: Sprite,
@@ -546,9 +546,14 @@ function spriteDrawOrient(
    */
   const net = normHeading(s.heading + off);
   /**
-   * Always rotate by `net`. The old `net === 180` + mirror branch caused a one-frame flip
-   * (exact float equality + different transform) while tracking the pointer.
+   * Side-view catalog art uses offset −90 (bitmap “forward” is +x at net 0). At Scratch
+   * heading 270° (face left), `net` is 180° — a 180° rotation inverts the costume
+   * vertically; mirror horizontally at net 0 instead (see costume comments in
+   * `stageAssets`).
    */
+  if (off === -90 && net === 180) {
+    return { rotationDeg: 0, mirrorX: true };
+  }
   return { rotationDeg: net, mirrorX: false };
 }
 
