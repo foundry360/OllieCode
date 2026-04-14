@@ -19,6 +19,7 @@ import {
   formatStepCountLabel,
   lessonHeroImageUrl,
   lessonPointsReward,
+  normalizeWorkspaceHrefWithLesson,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
 import { sanitizeLessonBodyHtml } from "@/lib/lms/sanitizeLessonBodyHtml";
@@ -37,7 +38,11 @@ export function LessonDetailPage({
   lesson,
   discoverMoreLessons = [],
 }: LessonDetailPageProps) {
-  const canActivate = Boolean(lesson.workspaceHref);
+  const activateWorkspaceHref = normalizeWorkspaceHrefWithLesson(
+    lesson.workspaceHref,
+    lesson.id,
+  );
+  const canActivate = Boolean(activateWorkspaceHref);
   const totalPoints = lessonPointsReward(lesson);
   const hero = lessonHeroImageUrl(lesson);
 
@@ -80,9 +85,9 @@ export function LessonDetailPage({
                   )}
                 </div>
                 <div className="space-y-4 p-5">
-                  {canActivate && lesson.workspaceHref ? (
+                  {canActivate && activateWorkspaceHref ? (
                     <Link
-                      href={lesson.workspaceHref}
+                      href={activateWorkspaceHref}
                       className="flex w-full items-center justify-center rounded-xl bg-[#84c126] px-4 py-3.5 text-base font-bold text-white shadow-md transition hover:bg-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
                     >
                       Activate lesson

@@ -1,3 +1,5 @@
+import type { VisualLessonStep } from "@/lib/lms/visualLessonTypes";
+
 /**
  * Platform lesson catalog — skill-gated cards on `/learn`.
  * IDs are stable for progress tracking in `user_lesson_completions`.
@@ -40,6 +42,8 @@ export type LessonCatalogEntry = {
   bodyHtml?: string | null;
   /** Timeline modules on `/learn/[lessonId]` */
   modules: LessonModule[];
+  /** Optional visual step-by-step cards in the workspace lesson panel. */
+  visualSteps?: VisualLessonStep[];
 };
 
 /**
@@ -89,6 +93,8 @@ export const LESSONS: LessonCatalogEntry[] = [
     title: "Robot path",
     summary:
       "Snap a Move block, run your program, and save your first adventure with Ollie.",
+    bodyHtml:
+      "<p>Connect blocks in the workspace, tap <strong>Run</strong> to try your program, then <strong>Save</strong> to keep your adventure in the cloud. Use the modules below as your checklist while you build.</p>",
     skillLevel: 1,
     workspaceHref: "/workspace?mission=first-move&lesson=lvl1-robot-path",
     estimatedMinutes: 15,
@@ -316,6 +322,25 @@ export function getLessonById(id: string): LessonCatalogEntry | undefined {
 /** URL for the lesson detail page */
 export function lessonDetailHref(lessonId: string): string {
   return `/learn/${encodeURIComponent(lessonId)}`;
+}
+
+/**
+ * Ensures workspace deep links include `?lesson=<id>` so the workspace lesson panel
+ * can load instructions. Published payloads may store only `mission=`.
+ */
+export function normalizeWorkspaceHrefWithLesson(
+  href: string | null | undefined,
+  lessonId: string,
+): string | null {
+  const trimmed = href?.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed, "https://ollie.invalid");
+    u.searchParams.set("lesson", lessonId);
+    return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    return trimmed;
+  }
 }
 
 /** Gamified points for list UI (not yet tied to DB). */

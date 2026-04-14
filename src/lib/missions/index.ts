@@ -11,10 +11,11 @@ export {
   mergeMissionProgressIntoStorage,
   recordMissionSaved,
   removeSavedMissionProgressEntry,
+  syncSavedMissionStorageForAccount,
 } from "@/lib/missions/savedMissionProgress";
 export {
+  clearAllMissionProjectSnapshotsLocal,
   clearMissionProjectSnapshotLocal,
   loadMissionProjectSnapshotLocal,
   missionCloudProjectId,
-  storeMissionProjectSnapshotLocal,
 } from "@/lib/missions/missionProjectSnapshot";

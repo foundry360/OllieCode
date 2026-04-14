@@ -1528,6 +1528,11 @@ export type SceneDef = (typeof OLLIE_SCENES)[number];
 export type CostumeDef = (typeof OLLIE_SPRITE_COSTUMES)[number];
 
 export const DEFAULT_SCENE_ID: OllieSceneId = "white_dots";
+/**
+ * Adventures list modal uses local project snapshots for thumbnails when present.
+ * When there is no snapshot yet, use this backdrop image so cards show art instead of a plain grid.
+ */
+export const ADVENTURES_MODAL_PREVIEW_SCENE_ID: OllieSceneId = "path";
 /** Default costume for new sprites and legacy saves that used removed walk frames. */
 export const DEFAULT_COSTUME_ID: OllieSpriteCostumeId = "olliebot";
 
@@ -1560,6 +1565,20 @@ export function normalizeSceneLayerIdsFromPayload(
     if (out.length > 0) return out;
   }
   return [migrateSceneIdFromStorage(typeof sceneId === "string" ? sceneId : undefined)];
+}
+
+/**
+ * Backdrop id to show on adventure cards / profile thumbnails.
+ * Stage layers are bottom → top (`sceneLayerIds[0]` is behind); new scenes are appended,
+ * so the learner-visible backdrop is usually the **top** layer. Using only the bottom
+ * layer made cards stick on the default white grid after “add a scene” on top.
+ */
+export function primaryBackdropIdFromProjectPayload(
+  sceneLayerIds: unknown,
+  sceneId: unknown,
+): OllieSceneId {
+  const layers = normalizeSceneLayerIdsFromPayload(sceneLayerIds, sceneId);
+  return layers[layers.length - 1]!;
 }
 
 export function getCostumeById(id: string): CostumeDef | undefined {

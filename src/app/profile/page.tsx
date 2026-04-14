@@ -185,7 +185,7 @@ export default async function ProfilePage() {
               When you save an adventure in the workspace, it appears here.
             </p>
           ) : (
-            <ProfileAdventureGrid adventures={adventures} />
+            <ProfileAdventureGrid adventures={adventures} userId={user.id} />
           )}
         </section>
 

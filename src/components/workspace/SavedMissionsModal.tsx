@@ -1,21 +1,32 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import { Pencil } from "lucide-react";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { downloadProjectJson } from "@/lib/supabase/projectStorage";
 import {
+  ADVENTURES_MODAL_PREVIEW_SCENE_ID,
   DEFAULT_SCENE_ID,
   getSceneById,
-  migrateSceneIdFromStorage,
+  primaryBackdropIdFromProjectPayload,
   type SceneDef,
 } from "@/lib/canvas/stageAssets";
 import {
+  getMissionById,
   isCustomMissionId,
-  loadMissionProjectSnapshotLocal,
+  missionCloudProjectId,
   MISSIONS,
 } from "@/lib/missions";
-import type { SavedMissionProgressEntry } from "@/types/ollie";
+import type { ProjectPayload, SavedMissionProgressEntry } from "@/types/ollie";
 
 type SavedMissionsModalProps = {
   open: boolean;
@@ -44,10 +55,25 @@ function formatSavedAt(iso: string): string {
   }
 }
 
-function sceneForMissionId(missionId: string): SceneDef {
-  const snap = loadMissionProjectSnapshotLocal(missionId);
-  const id = migrateSceneIdFromStorage(snap?.sceneId);
-  return getSceneById(id) ?? getSceneById(DEFAULT_SCENE_ID)!;
+function fallbackSceneForMission(missionId: string): SceneDef {
+  const mission = getMissionById(missionId);
+  const fallbackId =
+    mission?.cardPreviewSceneId ?? ADVENTURES_MODAL_PREVIEW_SCENE_ID;
+  return getSceneById(fallbackId) ?? getSceneById(DEFAULT_SCENE_ID)!;
+}
+
+function sceneFromCloudPayload(
+  payload: ProjectPayload | null | undefined,
+  missionId: string,
+): SceneDef {
+  if (payload) {
+    const id = primaryBackdropIdFromProjectPayload(
+      payload.sceneLayerIds,
+      payload.sceneId,
+    );
+    return getSceneById(id) ?? getSceneById(DEFAULT_SCENE_ID)!;
+  }
+  return fallbackSceneForMission(missionId);
 }
 
 function MissionCard({
@@ -59,6 +85,8 @@ function MissionCard({
   onSelect,
   canRename,
   onRename,
+  scene,
+  thumbLoading,
 }: {
   missionId: string;
   name: string;
@@ -68,8 +96,9 @@ function MissionCard({
   onSelect: (id: string) => void;
   canRename: boolean;
   onRename?: (id: string) => void;
+  scene: SceneDef;
+  thumbLoading: boolean;
 }) {
-  const scene = sceneForMissionId(missionId);
   const showRename = canRename && onRename;
 
   return (
@@ -88,7 +117,18 @@ function MissionCard({
           className="flex w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
         >
           <div className="relative h-[100px] w-full shrink-0 overflow-hidden rounded-t-md bg-[#f1f5f9]">
-            <ScenePreview scene={scene} className="h-full w-full object-cover" />
+            {thumbLoading ? (
+              <div
+                className="h-full w-full animate-pulse bg-gradient-to-br from-slate-200 to-slate-100"
+                aria-hidden
+              />
+            ) : (
+              <ScenePreview
+                key={missionId}
+                scene={scene}
+                className="h-full w-full object-cover"
+              />
+            )}
             {isActive ? (
               <span className="absolute right-2 top-2 rounded-full bg-[#84c126] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white shadow">
                 Open
@@ -144,6 +184,11 @@ export function SavedMissionsModal({
 }: SavedMissionsModalProps) {
   const titleId = useId();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  /** Supabase Storage `mission-*.json` payloads — source of truth for card art. */
+  const [cloudByMissionId, setCloudByMissionId] = useState<
+    Record<string, ProjectPayload | null>
+  >({});
+  const [cloudThumbsReady, setCloudThumbsReady] = useState(true);
 
   const savedByMissionId = useMemo(() => {
     const map = new Map<string, SavedMissionProgressEntry>();
@@ -163,6 +208,74 @@ export function SavedMissionsModal({
 
   const hasAnyMission =
     MISSIONS.length > 0 || extraSavedEntries.length > 0;
+
+  const entriesKey = useMemo(
+    () =>
+      [...entries]
+        .map((e) => e.missionId)
+        .sort()
+        .join(","),
+    [entries],
+  );
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    setCloudByMissionId({});
+    setCloudThumbsReady(false);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    if (getSupabaseBrowserClient()) {
+      setCloudThumbsReady(false);
+    }
+
+    void (async () => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) {
+        if (!cancelled) setCloudThumbsReady(true);
+        return;
+      }
+      const {
+        data: { user },
+      } = await sb.auth.getUser();
+      if (!user) {
+        if (!cancelled) setCloudThumbsReady(true);
+        return;
+      }
+
+      const ids = new Set<string>();
+      for (const m of MISSIONS) ids.add(m.id);
+      for (const e of entries) ids.add(e.missionId);
+
+      const results = await Promise.all(
+        [...ids].map(async (missionId) => {
+          const { data, error } = await downloadProjectJson(
+            sb,
+            user.id,
+            missionCloudProjectId(missionId),
+          );
+          return {
+            missionId,
+            payload: data && !error ? data : null,
+          };
+        }),
+      );
+
+      if (cancelled) return;
+      const map: Record<string, ProjectPayload | null> = {};
+      for (const { missionId, payload } of results) {
+        map[missionId] = payload;
+      }
+      setCloudByMissionId(map);
+      setCloudThumbsReady(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [open, entriesKey, entries]);
 
   useEffect(() => {
     if (!open) return;
@@ -244,6 +357,9 @@ export function SavedMissionsModal({
                 const metaLine = saved?.displayName?.trim()
                   ? meta.title
                   : null;
+                const payload = cloudByMissionId[meta.id];
+                const scene = sceneFromCloudPayload(payload, meta.id);
+                const thumbLoading = !cloudThumbsReady;
                 return (
                   <MissionCard
                     key={meta.id}
@@ -255,6 +371,8 @@ export function SavedMissionsModal({
                     onSelect={onSelectMission}
                     canRename={Boolean(saved?.savedAt)}
                     onRename={onRenameMission}
+                    scene={scene}
+                    thumbLoading={thumbLoading}
                   />
                 );
               })}
@@ -265,6 +383,9 @@ export function SavedMissionsModal({
                 const metaLine = isCustomMissionId(entry.missionId)
                   ? "Your Adventure"
                   : null;
+                const payload = cloudByMissionId[entry.missionId];
+                const scene = sceneFromCloudPayload(payload, entry.missionId);
+                const thumbLoading = !cloudThumbsReady;
                 return (
                   <MissionCard
                     key={entry.missionId}
@@ -276,6 +397,8 @@ export function SavedMissionsModal({
                     onSelect={onSelectMission}
                     canRename
                     onRename={onRenameMission}
+                    scene={scene}
+                    thumbLoading={thumbLoading}
                   />
                 );
               })}

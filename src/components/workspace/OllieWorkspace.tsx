@@ -76,7 +76,7 @@ import {
   MISSIONS,
   recordMissionSaved,
   removeSavedMissionProgressEntry,
-  storeMissionProjectSnapshotLocal,
+  syncSavedMissionStorageForAccount,
 } from "@/lib/missions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { hydratePaintedCostumeUrls } from "@/lib/supabase/costumePaintStorage";
@@ -485,12 +485,20 @@ export function OllieWorkspace() {
           data: { session },
         } = await sb.auth.getSession();
         const user = session?.user ?? null;
+        syncSavedMissionStorageForAccount(user?.id ?? null);
         if (!user) {
           setUserCodename(null);
           setAvatarSlug(null);
           setLibraryUserSprites([]);
+          setSavedMissionEntries(getSavedMissionProgress());
           return;
         }
+        const { data: missionRows, error: missionListErr } =
+          await fetchSavedMissionProgress(sb, user.id);
+        if (!missionListErr && missionRows.length) {
+          mergeMissionProgressIntoStorage(missionRows);
+        }
+        setSavedMissionEntries(getSavedMissionProgress());
         const { data: profile } = await sb
           .from("profiles")
           .select("username, avatar_slug")
@@ -939,9 +947,11 @@ export function OllieWorkspace() {
       updatedAt: new Date().toISOString(),
       savedMissionProgress: mergedMissionProgress,
     };
-    if (opts?.missionRecord) {
-      storeMissionProjectSnapshotLocal(opts.missionRecord.missionId, payload);
-    }
+    const snapshotMissionId =
+      opts?.missionRecord?.missionId ??
+      (missionIdParam && getMissionById(missionIdParam)
+        ? missionIdParam
+        : null);
 
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
@@ -979,11 +989,11 @@ export function OllieWorkspace() {
       payload,
     );
     const missionRecord = opts?.missionRecord;
-    if (!error && missionRecord) {
+    if (!error && snapshotMissionId) {
       const { error: mErr } = await uploadProjectJson(
         supabase,
         user.id,
-        missionCloudProjectId(missionRecord.missionId),
+        missionCloudProjectId(snapshotMissionId),
         payload,
       );
       if (mErr) {
@@ -1010,7 +1020,7 @@ export function OllieWorkspace() {
     }
     return "Saved to cloud!";
   },
-    [actors, activeActorId, stageSceneLayers, topStageSceneId],
+    [actors, activeActorId, missionIdParam, stageSceneLayers, topStageSceneId],
   );
 
   /**
@@ -1263,7 +1273,7 @@ export function OllieWorkspace() {
   }, [resetWorkspaceToDefaultStarter]);
 
   /**
-   * Load an adventure workspace: cloud JSON → local snapshot → default starter blocks.
+   * Load an adventure workspace: signed-in users use cloud JSON only; otherwise local snapshot or starter blocks.
    * Call with an explicit id from the Adventures modal so we don’t rely on `useSearchParams` updating first.
    */
   const openMissionWorkspace = useCallback(
@@ -1294,6 +1304,17 @@ export function OllieWorkspace() {
             setTimeout(() => setStatus(""), 2000);
             return;
           }
+          resetWorkspaceToDefaultStarter();
+          missionRewardShownRef.current = false;
+          requestAnimationFrame(() => {
+            const w = workspaceRef.current;
+            if (w) svgResize(w);
+          });
+          setStatus(
+            `No cloud save for “${meta.title}” yet — start here, then Save to sync.`,
+          );
+          setTimeout(() => setStatus(""), 4000);
+          return;
         }
       }
 

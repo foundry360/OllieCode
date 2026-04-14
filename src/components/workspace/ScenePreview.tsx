@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { SceneDef } from "@/lib/canvas/stageAssets";
 
 type ScenePreviewProps = {
@@ -8,17 +8,42 @@ type ScenePreviewProps = {
   className?: string;
 };
 
+function scenePreviewKey(scene: SceneDef): string {
+  if (scene.kind === "image") return scene.src;
+  return `solid-${scene.rgb[0]}-${scene.rgb[1]}-${scene.rgb[2]}`;
+}
+
 /**
  * Visual thumbnail for a scene — solid + optional dot grid, or backdrop image.
  */
 export function ScenePreview({ scene, className = "" }: ScenePreviewProps) {
+  const [imgFailed, setImgFailed] = useState(false);
+  const key = scenePreviewKey(scene);
+
+  useEffect(() => {
+    setImgFailed(false);
+  }, [key]);
+
   if (scene.kind === "image") {
+    if (imgFailed && scene.fallbackRgb) {
+      const [r, g, b] = scene.fallbackRgb;
+      return (
+        <div
+          className={`h-full w-full ${className}`.trim()}
+          style={{
+            backgroundColor: `rgb(${String(r)},${String(g)},${String(b)})`,
+          }}
+          aria-hidden
+        />
+      );
+    }
     return (
       <img
         src={scene.src}
         alt=""
-        className={`block h-full w-full object-cover ${className}`.trim()}
+        className={`block h-full min-h-0 w-full object-cover ${className}`.trim()}
         draggable={false}
+        onError={() => setImgFailed(true)}
       />
     );
   }

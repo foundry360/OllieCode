@@ -1,3 +1,4 @@
+import type { OllieSceneId } from "@/lib/canvas/stageAssets";
 import { collectBlockTypesFromWorkspaceSave } from "@/lib/missions/collectBlockTypes";
 
 export type MissionDefinition = {
@@ -6,6 +7,11 @@ export type MissionDefinition = {
   description: string;
   /** True when the learner’s programs satisfy this adventure (after a successful Run). */
   isComplete: (workspacesByActorId: Record<string, Record<string, unknown>>) => boolean;
+  /**
+   * Adventures modal thumbnail when there is no local project snapshot yet
+   * (e.g. before first Save on this device).
+   */
+  cardPreviewSceneId?: OllieSceneId;
 };
 
 function hasBlockTypeInAnyWorkspace(
@@ -44,6 +50,7 @@ export const MISSIONS: MissionDefinition[] = [
       "Help Ollie follow the path: switch the backdrop to Path if you like, snap a Move block under When Run clicked, tap Run, then save your adventure.",
     isComplete: (workspaces) =>
       hasBlockTypeInAnyWorkspace(workspaces, "ollie_move_forward"),
+    cardPreviewSceneId: "path",
   },
 ];
 

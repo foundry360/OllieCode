@@ -2,9 +2,11 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   LESSONS,
   getLessonById as getLessonByIdStatic,
+  normalizeWorkspaceHrefWithLesson,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
+import { isTrivialLessonHtml } from "@/lib/lms/htmlContent";
 
 function cloneLesson(l: LessonCatalogEntry): LessonCatalogEntry {
   return {
@@ -38,7 +40,36 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
   for (const row of data) {
     updatedAtById.set(row.id, row.updated_at);
     const v = parseLessonPayload(row.payload);
-    if (v && v.id === row.id) merged.set(v.id, cloneLesson(v));
+    if (!v || v.id !== row.id) continue;
+
+    const staticMatch = getLessonByIdStatic(row.id);
+    if (staticMatch) {
+      const fromDb = cloneLesson(v);
+      merged.set(v.id, {
+        ...cloneLesson(staticMatch),
+        ...fromDb,
+        modules:
+          fromDb.modules.length > 0 ? fromDb.modules : staticMatch.modules,
+        visualSteps:
+          fromDb.visualSteps && fromDb.visualSteps.length > 0
+            ? fromDb.visualSteps
+            : staticMatch.visualSteps,
+        bodyHtml: !isTrivialLessonHtml(fromDb.bodyHtml)
+          ? fromDb.bodyHtml
+          : staticMatch.bodyHtml,
+        workspaceHref: normalizeWorkspaceHrefWithLesson(
+          fromDb.workspaceHref ?? staticMatch.workspaceHref,
+          v.id,
+        ),
+      });
+    } else {
+      const only = cloneLesson(v);
+      only.workspaceHref = normalizeWorkspaceHrefWithLesson(
+        only.workspaceHref,
+        v.id,
+      );
+      merged.set(v.id, only);
+    }
   }
 
   const ordered: LessonCatalogEntry[] = [];

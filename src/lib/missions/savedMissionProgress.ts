@@ -1,6 +1,13 @@
 import type { SavedMissionProgressEntry } from "@/types/ollie";
+import { clearAllMissionProjectSnapshotsLocal } from "@/lib/missions/missionProjectSnapshot";
 
 const STORAGE_KEY = "ollie-saved-mission-progress";
+
+/** Which auth user last owned {@link STORAGE_KEY} on this browser (avoids showing another account’s adventure names). */
+const OWNER_KEY = "ollie-saved-mission-progress-owner";
+
+/** One-time per-browser: clear pre–account-scoped mission cache (see {@link syncSavedMissionStorageForAccount}). */
+const MIGRATION_KEY = "ollie-saved-mission-progress-v2";
 
 function mergeByLatestSavedAt(
   entries: SavedMissionProgressEntry[],
@@ -61,6 +68,38 @@ export function mergeMissionProgressIntoStorage(
 ): void {
   if (!incoming?.length) return;
   persist(mergeMissionProgressLists(getSavedMissionProgress(), incoming));
+}
+
+/**
+ * Call when the Supabase session’s user id changes (or on sign-out). Clears mission
+ * name list + per-mission JSON snapshots if the account no longer matches the last
+ * owner of this device’s cached adventure list.
+ */
+export function syncSavedMissionStorageForAccount(userId: string | null): void {
+  if (typeof window === "undefined") return;
+  try {
+    if (!userId) {
+      localStorage.removeItem(OWNER_KEY);
+      localStorage.removeItem(STORAGE_KEY);
+      clearAllMissionProjectSnapshotsLocal();
+      return;
+    }
+
+    if (!localStorage.getItem(MIGRATION_KEY)) {
+      localStorage.removeItem(STORAGE_KEY);
+      clearAllMissionProjectSnapshotsLocal();
+      localStorage.setItem(MIGRATION_KEY, "1");
+    }
+
+    const prev = localStorage.getItem(OWNER_KEY);
+    if (prev && prev !== userId) {
+      localStorage.removeItem(STORAGE_KEY);
+      clearAllMissionProjectSnapshotsLocal();
+    }
+    localStorage.setItem(OWNER_KEY, userId);
+  } catch {
+    /* quota / private mode */
+  }
 }
 
 /** Remove one adventure from the local named-save list (browser). */
