@@ -15,7 +15,9 @@ function cloneLesson(l: LessonCatalogEntry): LessonCatalogEntry {
 
 /**
  * Published rows in `lms_lessons` override the in-repo catalog by `id`;
- * new DB-only ids are appended after seeded lessons (stable order for filters).
+ * new DB-only ids are appended. Final list is **newest first** by `updated_at`
+ * when a published row exists; lessons with no DB row keep catalog order among
+ * themselves after all timestamped entries.
  */
 export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]> {
   const base = LESSONS.map(cloneLesson);
@@ -24,15 +26,17 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
 
   const { data, error } = await supabase
     .from("lms_lessons")
-    .select("id, payload, published")
+    .select("id, payload, published, updated_at")
     .eq("published", true);
 
   if (error || !data?.length) return base;
 
+  const updatedAtById = new Map<string, string>();
   const merged = new Map<string, LessonCatalogEntry>();
   for (const l of base) merged.set(l.id, l);
 
   for (const row of data) {
+    updatedAtById.set(row.id, row.updated_at);
     const v = parseLessonPayload(row.payload);
     if (v && v.id === row.id) merged.set(v.id, cloneLesson(v));
   }
@@ -43,9 +47,28 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
     if (m) ordered.push(m);
   }
   const seen = new Set(LESSONS.map((l) => l.id));
-  for (const [id, lesson] of merged) {
-    if (!seen.has(id)) ordered.push(lesson);
+  for (const [, lesson] of merged) {
+    if (!seen.has(lesson.id)) ordered.push(lesson);
   }
+
+  const catalogIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
+
+  ordered.sort((a, b) => {
+    const ma = new Date(updatedAtById.get(a.id) ?? 0).getTime();
+    const mb = new Date(updatedAtById.get(b.id) ?? 0).getTime();
+    const hasA = updatedAtById.has(a.id);
+    const hasB = updatedAtById.has(b.id);
+    if (hasA && hasB && ma !== mb) return mb - ma;
+    if (hasA && !hasB) return -1;
+    if (!hasA && hasB) return 1;
+    const ia = catalogIndex.get(a.id);
+    const ib = catalogIndex.get(b.id);
+    if (ia != null && ib != null) return ia - ib;
+    if (ia != null) return -1;
+    if (ib != null) return 1;
+    return a.id.localeCompare(b.id);
+  });
+
   return ordered;
 }
 
@@ -54,6 +77,35 @@ export async function getLessonByIdMerged(
 ): Promise<LessonCatalogEntry | undefined> {
   const list = await getMergedPublishedLessons();
   return list.find((l) => l.id === lessonId) ?? getLessonByIdStatic(lessonId);
+}
+
+/**
+ * Up to `limit` lessons for “Learn more” on the lesson detail page: prefer
+ * the same {@link LessonCatalogEntry.skillLevel}, then fill from the rest of the hub.
+ */
+export async function getDiscoverMoreLessons(
+  excludeLessonId: string,
+  skillLevel: number,
+  limit = 8,
+): Promise<LessonCatalogEntry[]> {
+  const all = await getMergedPublishedLessons();
+  const exclude = excludeLessonId;
+  const sameLevel = all.filter(
+    (l) => l.id !== exclude && l.skillLevel === skillLevel,
+  );
+  const other = all.filter(
+    (l) => l.id !== exclude && l.skillLevel !== skillLevel,
+  );
+  const out: LessonCatalogEntry[] = [];
+  for (const l of sameLevel) {
+    if (out.length >= limit) break;
+    out.push(l);
+  }
+  for (const l of other) {
+    if (out.length >= limit) break;
+    out.push(l);
+  }
+  return out.slice(0, limit);
 }
 
 /**

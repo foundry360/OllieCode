@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 
 const FOOTER_LINKS = [
@@ -11,9 +12,21 @@ export function Footer() {
   return (
     <footer className="border-t border-[#6b9e1f] bg-[#84c126] px-4 py-12">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 sm:flex-row sm:justify-between">
-        <div className="text-center sm:text-left">
-          <p className="font-display text-xl font-bold text-white">Ollie Code</p>
-          <p className="mt-1 text-sm text-white/90">Fun coding for kids 7–13.</p>
+        <div className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
+          <Link
+            href="/"
+            className="inline-block shrink-0"
+            aria-label="Ollie Code home"
+          >
+            <Image
+              src="/images/footer_logo.png"
+              alt=""
+              width={434}
+              height={91}
+              className="h-8 w-auto sm:h-9"
+            />
+          </Link>
+          <p className="text-sm text-white/90">Fun coding for kids 7–13.</p>
         </div>
         <nav className="flex flex-wrap justify-center gap-6 text-sm font-semibold text-white">
           {FOOTER_LINKS.map((l) => (

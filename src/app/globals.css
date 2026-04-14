@@ -87,6 +87,16 @@ html::-webkit-scrollbar-thumb:hover {
   border-radius: 0 0 1rem 1rem;
 }
 
+/*
+ * Blockly’s block drag surface uses z-index: 80; the toolbox defaults to 70, so workspace
+ * blocks were painted on top of the category list and flyout. Keep both above 80 so dragged
+ * blocks stay beneath the palette UI (core Blockly intends “blocks go under toolbox”).
+ */
+.ollie-blockly-host .injectionDiv .blocklyToolbox,
+.ollie-blockly-host .injectionDiv .blocklyFlyout {
+  z-index: 100;
+}
+
 /* Inset toolbox category color strips from the panel edge */
 .blocklyToolbox .blocklyToolboxCategoryGroup {
   padding-left: 10px;
@@ -190,4 +200,40 @@ html::-webkit-scrollbar-thumb:hover {
 .ollie-blockly-host:not(.ollie-blockly--hide-main-scrollbar):focus-within .injectionDiv svg.blocklyMainWorkspaceScrollbar {
   opacity: 1;
   pointer-events: auto;
+}
+
+/* TipTap placeholder (@tiptap/extension-placeholder) */
+.ollie-rich-text .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: #94a3b8;
+}
+
+/* TipTap editor — lists & headings (no @tailwindcss/typography) */
+.ollie-rich-text .ProseMirror h2 {
+  font-family: var(--font-fredoka), var(--font-nunito), ui-sans-serif, sans-serif;
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+}
+.ollie-rich-text .ProseMirror h3 {
+  font-family: var(--font-fredoka), var(--font-nunito), ui-sans-serif, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  margin: 0.5rem 0 0.25rem;
+}
+.ollie-rich-text .ProseMirror ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin: 0.35rem 0;
+}
+.ollie-rich-text .ProseMirror ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin: 0.35rem 0;
+}
+.ollie-rich-text .ProseMirror p {
+  margin: 0.15rem 0;
 }

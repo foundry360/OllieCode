@@ -1,6 +1,10 @@
 import Link from "next/link";
+import {
+  AdminLessonsView,
+  type LessonAdminRow,
+} from "@/app/admin/lessons/admin-lessons-view";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
-import { LESSONS } from "@/lib/lms/lessonsCatalog";
+import { LESSONS, lessonCardImageOnly } from "@/lib/lms/lessonsCatalog";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 type Row = {
   id: string;
@@ -15,14 +19,66 @@ export default async function AdminLessonsPage() {
   if (supabase) {
     const { data } = await supabase
       .from("lms_lessons")
-      .select("id, published, updated_at, payload")
-      .order("id");
+      .select("id, published, updated_at, payload");
     rows = (data ?? []) as Row[];
   }
 
   const rowById = new Map(rows.map((r) => [r.id, r]));
   const staticIds = new Set(LESSONS.map((l) => l.id));
   const dbOnlyRows = rows.filter((r) => !staticIds.has(r.id));
+  const catalogIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
+
+  type Sortable = { row: LessonAdminRow; ts: number | null };
+
+  const sortable: Sortable[] = [
+    ...LESSONS.map((lesson) => {
+      const row = rowById.get(lesson.id);
+      const ts = row ? new Date(row.updated_at).getTime() : null;
+      return {
+        ts,
+        row: {
+          id: lesson.id,
+          title: lesson.title,
+          inDatabase: Boolean(row),
+          published: row ? row.published : null,
+          isDbOnly: false,
+          imageUrl: lessonCardImageOnly(lesson),
+          topic: lesson.topic,
+        } satisfies LessonAdminRow,
+      };
+    }),
+    ...dbOnlyRows.map((r) => {
+      const parsed = parseLessonPayload(r.payload);
+      return {
+        ts: new Date(r.updated_at).getTime(),
+        row: {
+          id: r.id,
+          title: parsed?.title ?? r.id,
+          inDatabase: true,
+          published: r.published,
+          isDbOnly: true,
+          imageUrl: parsed ? lessonCardImageOnly(parsed) : null,
+          topic: parsed?.topic ?? null,
+        } satisfies LessonAdminRow,
+      };
+    }),
+  ];
+
+  sortable.sort((a, b) => {
+    const ta = a.ts;
+    const tb = b.ts;
+    if (ta != null && tb != null && ta !== tb) return tb - ta;
+    if (ta != null && tb == null) return -1;
+    if (ta == null && tb != null) return 1;
+    const ia = catalogIndex.get(a.row.id);
+    const ib = catalogIndex.get(b.row.id);
+    if (ia != null && ib != null) return ia - ib;
+    if (ia != null) return -1;
+    if (ib != null) return 1;
+    return a.row.id.localeCompare(b.row.id);
+  });
+
+  const lessonRows = sortable.map((s) => s.row);
 
   return (
     <div className="space-y-8">
@@ -32,9 +88,7 @@ export default async function AdminLessonsPage() {
             Lessons
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-slate-600">
-            The app merges published database rows with the default catalog in
-            code (same <code className="text-xs">id</code> replaces the
-            built-in entry). Edit and publish from here or create a new lesson.
+            Edit and publish from here or create a new lesson.
           </p>
         </div>
         <Link
@@ -45,97 +99,7 @@ export default async function AdminLessonsPage() {
         </Link>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
-            <tr>
-              <th className="px-4 py-3">Lesson id</th>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Database</th>
-              <th className="px-4 py-3">Published</th>
-              <th className="px-4 py-3" />
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {LESSONS.map((lesson) => {
-              const row = rowById.get(lesson.id);
-              return (
-                <tr key={lesson.id} className="hover:bg-slate-50/80">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                    {lesson.id}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {lesson.title}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {row ? "Yes" : "—"}
-                  </td>
-                  <td className="px-4 py-3">
-                    {row ? (
-                      <span
-                        className={
-                          row.published
-                            ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
-                            : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
-                        }
-                      >
-                        {row.published ? "Live" : "Draft"}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/lessons/${encodeURIComponent(lesson.id)}/edit`}
-                      className="font-semibold text-[#84c126] hover:underline"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-            {dbOnlyRows.map((row) => {
-              const parsed = parseLessonPayload(row.payload);
-              const label = parsed?.title ?? row.id;
-              return (
-                <tr key={row.id} className="bg-[#f8fafc] hover:bg-slate-100/80">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                    {row.id}
-                  </td>
-                  <td className="px-4 py-3 font-medium text-slate-900">
-                    {label}{" "}
-                    <span className="ml-1 rounded bg-slate-200 px-1.5 py-0.5 text-[10px] font-bold uppercase text-slate-600">
-                      DB only
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-slate-600">Yes</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={
-                        row.published
-                          ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
-                          : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
-                      }
-                    >
-                      {row.published ? "Live" : "Draft"}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/lessons/${encodeURIComponent(row.id)}/edit`}
-                      className="font-semibold text-[#84c126] hover:underline"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+      <AdminLessonsView rows={lessonRows} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   useCallback,
   useEffect,
   useMemo,
@@ -29,6 +30,7 @@ import {
   HIDE_MAIN_WORKSPACE_SCROLLBAR_VISUAL,
   HIDE_TOOLBOX_SCROLLBAR_VISUAL,
 } from "@/lib/blockly/blocklyUiOptions";
+import { installClampBlocksToWorkspaceViewport } from "@/lib/blockly/clampBlocksToWorkspaceViewport";
 import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
 import { OLLIE_TOOLBOX_CATEGORY_ICON_CSS } from "@/lib/blockly/toolboxCategoryIconCss";
 import {
@@ -63,7 +65,6 @@ import { SpritePickerModal } from "@/components/workspace/SpritePickerModal";
 import { SpriteUploadModal } from "@/components/workspace/SpriteUploadModal";
 import { StageActorCostumePreview } from "@/components/workspace/SpritePreview";
 import { CostumePaintModal } from "@/components/workspace/CostumePaintModal";
-import { resolveActorCostumeForDisplay } from "@/lib/canvas/actorCostumeDisplay";
 import {
   clearMissionProjectSnapshotLocal,
   createCustomMissionId,
@@ -104,7 +105,8 @@ import {
 } from "@/types/ollie";
 import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLinks";
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
-import { GamificationPanel } from "@/components/workspace/GamificationPanel";
+import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
+import { getLessonById } from "@/lib/lms/lessonsCatalog";
 import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
 import {
   getAvatarBySlug,
@@ -122,6 +124,7 @@ import {
   LogOut,
   Maximize2,
   Minimize2,
+  Mountain,
   Paintbrush,
   Pencil,
   Play,
@@ -157,9 +160,14 @@ export function OllieWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const missionIdParam = searchParams.get("mission");
+  const lessonIdParam = searchParams.get("lesson");
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
+  const activeLesson = useMemo(
+    () => (lessonIdParam ? getLessonById(lessonIdParam) : undefined),
+    [lessonIdParam],
+  );
   /** Adventure used when naming a save: URL param, or the first catalog adventure on plain `/workspace`. */
   const missionForSave = useMemo(
     () => activeMission ?? MISSIONS[0],
@@ -395,10 +403,6 @@ export function OllieWorkspace() {
     stageSceneLayers[stageSceneLayers.length - 1] ?? DEFAULT_SCENE_ID;
   const activeActor =
     actors.find((a) => a.id === activeActorId) ?? actors[0]!;
-  const activeCostumeLabel = useMemo(() => {
-    const r = resolveActorCostumeForDisplay(activeActor);
-    return r.kind === "painted" ? "Painted costume" : r.def.label;
-  }, [activeActor]);
 
   /** My Sprites: cloud library (all adventures) merged with this project’s actors. */
   const userSpritesForPicker = useMemo(
@@ -530,6 +534,7 @@ export function OllieWorkspace() {
 
   useEffect(() => {
     let cancelled = false;
+    let removeViewportClamp: (() => void) | undefined;
 
     void (async () => {
       setInitError(null);
@@ -572,6 +577,7 @@ export function OllieWorkspace() {
         }
 
         workspaceRef.current = ws;
+        removeViewportClamp = installClampBlocksToWorkspaceViewport(ws);
         setBlocklyMounted(true);
 
         const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
@@ -589,6 +595,7 @@ export function OllieWorkspace() {
 
     return () => {
       cancelled = true;
+      removeViewportClamp?.();
       setBlocklyMounted(false);
       workspaceRef.current?.dispose();
       workspaceRef.current = null;
@@ -1837,6 +1844,11 @@ export function OllieWorkspace() {
           className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]"
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
+            <Braces
+              className="size-4 shrink-0 text-[#4d7c0f]"
+              strokeWidth={ICON_STROKE}
+              aria-hidden
+            />
             <span className="text-sm font-semibold text-[#365314]">Workspace</span>
           </div>
           <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
@@ -1858,17 +1870,22 @@ export function OllieWorkspace() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full flex-col gap-3 lg:w-[620px] lg:max-w-[50vw]">
-          <div className="flex h-[min(720px,72vh)] min-h-[520px] shrink-0 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
+        <div className="flex min-h-0 w-full flex-col gap-3 lg:flex lg:w-[480px] lg:max-w-[38vw] lg:min-h-0 lg:self-stretch">
+          <div className="flex h-[min(440px,48vh)] min-h-[300px] max-h-[min(520px,55vh)] shrink-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
             <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
               <span
-                className="block truncate"
+                className="flex min-w-0 items-center gap-2"
                 title={canvasMissionTooltip}
               >
-                {canvasMissionLabel}
+                <Mountain
+                  className="size-4 shrink-0 text-[#4d7c0f]"
+                  strokeWidth={ICON_STROKE}
+                  aria-hidden
+                />
+                <span className="min-w-0 truncate">{canvasMissionLabel}</span>
               </span>
             </div>
-            <div className="relative flex min-h-0 flex-1 flex-col">
+            <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               {askOverlay ? (
                 <div
                   className="absolute inset-0 z-20 flex items-center justify-center p-4 sm:p-6"
@@ -2107,254 +2124,249 @@ export function OllieWorkspace() {
                 }
                 requestNumberInput={requestNumberInput}
               />
-            </div>
-            <div className="shrink-0 rounded-b-2xl border-t border-[#e5e7eb] bg-[#f8fafc] px-2 py-1">
-              <div className="divide-y divide-[#e5e7eb]">
-                <div>
-                  <button
-                    type="button"
-                    id="ollie-stage-accordion-scene"
-                    aria-expanded={openStagePanel === "scene"}
-                    aria-controls="ollie-stage-accordion-scene-panel"
-                    onClick={() =>
-                      setOpenStagePanel((p) => (p === "scene" ? null : "scene"))
-                    }
-                    className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
+              <div
+                className={[
+                  "shrink-0 overflow-hidden rounded-b-2xl border-t border-[#e5e7eb] bg-white transition-shadow",
+                  openStagePanel ? "ring-1 ring-inset ring-[#84c126]/25" : "",
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              >
+                <button
+                  type="button"
+                  id="ollie-stage-accordion-scene"
+                  aria-expanded={openStagePanel === "scene"}
+                  aria-controls="ollie-stage-accordion-scene-panel"
+                  onClick={() =>
+                    setOpenStagePanel((p) => (p === "scene" ? null : "scene"))
+                  }
+                  className="flex w-full items-center justify-between gap-2 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
+                >
+                  Scenes
+                  <ChevronDown
+                    className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
+                      openStagePanel === "scene" ? "rotate-180" : ""
+                    }`}
+                    strokeWidth={ICON_STROKE}
+                    aria-hidden
+                  />
+                </button>
+                {openStagePanel === "scene" ? (
+                  <div
+                    id="ollie-stage-accordion-scene-panel"
+                    role="region"
+                    aria-labelledby="ollie-stage-accordion-scene"
+                    className="max-h-[min(200px,32vh)] overflow-y-auto overscroll-contain border-b border-[#e5e7eb] bg-white px-2.5 py-2.5"
                   >
-                    Scenes
-                    <ChevronDown
-                      className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
-                        openStagePanel === "scene" ? "rotate-180" : ""
-                      }`}
-                      strokeWidth={ICON_STROKE}
-                      aria-hidden
-                    />
-                  </button>
-                  {openStagePanel === "scene" ? (
-                    <div
-                      id="ollie-stage-accordion-scene-panel"
-                      role="region"
-                      aria-labelledby="ollie-stage-accordion-scene"
-                      className="flex flex-col gap-1.5 px-2 pb-3 pt-0"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        {stageSceneLayers.map((layerId, index) => {
-                          const scene =
-                            getSceneById(layerId) ??
-                            getSceneById(DEFAULT_SCENE_ID)!;
-                          return (
-                            <div
-                              key={`${layerId}-${index}`}
-                              className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] shadow-sm"
-                              title={`${scene.label} (layer ${index + 1})`}
-                            >
-                              <ScenePreview scene={scene} />
-                              {stageSceneLayers.length > 1 ? (
-                                <button
-                                  type="button"
-                                  aria-label={`Remove ${scene.label} layer`}
-                                  title="Remove this layer"
-                                  onClick={() => removeSceneLayerAt(index)}
-                                  className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
-                                >
-                                  <X
-                                    className="size-3.5 shrink-0"
-                                    strokeWidth={ICON_STROKE}
-                                    aria-hidden
-                                  />
-                                </button>
-                              ) : topStageSceneId !== DEFAULT_SCENE_ID ? (
-                                <button
-                                  type="button"
-                                  aria-label="Reset backdrop"
-                                  title="Reset backdrop"
-                                  onClick={() =>
-                                    setDeleteConfirm({ type: "scene" })
-                                  }
-                                  className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
-                                >
-                                  <Trash2
-                                    className="size-3.5 shrink-0"
-                                    strokeWidth={ICON_STROKE}
-                                    aria-hidden
-                                  />
-                                </button>
-                              ) : null}
-                            </div>
-                          );
-                        })}
-                        <button
-                          type="button"
-                          onClick={() => setScenePickerOpen(true)}
-                          className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          aria-label="Choose a Scene"
-                          title="Choose a Scene"
+                    <div className="flex flex-wrap items-center gap-2">
+                      {stageSceneLayers.map((layerId, index) => {
+                      const scene =
+                        getSceneById(layerId) ??
+                        getSceneById(DEFAULT_SCENE_ID)!;
+                      return (
+                        <div
+                          key={`${layerId}-${index}`}
+                          className="group relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] shadow-sm"
+                          title={`${scene.label} (layer ${index + 1})`}
                         >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-                <div>
-                  <button
-                    type="button"
-                    id="ollie-stage-accordion-sprite"
-                    aria-expanded={openStagePanel === "sprite"}
-                    aria-controls="ollie-stage-accordion-sprite-panel"
-                    onClick={() =>
-                      setOpenStagePanel((p) => (p === "sprite" ? null : "sprite"))
-                    }
-                    className="flex w-full items-center justify-between gap-2 px-2 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
-                  >
-                    Sprites
-                    <ChevronDown
-                      className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
-                        openStagePanel === "sprite" ? "rotate-180" : ""
-                      }`}
-                      strokeWidth={ICON_STROKE}
-                      aria-hidden
-                    />
-                  </button>
-                  {openStagePanel === "sprite" ? (
-                    <div
-                      id="ollie-stage-accordion-sprite-panel"
-                      role="region"
-                      aria-labelledby="ollie-stage-accordion-sprite"
-                      className="flex flex-col gap-2 px-1.5 pb-2 pt-0"
-                    >
-                      <div className="flex flex-wrap gap-1.5">
-                        {actors.map((actor) => {
-                          const sel = actor.id === activeActorId;
-                          const canRemoveSprite = actors.length > 1;
-                          return (
-                            <div
-                              key={actor.id}
-                              className={[
-                                "grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border p-px text-[10px] font-semibold leading-none",
-                                sel
-                                  ? "border-[#84c126] bg-[#f7fee7]"
-                                  : "border-[#e5e7eb] bg-white",
-                              ].join(" ")}
+                          <ScenePreview scene={scene} />
+                          {stageSceneLayers.length > 1 ? (
+                            <button
+                              type="button"
+                              aria-label={`Remove ${scene.label} layer`}
+                              title="Remove this layer"
+                              onClick={() => removeSceneLayerAt(index)}
+                              className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
                             >
-                              <div className="group relative min-h-0 min-w-0 w-full aspect-square overflow-hidden rounded-[3px] bg-[#f1f5f9]">
-                                <button
-                                  type="button"
-                                  tabIndex={-1}
-                                  onClick={() => switchActor(actor.id)}
-                                  className="absolute inset-0 z-0 flex items-center justify-center focus:outline-none"
-                                  aria-hidden
-                                />
-                                <div className="pointer-events-none absolute inset-0">
-                                  <StageActorCostumePreview
-                                    actor={actor}
-                                    fillCard
-                                  />
-                                </div>
-                                {canRemoveSprite ||
-                                actor.paintedCostumeUrl?.trim() ? (
-                                  <div className="absolute right-0 top-0 z-10 flex flex-col gap-px opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100">
-                                    {canRemoveSprite ? (
-                                      <button
-                                        type="button"
-                                        aria-label={`Remove ${actor.label}`}
-                                        title="Remove sprite"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          setDeleteConfirm({
-                                            type: "sprite",
-                                            actorId: actor.id,
-                                            label: actor.label,
-                                          });
-                                        }}
-                                        className="flex size-6 items-center justify-center rounded-bl-md rounded-tr-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:opacity-100"
-                                      >
-                                        <Trash2
-                                          className="size-3.5 shrink-0"
-                                          strokeWidth={ICON_STROKE}
-                                          aria-hidden
-                                        />
-                                      </button>
-                                    ) : null}
-                                    {actor.paintedCostumeUrl?.trim() ? (
-                                      <button
-                                        type="button"
-                                        aria-label={`Edit ${actor.label} costume`}
-                                        title="Edit costume"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          e.preventDefault();
-                                          if (actor.id !== activeActorId) {
-                                            switchActor(actor.id);
-                                          }
-                                          setCostumePaintMode("edit");
-                                          setCostumePaintOpen(true);
-                                        }}
-                                        className={[
-                                          "flex size-6 items-center justify-center border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-[#84c126] hover:bg-[#f7fee7] hover:text-[#365314] focus:outline-none focus-visible:opacity-100",
-                                          canRemoveSprite
-                                            ? "rounded-br-md rounded-bl-md"
-                                            : "rounded-bl-md rounded-tr-md",
-                                        ].join(" ")}
-                                      >
-                                        <Pencil
-                                          className="size-3.5 shrink-0"
-                                          strokeWidth={ICON_STROKE}
-                                          aria-hidden
-                                        />
-                                      </button>
-                                    ) : null}
-                                  </div>
-                                ) : null}
-                              </div>
+                              <X
+                                className="size-3.5 shrink-0"
+                                strokeWidth={ICON_STROKE}
+                                aria-hidden
+                              />
+                            </button>
+                          ) : topStageSceneId !== DEFAULT_SCENE_ID ? (
+                            <button
+                              type="button"
+                              aria-label="Reset backdrop"
+                              title="Reset backdrop"
+                              onClick={() =>
+                                setDeleteConfirm({ type: "scene" })
+                              }
+                              className="absolute right-0.5 top-0.5 z-10 flex size-6 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:pointer-events-auto focus-visible:opacity-100 opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100"
+                            >
+                              <Trash2
+                                className="size-3.5 shrink-0"
+                                strokeWidth={ICON_STROKE}
+                                aria-hidden
+                              />
+                            </button>
+                          ) : null}
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setScenePickerOpen(true)}
+                      className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                      aria-label="Choose a Scene"
+                      title="Choose a Scene"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+              <button
+                type="button"
+                id="ollie-stage-accordion-sprite"
+                aria-expanded={openStagePanel === "sprite"}
+                aria-controls="ollie-stage-accordion-sprite-panel"
+                onClick={() =>
+                  setOpenStagePanel((p) => (p === "sprite" ? null : "sprite"))
+                }
+                className="flex w-full items-center justify-between gap-2 bg-[#f8fafc] px-3 py-2.5 text-left text-xs font-semibold text-[#374151] transition hover:bg-[#f1f5f9] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126]"
+              >
+                Sprites
+                <ChevronDown
+                  className={`size-4 shrink-0 text-[#6b7280] transition-transform duration-200 ${
+                    openStagePanel === "sprite" ? "rotate-180" : ""
+                  }`}
+                  strokeWidth={ICON_STROKE}
+                  aria-hidden
+                />
+              </button>
+              {openStagePanel === "sprite" ? (
+                <div
+                  id="ollie-stage-accordion-sprite-panel"
+                  role="region"
+                  aria-labelledby="ollie-stage-accordion-sprite"
+                  className="max-h-[min(260px,36vh)] overflow-y-auto overscroll-contain bg-white px-2 pb-2.5 pt-2"
+                >
+                  <div className="flex flex-wrap items-end gap-1.5">
+                    {actors.map((actor) => {
+                      const sel = actor.id === activeActorId;
+                      const canRemoveSprite = actors.length > 1;
+                      return (
+                        <Fragment key={actor.id}>
+                          <div
+                            className={[
+                              "grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border p-px text-[10px] font-semibold leading-none",
+                              sel
+                                ? "border-[#84c126] bg-[#f7fee7]"
+                                : "border-[#e5e7eb] bg-white",
+                            ].join(" ")}
+                          >
+                            <div className="group relative min-h-0 min-w-0 w-full aspect-square overflow-hidden rounded-[3px] bg-[#f1f5f9]">
                               <button
                                 type="button"
+                                tabIndex={-1}
                                 onClick={() => switchActor(actor.id)}
-                                className="w-full truncate px-0 py-px text-center text-[10px] font-semibold text-[#111827] transition hover:text-[#365314] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-1"
-                                title={`${actor.label} — tap to edit code`}
-                              >
-                                {actor.label}
-                              </button>
+                                className="absolute inset-0 z-0 flex items-center justify-center focus:outline-none"
+                                aria-hidden
+                              />
+                              <div className="pointer-events-none absolute inset-0">
+                                <StageActorCostumePreview
+                                  actor={actor}
+                                  fillCard
+                                />
+                              </div>
+                              {canRemoveSprite ||
+                              actor.paintedCostumeUrl?.trim() ? (
+                                <div className="absolute right-0 top-0 z-10 flex flex-col gap-px opacity-0 pointer-events-none group-hover:pointer-events-auto group-hover:opacity-100">
+                                  {canRemoveSprite ? (
+                                    <button
+                                      type="button"
+                                      aria-label={`Remove ${actor.label}`}
+                                      title="Remove sprite"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setDeleteConfirm({
+                                          type: "sprite",
+                                          actorId: actor.id,
+                                          label: actor.label,
+                                        });
+                                      }}
+                                      className="flex size-6 items-center justify-center rounded-bl-md rounded-tr-md border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:opacity-100"
+                                    >
+                                      <Trash2
+                                        className="size-3.5 shrink-0"
+                                        strokeWidth={ICON_STROKE}
+                                        aria-hidden
+                                      />
+                                    </button>
+                                  ) : null}
+                                  {actor.paintedCostumeUrl?.trim() ? (
+                                    <button
+                                      type="button"
+                                      aria-label={`Edit ${actor.label} costume`}
+                                      title="Edit costume"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        e.preventDefault();
+                                        if (actor.id !== activeActorId) {
+                                          switchActor(actor.id);
+                                        }
+                                        setCostumePaintMode("edit");
+                                        setCostumePaintOpen(true);
+                                      }}
+                                      className={[
+                                        "flex size-6 items-center justify-center border border-[#e5e7eb] bg-white/95 text-[#6b7280] shadow-sm transition hover:border-[#84c126] hover:bg-[#f7fee7] hover:text-[#365314] focus:outline-none focus-visible:opacity-100",
+                                        canRemoveSprite
+                                          ? "rounded-br-md rounded-bl-md"
+                                          : "rounded-bl-md rounded-tr-md",
+                                      ].join(" ")}
+                                    >
+                                      <Pencil
+                                        className="size-3.5 shrink-0"
+                                        strokeWidth={ICON_STROKE}
+                                        aria-hidden
+                                      />
+                                    </button>
+                                  ) : null}
+                                </div>
+                              ) : null}
                             </div>
-                          );
-                        })}
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2 border-t border-dashed border-[#e5e7eb] pt-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            spritePickerIntentRef.current = "costume";
-                            setSpritePickerOpen(true);
-                          }}
-                          className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg border border-[#e5e7eb] bg-[#f1f5f9] p-0.5 shadow-sm transition hover:border-[#cbd5e1] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          title={`${activeCostumeLabel} — tap to change costume`}
-                          aria-label="Change costume for selected sprite"
-                        >
-                          <StageActorCostumePreview
-                            actor={activeActor}
-                            fillCard
-                          />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            spritePickerIntentRef.current = "new";
-                            setSpritePickerOpen(true);
-                          }}
-                          className="flex h-16 w-16 shrink-0 items-center justify-center rounded-lg border border-[#e5e7eb] bg-[#f3f4f6] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                          aria-label="Add a new sprite"
-                          title="Add sprite"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                            <button
+                              type="button"
+                              onClick={() => switchActor(actor.id)}
+                              className="w-full truncate px-0 py-px text-center text-[10px] font-semibold text-[#111827] transition hover:text-[#365314] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-1"
+                              title={`${actor.label} — tap to edit code`}
+                            >
+                              {actor.label}
+                            </button>
+                          </div>
+                          {sel ? (
+                            <div className="grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border border-[#e5e7eb] bg-[#f3f4f6] p-px text-[10px] font-semibold leading-none">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  spritePickerIntentRef.current = "new";
+                                  setSpritePickerOpen(true);
+                                }}
+                                className="flex min-h-0 w-full aspect-square items-center justify-center overflow-hidden rounded-[3px] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                                aria-label="Add a new sprite"
+                                title="Add sprite"
+                              >
+                                +
+                              </button>
+                              <div
+                                className="w-full px-0 py-px text-center text-[10px] font-semibold leading-none"
+                                aria-hidden
+                              >
+                                &nbsp;
+                              </div>
+                            </div>
+                          ) : null}
+                        </Fragment>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              ) : null}
+            </div>
             </div>
           </div>
-          <GamificationPanel />
+          <WorkspaceLessonInstructions lesson={activeLesson} />
         </div>
       </main>
       <AvatarPickerModal
@@ -2584,7 +2596,10 @@ function ToolbarIconButton({
   title,
   variant,
   disabled,
+  active,
   "aria-label": ariaLabel,
+  "aria-expanded": ariaExpanded,
+  "aria-controls": ariaControls,
 }: {
   children: React.ReactNode;
   onClick: () => void;
@@ -2592,6 +2607,9 @@ function ToolbarIconButton({
   "aria-label": string;
   variant?: "primary" | "stop";
   disabled?: boolean;
+  active?: boolean;
+  "aria-expanded"?: boolean;
+  "aria-controls"?: string;
 }) {
   const base =
     "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2";
@@ -2600,7 +2618,9 @@ function ToolbarIconButton({
       ? "bg-[#84c126] text-white hover:bg-[#6fa020]"
       : variant === "stop"
         ? "bg-[#FFAB19] text-white"
-        : "border border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]";
+        : active === true
+          ? "border border-[#84c126] bg-[#f7fee7] text-[#365314] hover:bg-[#ecfccb]"
+          : "border border-[#e5e7eb] bg-white text-[#374151] hover:bg-[#f9fafb]";
   const disabledStyles =
     disabled === true
       ? "cursor-not-allowed opacity-45 hover:bg-white"
@@ -2610,6 +2630,8 @@ function ToolbarIconButton({
       <button
         type="button"
         aria-label={ariaLabel}
+        aria-expanded={ariaExpanded}
+        aria-controls={ariaControls}
         disabled={disabled}
         onClick={onClick}
         className={`${base} ${styles} ${disabledStyles}`}

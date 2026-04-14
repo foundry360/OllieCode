@@ -2,15 +2,33 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useId, useMemo, useState } from "react";
-import { ImageIcon, MoreHorizontal, Search, Star } from "lucide-react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ImageIcon,
+  MoreHorizontal,
+  Search,
+} from "lucide-react";
 import {
   formatLessonDurationMinutes,
+  formatPointsLabel,
   lessonDetailHref,
+  lessonHeroImageUrl,
   lessonPointsReward,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
 import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
+import { LessonFavoriteStarButton } from "@/components/lms/LessonFavoriteStarButton";
 
 type SortId =
   | "relevant"
@@ -21,7 +39,7 @@ type SortId =
   | "level-asc";
 
 const SORT_OPTIONS: { id: SortId; label: string }[] = [
-  { id: "relevant", label: "Most relevant" },
+  { id: "relevant", label: "Recently updated" },
   { id: "title-asc", label: "Title A–Z" },
   { id: "title-desc", label: "Title Z–A" },
   { id: "duration-asc", label: "Shortest time" },
@@ -79,8 +97,11 @@ function filterAndSort(
 
 export function LearningHubExplore({
   lessons,
+  /** When set (signed-in user), star buttons save favorite lessons on `/profile`. */
+  favoriteLessonIds,
 }: {
   lessons: LessonCatalogEntry[];
+  favoriteLessonIds?: readonly string[];
 }) {
   const [topic, setTopic] = useState("");
   const [objective, setObjective] = useState("");
@@ -88,6 +109,7 @@ export function LearningHubExplore({
   const [status, setStatus] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortId>("relevant");
+  const [lessonListExpanded, setLessonListExpanded] = useState(false);
 
   const topicSelectId = useId();
   const objectiveSelectId = useId();
@@ -153,7 +175,21 @@ export function LearningHubExplore({
     [lessons, topic, objective, level, status, search, sort],
   );
 
-  const featured = useMemo(() => lessons.slice(0, 4), [lessons]);
+  useEffect(() => {
+    setLessonListExpanded(false);
+  }, [topic, objective, level, status, search, sort, lessons]);
+
+  const LIST_PREVIEW_COUNT = 5;
+  const visibleListResults =
+    lessonListExpanded || results.length <= LIST_PREVIEW_COUNT
+      ? results
+      : results.slice(0, LIST_PREVIEW_COUNT);
+  const showListShowMore =
+    results.length > LIST_PREVIEW_COUNT && !lessonListExpanded;
+  const showListShowLess =
+    results.length > LIST_PREVIEW_COUNT && lessonListExpanded;
+
+  const featured = useMemo(() => lessons.slice(0, 10), [lessons]);
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
@@ -174,15 +210,9 @@ export function LearningHubExplore({
           Popular lessons
         </h2>
         <p className="mt-1 text-sm text-slate-600">
-          A few highlights to start with — more are added over time.
+          Start with these fun lessons, then explore even more below!
         </p>
-        <ul className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {featured.map((lesson) => (
-            <li key={lesson.id} className="h-full">
-              <FeaturedLessonCard lesson={lesson} />
-            </li>
-          ))}
-        </ul>
+        <PopularLessonsCarousel lessons={featured} />
       </section>
 
       <div className="mt-12 flex flex-col gap-10 lg:flex-row lg:items-start">
@@ -284,11 +314,38 @@ export function LearningHubExplore({
               No lessons match these filters. Try clearing a filter or search.
             </p>
           ) : (
-            <ul className="divide-y divide-slate-200">
-              {results.map((lesson) => (
-                <LessonResultRow key={lesson.id} lesson={lesson} />
-              ))}
-            </ul>
+            <>
+              <ul className="divide-y divide-slate-200">
+                {visibleListResults.map((lesson) => (
+                  <LessonResultRow
+                    key={lesson.id}
+                    lesson={lesson}
+                    favoriteLessonIds={favoriteLessonIds}
+                  />
+                ))}
+              </ul>
+              {showListShowMore || showListShowLess ? (
+                <div className="border-t border-slate-200 pt-4">
+                  {showListShowMore ? (
+                    <button
+                      type="button"
+                      onClick={() => setLessonListExpanded(true)}
+                      className="text-sm font-semibold text-[#84c126] no-underline transition hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                    >
+                      Show More
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setLessonListExpanded(false)}
+                      className="text-sm font-semibold text-[#84c126] no-underline transition hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                    >
+                      Show Less
+                    </button>
+                  )}
+                </div>
+              ) : null}
+            </>
           )}
         </div>
       </div>
@@ -296,34 +353,197 @@ export function LearningHubExplore({
   );
 }
 
-function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
+const CAROUSEL_GAP_PX = 16;
+
+/** Three identical runs of slides so we can jump between copies without reversing scroll direction. */
+const LOOP_SEGMENTS = 3 as const;
+
+/** How many equal-width slides fit in the viewport at this width (matches Tailwind lg/md). */
+function visibleColumnsForWidth(width: number): number {
+  if (width >= 1024) return 4;
+  if (width >= 640) return 2;
+  return 1;
+}
+
+function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) {
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [cardBasisPx, setCardBasisPx] = useState(0);
+
+  const loopSlides = useMemo(
+    () =>
+      Array.from({ length: LOOP_SEGMENTS }, (_, copy) => copy).flatMap((copy) =>
+        lessons.map((lesson) => ({
+          lesson,
+          loopKey: `${lesson.id}__${copy}`,
+        })),
+      ),
+    [lessons],
+  );
+
+  const normalizeLoopScroll = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el || lessons.length <= 1) return;
+    const seg = el.scrollWidth / LOOP_SEGMENTS;
+    if (seg <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
+    const left = el.scrollLeft;
+    // First copy (near track start): jump forward one segment into the middle copy.
+    if (left < 8) {
+      el.scrollTo({ left: left + seg, behavior: "auto" });
+      return;
+    }
+    // Third copy (scroll position past the start of that segment): jump back one segment.
+    if (left + 1e-3 >= 2 * seg) {
+      el.scrollTo({ left: left - seg, behavior: "auto" });
+    }
+  }, [lessons.length]);
+
+  const alignLoopToMiddleSegment = useCallback(() => {
+    const el = viewportRef.current;
+    if (!el || lessons.length <= 1) return;
+    const seg = el.scrollWidth / LOOP_SEGMENTS;
+    if (seg <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
+    el.scrollTo({ left: seg, behavior: "auto" });
+  }, [lessons.length]);
+
+  useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+
+    const updateBasis = () => {
+      const w = el.clientWidth;
+      const cols = visibleColumnsForWidth(w);
+      const basis = (w - (cols - 1) * CAROUSEL_GAP_PX) / cols;
+      setCardBasisPx(Math.max(0, basis));
+    };
+
+    updateBasis();
+    const ro = new ResizeObserver(updateBasis);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+    };
+  }, [lessons]);
+
+  /** After slide widths / triple strip layout updates, sit on the middle copy (same view as start, endless forward). */
+  useLayoutEffect(() => {
+    const id = requestAnimationFrame(() => {
+      alignLoopToMiddleSegment();
+      requestAnimationFrame(alignLoopToMiddleSegment);
+    });
+    return () => cancelAnimationFrame(id);
+  }, [lessons, cardBasisPx, alignLoopToMiddleSegment]);
+
+  /** Paged scroll; loop strip repositions in onScroll so 1 → 2 → … → n → 1 → 2 … without reversing. */
+  const scrollByDir = (dir: -1 | 1) => {
+    const el = viewportRef.current;
+    if (!el || lessons.length <= 1) return;
+    el.scrollBy({ left: dir * el.clientWidth, behavior: "smooth" });
+  };
+
+  const cycleDisabled = lessons.length <= 1;
+
+  if (lessons.length === 0) return null;
+
+  const slideStyle: CSSProperties =
+    cardBasisPx > 0
+      ? {
+          flex: `0 0 ${cardBasisPx}px`,
+          width: cardBasisPx,
+          minWidth: cardBasisPx,
+          maxWidth: cardBasisPx,
+        }
+      : {
+          flex: "0 0 min(85vw, 300px)",
+          width: "min(85vw, 300px)",
+          minWidth: "min(85vw, 300px)",
+          maxWidth: "min(85vw, 300px)",
+        };
+
   return (
-    <article className="grid h-full min-h-[320px] grid-rows-[minmax(0,1fr)_minmax(0,1fr)] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow sm:min-h-[340px]">
+    <div className="group relative mt-5">
+      <button
+        type="button"
+        onClick={() => scrollByDir(-1)}
+        disabled={cycleDisabled}
+        className="pointer-events-none absolute left-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:border-[#84c126]/50 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
+        aria-label="Previous popular lessons"
+      >
+        <ChevronLeft className="size-5" strokeWidth={2} aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => scrollByDir(1)}
+        disabled={cycleDisabled}
+        className="pointer-events-none absolute right-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:border-[#84c126]/50 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
+        aria-label="Next popular lessons"
+      >
+        <ChevronRight className="size-5" strokeWidth={2} aria-hidden />
+      </button>
+
       <div
-        className="relative flex min-h-0 items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200"
+        ref={viewportRef}
+        onScroll={normalizeLoopScroll}
+        className="overflow-x-auto overflow-y-visible pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0"
+      >
+        <ul
+          role="list"
+          className="flex snap-x snap-mandatory items-stretch gap-4"
+        >
+          {loopSlides.map(({ lesson, loopKey }) => (
+            <li
+              key={loopKey}
+              data-carousel-item
+              className="h-full min-w-0 snap-start"
+              style={slideStyle}
+            >
+              <FeaturedLessonCard lesson={lesson} />
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  );
+}
+
+function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
+  const hero = lessonHeroImageUrl(lesson);
+  return (
+    <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow">
+      <div
+        className="relative flex min-h-[160px] shrink-0 items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 sm:min-h-[180px]"
         aria-hidden
       >
-        <ImageIcon
-          className="size-14 text-slate-300/90"
-          strokeWidth={1.25}
-          aria-hidden
-        />
+        {hero ? (
+          <Image
+            src={hero}
+            alt=""
+            fill
+            className="object-cover"
+            sizes="(max-width: 639px) 85vw, (max-width: 1023px) 45vw, 25vw"
+          />
+        ) : (
+          <ImageIcon
+            className="relative z-0 size-14 text-slate-300/90"
+            strokeWidth={1.25}
+            aria-hidden
+          />
+        )}
       </div>
-      <div className="flex min-h-0 flex-col border-t border-slate-100">
+      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
           <h3 className="font-display text-lg font-bold leading-snug">
             <Link
               href={lessonDetailHref(lesson.id)}
-              className="text-[#84c126] hover:text-[#6b9e1f] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+              className="text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
             >
               {lesson.title}
             </Link>
           </h3>
-          <p className="mt-2 line-clamp-3 flex-1 text-sm leading-relaxed text-slate-600 sm:mt-3">
+          <p className="mt-2 min-h-[2lh] line-clamp-2 text-sm leading-relaxed text-slate-600 sm:mt-3">
             {lesson.summary}
           </p>
         </div>
-        <div className="bg-[#84c126] px-4 py-2.5 sm:px-5 sm:py-3">
+        <div className="shrink-0 bg-[#84c126] px-4 py-2.5 sm:px-5 sm:py-3">
           <p className="text-base font-bold text-white">
             Level {lesson.skillLevel} · {lesson.topic}
           </p>
@@ -333,42 +553,58 @@ function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
   );
 }
 
-function LessonResultRow({ lesson }: { lesson: LessonCatalogEntry }) {
+function LessonResultRow({
+  lesson,
+  favoriteLessonIds,
+}: {
+  lesson: LessonCatalogEntry;
+  favoriteLessonIds?: readonly string[];
+}) {
   const pts = lessonPointsReward(lesson);
   const detailHref = lessonDetailHref(lesson.id);
+  const hero = lessonHeroImageUrl(lesson);
 
   return (
     <li className="grid grid-cols-[100px_minmax(0,1fr)] items-start gap-x-4 py-6 first:pt-5">
       <div
-        className="relative -mt-2.5 h-[100px] w-[100px] shrink-0 overflow-hidden sm:-mt-3"
+        className="relative -mt-2.5 h-[100px] w-[100px] shrink-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 sm:-mt-3"
         aria-hidden
       >
-        <Image
-          src="/images/lesson_badge.png"
-          alt=""
-          width={100}
-          height={100}
-          className="block h-full w-full -translate-y-1.5 object-cover object-top"
-          sizes="100px"
-        />
+        {hero ? (
+          <Image
+            src={hero}
+            alt=""
+            width={100}
+            height={100}
+            className="block h-full w-full object-cover"
+            sizes="100px"
+          />
+        ) : (
+          <Image
+            src="/images/lesson_badge.png"
+            alt=""
+            width={100}
+            height={100}
+            className="block h-full w-full -translate-y-1.5 object-cover object-top"
+            sizes="100px"
+          />
+        )}
       </div>
       <div className="min-w-0">
         <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
           <Link
             href={detailHref}
-            className="min-w-0 flex-1 font-display text-lg font-semibold leading-[1.15] text-[#84c126] hover:text-[#6b9e1f] hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+            className="min-w-0 flex-1 font-display text-lg font-semibold leading-[1.15] text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
           >
             {lesson.title}
           </Link>
           <div className="flex shrink-0 gap-0.5">
-            <button
-              type="button"
-              className="rounded p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-amber-500"
-              title="Save for later"
-              aria-label="Save for later"
-            >
-              <Star className="size-4" strokeWidth={2} />
-            </button>
+            {favoriteLessonIds !== undefined ? (
+              <LessonFavoriteStarButton
+                lessonId={lesson.id}
+                initialFavorited={favoriteLessonIds.includes(lesson.id)}
+              />
+            ) : null}
             <button
               type="button"
               className="rounded p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
@@ -382,9 +618,9 @@ function LessonResultRow({ lesson }: { lesson: LessonCatalogEntry }) {
         <p className="mt-1.5 text-sm leading-relaxed text-slate-600">
           {lesson.summary}
         </p>
-        <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm">
+        <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm tabular-nums">
           <span className="font-semibold text-slate-800">
-            +{pts.toLocaleString()} points
+            {formatPointsLabel(pts)}
           </span>
           <span className="text-slate-500">
             {formatLessonDurationMinutes(lesson.estimatedMinutes)}

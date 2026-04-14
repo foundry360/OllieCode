@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LessonDetailPage } from "@/components/lms/LessonDetailPage";
-import { getLessonByIdMerged } from "@/lib/lms/publishedLessons";
+import {
+  getDiscoverMoreLessons,
+  getLessonByIdMerged,
+} from "@/lib/lms/publishedLessons";
 
 type Props = {
   params: Promise<{ lessonId: string }>;
@@ -25,5 +28,15 @@ export default async function LessonDetailRoute({ params }: Props) {
   if (!lesson) {
     notFound();
   }
-  return <LessonDetailPage lesson={lesson} />;
+  const discoverMoreLessons = await getDiscoverMoreLessons(
+    lessonId,
+    lesson.skillLevel,
+    8,
+  );
+  return (
+    <LessonDetailPage
+      lesson={lesson}
+      discoverMoreLessons={discoverMoreLessons}
+    />
+  );
 }

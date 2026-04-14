@@ -34,6 +34,12 @@ yarn-error.log*
 .env*
 !.env.example
 
+# Filled Vercel upload file (from vercel-production.env.example — never commit secrets)
+vercel-production.env
+
+# Cursor IDE (local)
+.cursor/
+
 # vercel
 .vercel
 

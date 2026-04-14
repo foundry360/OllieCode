@@ -50,11 +50,30 @@ export function StaffLoginForm() {
   const [msg, setMsg] = useState("");
   const [urlError, setUrlError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [signedInNonAdmin, setSignedInNonAdmin] = useState(false);
+
+  const adminDenied = searchParams.get("admin_denied") === "1";
 
   useEffect(() => {
+    if (adminDenied) {
+      setUrlError("");
+      return;
+    }
     const e = searchParams.get("error");
     if (e) setUrlError(decodeURIComponent(e));
-  }, [searchParams]);
+  }, [searchParams, adminDenied]);
+
+  useEffect(() => {
+    if (!adminDenied) {
+      setSignedInNonAdmin(false);
+      return;
+    }
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return;
+    void supabase.auth.getUser().then(({ data: { user } }) => {
+      setSignedInNonAdmin(Boolean(user));
+    });
+  }, [adminDenied]);
 
   useEffect(() => {
     /** Avoid loop: /admin sends non-admins here with `admin_denied=1`; do not bounce back to /admin. */
@@ -155,6 +174,39 @@ export function StaffLoginForm() {
         sign-in.
       </p>
 
+      {adminDenied ? (
+        <div
+          className="mt-6 rounded-2xl border border-amber-200/90 bg-gradient-to-b from-amber-50 to-[#fffbeb] px-4 py-4 text-sm text-amber-950 shadow-sm ring-1 ring-amber-100"
+          role="status"
+        >
+          <p className="font-display text-base font-bold text-amber-950">
+            This account can’t open the staff portal yet
+          </p>
+          {signedInNonAdmin ? (
+            <button
+              type="button"
+              disabled={loading}
+              className="mt-4 w-full rounded-xl border border-amber-300/80 bg-white/90 py-2.5 text-sm font-semibold text-amber-950 shadow-sm transition hover:bg-amber-50 disabled:opacity-60"
+              onClick={async () => {
+                setLoading(true);
+                try {
+                  const s = getSupabaseBrowserClient();
+                  await s?.auth.signOut();
+                  setSignedInNonAdmin(false);
+                  setMsg("You’re signed out. Sign in with a staff-enabled account.");
+                  router.replace("/staff/login");
+                  router.refresh();
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Sign out and use another account
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+
       <form
         className="mt-6 flex flex-col gap-4"
         autoComplete="off"
@@ -202,7 +254,7 @@ export function StaffLoginForm() {
           disabled={loading}
           className="rounded-xl bg-[#365314] py-3 font-bold text-white shadow hover:bg-[#2a3f0f] disabled:opacity-60"
         >
-          {loading ? "Please wait…" : "Sign in to admin"}
+          {loading ? "Please wait…" : "Admin Login"}
         </button>
       </form>
 

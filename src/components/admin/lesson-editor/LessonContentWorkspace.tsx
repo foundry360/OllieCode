@@ -8,7 +8,7 @@ import {
   Plus,
   Trash2,
 } from "lucide-react";
-import { LessonImageDropzone } from "@/app/admin/lessons/new/lesson-image-dropzone";
+import { RichTextField } from "@/components/admin/lesson-editor/RichTextField";
 import type { LessonCatalogEntry, LessonModule } from "@/lib/lms/lessonsCatalog";
 
 const fieldLabel = "block text-sm font-semibold text-slate-800";
@@ -119,36 +119,6 @@ export function LessonContentWorkspace({
           <p className="mt-1 text-xs text-slate-500">
             {draft.title.length} / 255
           </p>
-        </div>
-      </section>
-
-      <section className="space-y-4 border-t border-slate-200 pt-10">
-        <h3 className={sectionTitle}>Media</h3>
-        <div className="space-y-5">
-          <LessonImageDropzone
-            label="Card image"
-            variant="card"
-            value={draft.cardImageUrl ?? ""}
-            onChange={(url) =>
-              setDraft((d) => ({
-                ...d,
-                cardImageUrl: url || null,
-              }))
-            }
-            disabled={disabled}
-          />
-          <LessonImageDropzone
-            label="Thumbnail"
-            variant="thumbnail"
-            value={draft.thumbnailUrl ?? ""}
-            onChange={(url) =>
-              setDraft((d) => ({
-                ...d,
-                thumbnailUrl: url || null,
-              }))
-            }
-            disabled={disabled}
-          />
         </div>
       </section>
 
@@ -363,15 +333,21 @@ export function LessonContentWorkspace({
                       <label className="text-xs font-semibold text-slate-600">
                         Detail
                       </label>
-                      <textarea
-                        rows={3}
-                        value={m.detail}
-                        onChange={(e) =>
-                          updateModule(index, { detail: e.target.value })
-                        }
-                        className={`${inputClass} resize-y`}
-                        disabled={disabled}
-                      />
+                      <p className="mt-1 text-xs text-slate-500">
+                        Format text with the toolbar (fonts, color, lists,
+                        links).
+                      </p>
+                      <div className="mt-2">
+                        <RichTextField
+                          key={m.id}
+                          value={m.detail}
+                          onChange={(html) =>
+                            updateModule(index, { detail: html })
+                          }
+                          disabled={disabled}
+                          placeholder="Describe what learners do in this step…"
+                        />
+                      </div>
                     </div>
                   </div>
                 ) : null}

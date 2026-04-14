@@ -8,7 +8,7 @@ export type LessonModule = {
   points: number;
   durationMins: number;
   steps: number;
-  /** Shown inside the expandable “Show details” panel */
+  /** Rich HTML inside the expandable “Show details” panel */
   detail: string;
 };
 
@@ -42,6 +42,23 @@ export type LessonCatalogEntry = {
   modules: LessonModule[];
 };
 
+/**
+ * Learning Hub cards and list rows: use wide **card** art first; only use
+ * {@link LessonCatalogEntry.thumbnailUrl} when no card image is set.
+ */
+export function lessonHeroImageUrl(l: LessonCatalogEntry): string | null {
+  const card = l.cardImageUrl?.trim();
+  if (card) return card;
+  const thumb = l.thumbnailUrl?.trim();
+  return thumb || null;
+}
+
+/** Admin lesson grid cards only: wide card art — never the thumbnail. */
+export function lessonCardImageOnly(l: LessonCatalogEntry): string | null {
+  const card = l.cardImageUrl?.trim();
+  return card || null;
+}
+
 export const MIN_SKILL_LEVEL = 1;
 export const MAX_PUBLISHED_LEVEL = 1;
 
@@ -73,7 +90,7 @@ export const LESSONS: LessonCatalogEntry[] = [
     summary:
       "Snap a Move block, run your program, and save your first adventure with Ollie.",
     skillLevel: 1,
-    workspaceHref: "/workspace?mission=first-move",
+    workspaceHref: "/workspace?mission=first-move&lesson=lvl1-robot-path",
     estimatedMinutes: 15,
     topic: "Blocks & motion",
     objective: "Get started",
@@ -133,6 +150,147 @@ export const LESSONS: LessonCatalogEntry[] = [
       },
     ],
   },
+  {
+    id: "lvl1-count-loop",
+    title: "Count with a loop",
+    summary:
+      "Use repeat blocks to count and draw patterns — a gentle intro to loops before you add sensors.",
+    skillLevel: 1,
+    workspaceHref: null,
+    estimatedMinutes: 18,
+    topic: "Blocks & motion",
+    objective: "Explore & create",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    modules: [
+      {
+        id: "loop-m1",
+        title: "Why repeat?",
+        points: 80,
+        durationMins: 5,
+        steps: 2,
+        detail:
+          "See how one loop can run the same stack many times instead of copying blocks by hand.",
+      },
+      {
+        id: "loop-m2",
+        title: "Set a counter",
+        points: 120,
+        durationMins: 7,
+        steps: 3,
+        detail:
+          "Pick how many times Ollie should repeat an action and watch the stage update each time.",
+      },
+      {
+        id: "loop-m3",
+        title: "Try a simple pattern",
+        points: 160,
+        durationMins: 6,
+        steps: 2,
+        detail:
+          "Combine moves in a loop to trace a shape. Save when you like the result.",
+      },
+    ],
+  },
+  {
+    id: "lvl1-story-starter",
+    title: "Story starter",
+    summary:
+      "Plan a tiny scene: characters, a goal, and what happens when the player clicks Run — practice before you add blocks.",
+    skillLevel: 1,
+    workspaceHref: null,
+    estimatedMinutes: 14,
+    topic: "Games & stories",
+    objective: "Explore & create",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    modules: [
+      {
+        id: "story-m1",
+        title: "Pick your cast",
+        points: 70,
+        durationMins: 4,
+        steps: 2,
+        detail:
+          "Choose who is on stage and one simple rule: what should Ollie try to do first?",
+      },
+      {
+        id: "story-m2",
+        title: "Write the beat",
+        points: 100,
+        durationMins: 5,
+        steps: 2,
+        detail:
+          "Sketch the order of events in plain language — beginning, middle, and a small surprise.",
+      },
+      {
+        id: "story-m3",
+        title: "Share the pitch",
+        points: 130,
+        durationMins: 5,
+        steps: 2,
+        detail:
+          "Tell a friend or write one sentence for the lesson notes so you can build it in the workspace later.",
+      },
+    ],
+  },
+  {
+    id: "lvl1-motion-lab",
+    title: "Motion lab",
+    summary:
+      "Try turns, speed, and short pauses in one sandbox lesson — good for testing the hub list and Show More.",
+    skillLevel: 1,
+    workspaceHref: null,
+    estimatedMinutes: 16,
+    topic: "Blocks & motion",
+    objective: "Explore & create",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    modules: [
+      {
+        id: "motion-m1",
+        title: "Warm up",
+        points: 60,
+        durationMins: 5,
+        steps: 2,
+        detail:
+          "Roll forward once, then stop — confirm Run and the stage feel familiar.",
+      },
+      {
+        id: "motion-m2",
+        title: "Turn in place",
+        points: 90,
+        durationMins: 6,
+        steps: 3,
+        detail:
+          "Add a turn so Ollie faces a new direction before the next move.",
+      },
+    ],
+  },
+  {
+    id: "lvl1-art-splash",
+    title: "Art splash",
+    summary:
+      "Splash color on the canvas with simple stamps — a quick creative break between motion lessons.",
+    skillLevel: 1,
+    workspaceHref: null,
+    estimatedMinutes: 12,
+    topic: "Art & design",
+    objective: "Explore & create",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    modules: [
+      {
+        id: "art-m1",
+        title: "Pick a palette",
+        points: 50,
+        durationMins: 4,
+        steps: 2,
+        detail:
+          "Choose two colors and plan where each stamp might land on the stage.",
+      },
+    ],
+  },
 ];
 
 export function lessonsForSkillLevel(level: number): LessonCatalogEntry[] {
@@ -167,9 +325,44 @@ export function lessonPointsReward(lesson: LessonCatalogEntry): number {
   return 100 + lesson.estimatedMinutes * 40;
 }
 
+const intFmt = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
+
+/** Locale-aware digits for points, steps, etc. (e.g. 1,200). */
+export function formatCount(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  return intFmt.format(Math.round(value));
+}
+
+/** "+1,200 points" — used on lesson detail + hub. */
+export function formatPointsLabel(points: number): string {
+  return `+${formatCount(points)} points`;
+}
+
+/** "~45 min", "~1 hr", "~1 hr 15 min"; invalid/zero → em dash. */
 export function formatLessonDurationMinutes(mins: number): string {
-  if (mins < 60) return `~${mins} mins`;
-  const h = Math.floor(mins / 60);
-  const m = mins % 60;
-  return m ? `~${h} hr ${m} mins` : `~${h} hrs`;
+  if (!Number.isFinite(mins) || mins <= 0) return "—";
+  const m = Math.round(mins);
+  if (m < 60) {
+    return m === 1 ? "~1 min" : `~${formatCount(m)} min`;
+  }
+  const h = Math.floor(m / 60);
+  const rest = m % 60;
+  if (rest === 0) {
+    return h === 1 ? "~1 hr" : `~${formatCount(h)} hr`;
+  }
+  if (h === 1) {
+    return rest === 1 ? "~1 hr 1 min" : `~1 hr ${formatCount(rest)} min`;
+  }
+  return `~${formatCount(h)} hr ${formatCount(rest)} min`;
+}
+
+/** Same rules as lesson duration — module timeline rows. */
+export function formatModuleDurationMinutes(mins: number): string {
+  return formatLessonDurationMinutes(mins);
+}
+
+/** "1 step" / "12 steps"; empty string when steps ≤ 0. */
+export function formatStepCountLabel(steps: number): string {
+  if (!Number.isFinite(steps) || steps <= 0) return "";
+  return steps === 1 ? "1 step" : `${formatCount(steps)} steps`;
 }

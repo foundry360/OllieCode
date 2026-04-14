@@ -1,12 +1,19 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { SignOutButton } from "@/components/app/SignOutButton";
 
 export type SignedInNavId = "learn" | "workspace" | "profile" | "settings";
 
+export type AdminHeaderSection = "dashboard" | "lessons";
+
 type SignedInAppHeaderProps = {
   active?: SignedInNavId;
-  /** Learning Hub uses the lime header; other signed-in areas use a white header. */
+  /** Learning Hub uses the lime header; other signed-in areas use a white header. Ignored when {@link admin} is set (admin always uses lime). */
   tone?: "learn" | "default";
+  /** Admin portal: same shell as Learning Hub + Dashboard / Lessons before main nav */
+  admin?: { active: AdminHeaderSection };
 };
 
 const NAV: { id: SignedInNavId; href: string; label: string }[] = [
@@ -19,13 +26,15 @@ const NAV: { id: SignedInNavId; href: string; label: string }[] = [
 export function SignedInAppHeader({
   active,
   tone = "default",
+  admin,
 }: SignedInAppHeaderProps) {
+  const effectiveTone = admin ? "learn" : tone;
   const headerTone =
-    tone === "learn"
+    effectiveTone === "learn"
       ? "border-b border-[#d9f99d] bg-[#ecfccb]/95 backdrop-blur"
       : "border-b border-slate-200 bg-white/95 backdrop-blur";
   const inactiveNav =
-    tone === "learn"
+    effectiveTone === "learn"
       ? "text-[#374151] hover:bg-white/70 hover:text-[#84c126]"
       : "text-[#374151] hover:bg-slate-100 hover:text-[#84c126]";
 
@@ -48,10 +57,37 @@ export function SignedInAppHeader({
         </Link>
         <nav
           className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2"
-          aria-label="Signed-in navigation"
+          aria-label={admin ? "Admin and app navigation" : "Signed-in navigation"}
         >
+          {admin ? (
+            <>
+              <Link
+                href="/admin"
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  admin.active === "dashboard"
+                    ? "bg-[#84c126] text-white shadow-sm"
+                    : inactiveNav
+                }`}
+                aria-current={admin.active === "dashboard" ? "page" : undefined}
+              >
+                Dashboard
+              </Link>
+              <Link
+                href="/admin/lessons"
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  admin.active === "lessons"
+                    ? "bg-[#84c126] text-white shadow-sm"
+                    : inactiveNav
+                }`}
+                aria-current={admin.active === "lessons" ? "page" : undefined}
+              >
+                Lessons
+              </Link>
+            </>
+          ) : null}
           {NAV.map((item) => {
             const isActive = active === item.id;
+            const learningHubFromAdmin = Boolean(admin && item.id === "learn");
             return (
               <Link
                 key={item.id}
@@ -62,11 +98,19 @@ export function SignedInAppHeader({
                     : inactiveNav
                 }`}
                 aria-current={isActive ? "page" : undefined}
+                {...(learningHubFromAdmin
+                  ? {
+                      target: "_blank",
+                      rel: "noopener noreferrer",
+                      title: "Open Learning Hub in a new tab",
+                    }
+                  : {})}
               >
                 {item.label}
               </Link>
             );
           })}
+          <SignOutButton tone={effectiveTone === "learn" ? "learn" : "default"} />
         </nav>
       </div>
     </header>
