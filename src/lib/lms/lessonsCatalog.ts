@@ -88,7 +88,85 @@ export const LESSON_CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "Art & design", label: "Art & design" },
 ];
 
+/**
+ * When `/workspace` has no `?lesson=` query, the workspace lesson panel loads this lesson.
+ */
+export const DEFAULT_WORKSPACE_LESSON_ID = "lvl1-get-started" as const;
+
 export const LESSONS: LessonCatalogEntry[] = [
+  {
+    id: "lvl1-get-started",
+    title: "Get started with Ollie Code",
+    summary:
+      "Run the Welcome Bot, explore your first blocks, then save a named copy of your adventure—your on-ramp to Ollie Code.",
+    bodyHtml:
+      "<p>This lesson walks you through the <strong>Welcome to Ollie Code</strong> starter: two small programs that run together when you tap <strong>Run</strong>. You’ll meet the <strong>Welcome bot</strong> costume, use <strong>Save</strong> to keep your own copy in the cloud, and find it again under <strong>Adventures</strong>. Work through each module while your workspace is open.</p>",
+    skillLevel: 1,
+    workspaceHref:
+      "/workspace?mission=first-move&lesson=lvl1-get-started",
+    estimatedMinutes: 18,
+    topic: "General",
+    objective: "Get started",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    cardImageUrl: "/images/sprites/welcomebot.png",
+    modules: [
+      {
+        id: "getstarted-m1",
+        title: "Run the Welcome Bot",
+        points: 120,
+        durationMins: 4,
+        steps: 3,
+        detail:
+          "<p>Open this lesson in the workspace (you should see the <strong>Welcome bot</strong> on the stage). You’ll have <strong>two</strong> stacks that both start with <strong>When Run clicked</strong>:</p><ul><li>One loop uses <strong>next costume</strong> and a short <strong>wait</strong> so the sprite animates.</li><li>The other loop <strong>says</strong> <strong>Welcome Adventurer!</strong> for five seconds, over and over.</li></ul><p>Tap <strong>Run</strong> and watch the stage and speech bubble. Tap <strong>Run</strong> again if you need to reset.</p>",
+      },
+      {
+        id: "getstarted-m2",
+        title: "How the blocks fit together",
+        points: 100,
+        durationMins: 3,
+        steps: 3,
+        detail:
+          "<p>Blocks are grouped by color in the palette—like puzzle pieces you drag into the middle.</p><ul><li><strong>Light orange</strong> blocks are for <strong>events</strong> (such as <strong>When Run clicked</strong>).</li><li><strong>Purple</strong> <strong>Looks</strong> blocks can <strong>say</strong> something on the stage.</li><li><strong>Orange</strong> <strong>Control</strong> blocks include <strong>forever</strong> and <strong>wait</strong>.</li></ul><p>You can have more than one <strong>When Run clicked</strong> stack; when you press <strong>Run</strong>, they all start together.</p>",
+      },
+      {
+        id: "getstarted-m3",
+        title: "Sign in for the cloud",
+        points: 80,
+        durationMins: 2,
+        steps: 2,
+        detail:
+          "<p>To keep your projects on your account, <strong>sign in</strong> from the workspace header (or from the site’s login page). Once you’re signed in, saves can sync to the cloud so you can come back on another device.</p>",
+      },
+      {
+        id: "getstarted-m4",
+        title: "Save your own named copy",
+        points: 200,
+        durationMins: 5,
+        steps: 4,
+        detail:
+          "<p>The <strong>Welcome to Ollie Code</strong> adventure is a <strong>starter template</strong>: it’s there to help everyone begin the same way. When you’re signed in, <strong>Save</strong> asks you to <strong>name your own copy</strong>—that becomes <strong>your</strong> project you can keep editing.</p><p>Pick a name you’ll recognize, confirm, and stay on the new adventure when the workspace switches to it. After that, <strong>Save</strong> updates <strong>your</strong> copy.</p>",
+      },
+      {
+        id: "getstarted-m5",
+        title: "Adventures and new projects",
+        points: 120,
+        durationMins: 4,
+        steps: 3,
+        detail:
+          "<p>Open <strong>Adventures</strong> from the toolbar to see your <strong>saved named copies</strong>—not the starter template itself. Tap a card to open that project.</p><p>Use <strong>New adventure</strong> when you want a fresh blank canvas; use <strong>Save</strong> there too to give it a name and keep it in your list.</p>",
+      },
+      {
+        id: "getstarted-m6",
+        title: "What’s next",
+        points: 100,
+        durationMins: 2,
+        steps: 2,
+        detail:
+          "<p>Visit the <strong>Learning Hub</strong> for more lessons on blocks, motion, and games. You can return to this workspace anytime from a lesson’s <strong>Open workspace</strong> link or by choosing your adventure from <strong>Adventures</strong>.</p>",
+      },
+    ],
+  },
   {
     id: "lvl1-robot-path",
     title: "Robot path",

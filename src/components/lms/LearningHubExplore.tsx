@@ -531,10 +531,11 @@ function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
-          <h3 className="font-display text-lg font-bold capitalize leading-snug">
+          <h3 className="min-w-0 font-display text-lg font-bold capitalize leading-snug">
             <Link
               href={lessonDetailHref(lesson.id)}
-              className="text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+              title={lesson.title}
+              className="block truncate text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
             >
               {lesson.title}
             </Link>
@@ -594,7 +595,8 @@ function LessonResultRow({
         <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
           <Link
             href={detailHref}
-            className="min-w-0 flex-1 font-display text-lg font-semibold capitalize leading-[1.15] text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+            title={lesson.title}
+            className="min-w-0 flex-1 truncate font-display text-lg font-semibold capitalize leading-[1.15] text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
           >
             {lesson.title}
           </Link>

@@ -15,23 +15,82 @@ function cloneLesson(l: LessonCatalogEntry): LessonCatalogEntry {
   };
 }
 
+async function fetchDraftLessonIds(
+  supabase: NonNullable<Awaited<ReturnType<typeof createSupabaseServerClient>>>,
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("lms_lessons")
+    .select("id")
+    .eq("published", false);
+  if (error || !data?.length) return new Set();
+  return new Set(data.map((r) => r.id));
+}
+
+export type MergedPublishedLessonsOptions = {
+  /**
+   * When true (default), catalog lessons that have an `lms_lessons` row with
+   * `published: false` are omitted (draft = hidden from Learning Hub). Admin
+   * tooling can set false to resolve merged content for editing.
+   */
+  hideCatalogDrafts?: boolean;
+};
+
 /**
  * Published rows in `lms_lessons` override the in-repo catalog by `id`;
  * new DB-only ids are appended. Final list is **newest first** by `updated_at`
  * when a published row exists; lessons with no DB row keep catalog order among
  * themselves after all timestamped entries.
+ *
+ * Draft rows (`published: false`) do not override the catalog payload, but when
+ * {@link MergedPublishedLessonsOptions.hideCatalogDrafts} is true (default),
+ * those lesson ids are excluded from the result so the hub matches admin copy.
  */
-export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]> {
+export async function getMergedPublishedLessons(
+  options: MergedPublishedLessonsOptions = {},
+): Promise<LessonCatalogEntry[]> {
+  const hideCatalogDrafts = options.hideCatalogDrafts ?? true;
   const base = LESSONS.map(cloneLesson);
   const supabase = await createSupabaseServerClient();
   if (!supabase) return base;
+
+  const draftIds =
+    hideCatalogDrafts && supabase
+      ? await fetchDraftLessonIds(supabase)
+      : new Set<string>();
 
   const { data, error } = await supabase
     .from("lms_lessons")
     .select("id, payload, published, updated_at")
     .eq("published", true);
 
-  if (error || !data?.length) return base;
+  if (error) {
+    if (!hideCatalogDrafts) return base;
+    return base.filter((l) => !draftIds.has(l.id));
+  }
+
+  if (!data?.length) {
+    const merged = new Map<string, LessonCatalogEntry>();
+    for (const l of base) merged.set(l.id, l);
+    const ordered: LessonCatalogEntry[] = [];
+    for (const l of LESSONS) {
+      const m = merged.get(l.id);
+      if (m && !draftIds.has(l.id)) ordered.push(m);
+    }
+    const seen = new Set(LESSONS.map((l) => l.id));
+    for (const [, lesson] of merged) {
+      if (!seen.has(lesson.id) && !draftIds.has(lesson.id)) ordered.push(lesson);
+    }
+    const catalogIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
+    ordered.sort((a, b) => {
+      const ia = catalogIndex.get(a.id);
+      const ib = catalogIndex.get(b.id);
+      if (ia != null && ib != null) return ia - ib;
+      if (ia != null) return -1;
+      if (ib != null) return 1;
+      return a.id.localeCompare(b.id);
+    });
+    return ordered;
+  }
 
   const updatedAtById = new Map<string, string>();
   const merged = new Map<string, LessonCatalogEntry>();
@@ -75,11 +134,11 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
   const ordered: LessonCatalogEntry[] = [];
   for (const l of LESSONS) {
     const m = merged.get(l.id);
-    if (m) ordered.push(m);
+    if (m && !draftIds.has(l.id)) ordered.push(m);
   }
   const seen = new Set(LESSONS.map((l) => l.id));
   for (const [, lesson] of merged) {
-    if (!seen.has(lesson.id)) ordered.push(lesson);
+    if (!seen.has(lesson.id) && !draftIds.has(lesson.id)) ordered.push(lesson);
   }
 
   const catalogIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
@@ -106,7 +165,12 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
 export async function getLessonByIdMerged(
   lessonId: string,
 ): Promise<LessonCatalogEntry | undefined> {
-  const list = await getMergedPublishedLessons();
+  const supabase = await createSupabaseServerClient();
+  if (supabase) {
+    const draftIds = await fetchDraftLessonIds(supabase);
+    if (draftIds.has(lessonId)) return undefined;
+  }
+  const list = await getMergedPublishedLessons({ hideCatalogDrafts: true });
   return list.find((l) => l.id === lessonId) ?? getLessonByIdStatic(lessonId);
 }
 
@@ -157,5 +221,8 @@ export async function getLessonPayloadForAdminEdit(
       if (v) return cloneLesson(v);
     }
   }
-  return getLessonByIdMerged(lessonId);
+  const list = await getMergedPublishedLessons({ hideCatalogDrafts: false });
+  return (
+    list.find((l) => l.id === lessonId) ?? getLessonByIdStatic(lessonId)
+  );
 }

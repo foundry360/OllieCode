@@ -22,7 +22,7 @@ import {
 } from "@/lib/canvas/stageAssets";
 import {
   getMissionById,
-  isCustomMissionId,
+  isCatalogTemplateMissionId,
   missionCloudProjectId,
   MISSIONS,
 } from "@/lib/missions";
@@ -201,13 +201,23 @@ export function SavedMissionsModal({
     [],
   );
 
+  /** Catalog rows (excludes starter templates like First Move — those open from the workspace only). */
+  const visibleCatalogMissions = useMemo(
+    () => MISSIONS.filter((m) => !isCatalogTemplateMissionId(m.id)),
+    [],
+  );
+
+  /**
+   * User-named copies only (`custom-…`). Catalog starters (including First Move) never appear here —
+   * they open from the workspace; saves fork to a new custom id.
+   */
   const extraSavedEntries = useMemo(
     () => entries.filter((e) => !catalogIdSet.has(e.missionId)),
     [entries, catalogIdSet],
   );
 
   const hasAnyMission =
-    MISSIONS.length > 0 || extraSavedEntries.length > 0;
+    visibleCatalogMissions.length > 0 || extraSavedEntries.length > 0;
 
   const entriesKey = useMemo(
     () =>
@@ -246,7 +256,7 @@ export function SavedMissionsModal({
       }
 
       const ids = new Set<string>();
-      for (const m of MISSIONS) ids.add(m.id);
+      for (const m of visibleCatalogMissions) ids.add(m.id);
       for (const e of entries) ids.add(e.missionId);
 
       const results = await Promise.all(
@@ -275,7 +285,7 @@ export function SavedMissionsModal({
     return () => {
       cancelled = true;
     };
-  }, [open, entriesKey, entries]);
+  }, [open, entriesKey, entries, visibleCatalogMissions]);
 
   useEffect(() => {
     if (!open) return;
@@ -338,9 +348,10 @@ export function SavedMissionsModal({
             id={`${titleId}-hint`}
             className="mb-3 text-sm leading-relaxed text-[#6b7280] sm:mb-4"
           >
-            Tap a card to open an adventure. Use{" "}
-            <strong className="font-semibold text-[#365314]">Save</strong> so
-            your scene and blocks stay put.
+            Open a saved adventure below, or go back to the workspace for the
+            First Move starter. Use{" "}
+            <strong className="font-semibold text-[#365314]">Save</strong> there
+            to add your named copy here.
           </p>
           {!hasAnyMission ? (
             <p className="rounded-lg border-2 border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
@@ -348,7 +359,7 @@ export function SavedMissionsModal({
             </p>
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-6 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
-              {MISSIONS.map((meta) => {
+              {visibleCatalogMissions.map((meta) => {
                 const saved = savedByMissionId.get(meta.id);
                 const isActive = activeMissionId === meta.id;
                 const displayName = saved?.displayName?.trim()
@@ -380,9 +391,6 @@ export function SavedMissionsModal({
                 const isActive = activeMissionId === entry.missionId;
                 const displayName =
                   entry.displayName?.trim() || "Untitled adventure";
-                const metaLine = isCustomMissionId(entry.missionId)
-                  ? "Your Adventure"
-                  : null;
                 const payload = cloudByMissionId[entry.missionId];
                 const scene = sceneFromCloudPayload(payload, entry.missionId);
                 const thumbLoading = !cloudThumbsReady;
@@ -391,7 +399,7 @@ export function SavedMissionsModal({
                     key={entry.missionId}
                     missionId={entry.missionId}
                     name={displayName}
-                    metaLine={metaLine}
+                    metaLine="Your Adventure"
                     savedAtIso={entry.savedAt}
                     isActive={isActive}
                     onSelect={onSelectMission}

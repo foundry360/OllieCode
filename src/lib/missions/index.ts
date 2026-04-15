@@ -1,6 +1,7 @@
 export {
   createCustomMissionId,
   getMissionById,
+  isCatalogTemplateMissionId,
   isCustomMissionId,
   MISSIONS,
   type MissionDefinition,
@@ -11,6 +12,7 @@ export {
   mergeMissionProgressIntoStorage,
   recordMissionSaved,
   removeSavedMissionProgressEntry,
+  replaceSavedMissionProgressFromServer,
   syncSavedMissionStorageForAccount,
 } from "@/lib/missions/savedMissionProgress";
 export {

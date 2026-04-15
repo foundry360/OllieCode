@@ -23,7 +23,7 @@ export function WorkspaceLessonInstructions({ lesson }: Props) {
   return (
     <section
       aria-label="Lesson"
-      className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm"
+      className="ollie-lesson-card-host flex h-full min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm"
     >
       <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
         <div className="flex min-w-0 items-center gap-2">
@@ -46,7 +46,7 @@ export function WorkspaceLessonInstructions({ lesson }: Props) {
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3">
+      <div className="ollie-lesson-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3">
         {!lesson ? (
           <p className="text-sm leading-relaxed text-[#6b7280]">
             Open a lesson from the{" "}

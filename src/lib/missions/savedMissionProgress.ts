@@ -71,6 +71,17 @@ export function mergeMissionProgressIntoStorage(
 }
 
 /**
+ * Overwrite the local adventure-name list with cloud data after a successful fetch.
+ * Prefer this over {@link mergeMissionProgressIntoStorage} when hydrating from Supabase
+ * so rows deleted on the server (or other devices) are removed locally instead of lingering.
+ */
+export function replaceSavedMissionProgressFromServer(
+  rows: SavedMissionProgressEntry[],
+): void {
+  persist(mergeByLatestSavedAt(rows));
+}
+
+/**
  * Call when the Supabase session’s user id changes (or on sign-out). Clears mission
  * name list + per-mission JSON snapshots if the account no longer matches the last
  * owner of this device’s cached adventure list.

@@ -70,12 +70,14 @@ import {
   createCustomMissionId,
   getMissionById,
   getSavedMissionProgress,
+  isCatalogTemplateMissionId,
   loadMissionProjectSnapshotLocal,
   mergeMissionProgressIntoStorage,
   missionCloudProjectId,
   MISSIONS,
   recordMissionSaved,
   removeSavedMissionProgressEntry,
+  replaceSavedMissionProgressFromServer,
   syncSavedMissionStorageForAccount,
 } from "@/lib/missions";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -107,9 +109,11 @@ import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLink
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
 import {
+  DEFAULT_WORKSPACE_LESSON_ID,
   getLessonById,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
+import type { MissionDefinition } from "@/lib/missions/definitions";
 import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
 import {
   getAvatarBySlug,
@@ -154,31 +158,35 @@ const CREATE_SPRITE_PAINT_DEFAULT_NAME = "Untitled Sprite";
 const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
 const ACTOR_ROBOT_ID = "actor-robot";
 
-const DEFAULT_STAGE_ACTORS: StageActor[] = [
-  { id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: "olliebot" },
-];
+function makeDefaultStageActors(
+  mission: MissionDefinition | undefined,
+): StageActor[] {
+  const costume = mission?.starterCostumeId ?? DEFAULT_COSTUME_ID;
+  return [{ id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: costume }];
+}
+
+/** Generic reset when mission is unknown — standard Ollie Bot. */
+const DEFAULT_STAGE_ACTORS: StageActor[] = makeDefaultStageActors(undefined);
 
 /** Main Blockly + canvas + kid-friendly toolbar — extend with new blocks in lib/blockly. */
 export function OllieWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const missionIdParam = searchParams.get("mission");
-  const lessonIdParam = searchParams.get("lesson");
+  const rawLessonId = searchParams.get("lesson")?.trim() ?? "";
+  const lessonIdParam =
+    rawLessonId.length > 0 ? rawLessonId : DEFAULT_WORKSPACE_LESSON_ID;
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
   const staticLesson = useMemo(
-    () => (lessonIdParam ? getLessonById(lessonIdParam) : undefined),
+    () => getLessonById(lessonIdParam),
     [lessonIdParam],
   );
   const [mergedLesson, setMergedLesson] = useState<LessonCatalogEntry | null>(
     null,
   );
   useEffect(() => {
-    if (!lessonIdParam) {
-      setMergedLesson(null);
-      return;
-    }
     let cancelled = false;
     setMergedLesson(null);
     void (async () => {
@@ -221,7 +229,12 @@ export function OllieWorkspace() {
   const [stageSceneLayers, setStageSceneLayers] = useState<OllieSceneId[]>([
     DEFAULT_SCENE_ID,
   ]);
-  const [actors, setActors] = useState<StageActor[]>(DEFAULT_STAGE_ACTORS);
+  const [actors, setActors] = useState<StageActor[]>(() =>
+    makeDefaultStageActors(
+      (missionIdParam ? getMissionById(missionIdParam) : undefined) ??
+        MISSIONS[0],
+    ),
+  );
   const [activeActorId, setActiveActorId] = useState<string>(ACTOR_ROBOT_ID);
   const [scenePickerOpen, setScenePickerOpen] = useState(false);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
@@ -250,6 +263,8 @@ export function OllieWorkspace() {
   const [missionCompleteOpen, setMissionCompleteOpen] = useState(false);
   const [programRunning, setProgramRunning] = useState(false);
   const [saveMissionNameModalOpen, setSaveMissionNameModalOpen] =
+    useState(false);
+  const [saveMissionForkFromTemplate, setSaveMissionForkFromTemplate] =
     useState(false);
   const [saveMissionNameLoading, setSaveMissionNameLoading] = useState(false);
   const missionRewardShownRef = useRef(false);
@@ -432,6 +447,9 @@ export function OllieWorkspace() {
       day: "numeric",
       timeZone: "UTC",
     });
+    if (isCatalogTemplateMissionId(missionForSave.id)) {
+      return `My ${missionForSave.title} — ${datePart}`;
+    }
     return `${missionForSave.title} — ${datePart}`;
   }, [missionForSave]);
 
@@ -531,8 +549,8 @@ export function OllieWorkspace() {
         }
         const { data: missionRows, error: missionListErr } =
           await fetchSavedMissionProgress(sb, user.id);
-        if (!missionListErr && missionRows.length) {
-          mergeMissionProgressIntoStorage(missionRows);
+        if (!missionListErr) {
+          replaceSavedMissionProgressFromServer(missionRows ?? []);
         }
         setSavedMissionEntries(getSavedMissionProgress());
         const { data: profile } = await sb
@@ -925,7 +943,7 @@ export function OllieWorkspace() {
   const resetWorkspaceToDefaultStarter = useCallback(() => {
     const ws = workspaceRef.current;
     if (!ws) return;
-    setActors(DEFAULT_STAGE_ACTORS);
+    setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
     setActiveActorId(ACTOR_ROBOT_ID);
     setStageSceneLayers([DEFAULT_SCENE_ID]);
     const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
@@ -940,7 +958,7 @@ export function OllieWorkspace() {
       >,
     };
     p5Ref.current?.resetSprite();
-  }, []);
+  }, [activeMission]);
 
   const handleRefresh = useCallback(() => {
     p5Ref.current?.resetRunToBeginning();
@@ -1102,37 +1120,103 @@ export function OllieWorkspace() {
   const confirmSaveMissionName = useCallback(
     async (displayName: string) => {
       if (!missionForSave) return;
+      const trimmed = displayName.trim();
+      if (!trimmed) return;
       setSaveMissionNameLoading(true);
       try {
+        const sb = getSupabaseBrowserClient();
+        const { data: authData } = sb
+          ? await sb.auth.getUser()
+          : { data: { user: null } };
+        const signedIn = !!authData.user;
+        if (
+          signedIn &&
+          isCatalogTemplateMissionId(missionForSave.id)
+        ) {
+          const newId = createCustomMissionId();
+          const msg = await saveProject({
+            missionRecord: {
+              missionId: newId,
+              displayName: trimmed,
+            },
+          });
+          if (
+            msg.startsWith("Save failed") ||
+            msg === "Could not save"
+          ) {
+            setStatus(msg);
+            setTimeout(() => setStatus(""), 5000);
+            return;
+          }
+          skipNextMissionUrlEffectRef.current = true;
+          const q = new URLSearchParams();
+          q.set("mission", newId);
+          router.replace(`/workspace?${q.toString()}`, { scroll: false });
+          setSaveMissionNameModalOpen(false);
+          setSaveMissionForkFromTemplate(false);
+          setSavedMissionEntries(getSavedMissionProgress());
+          setStatus(
+            msg === "Saved to cloud!"
+              ? `Saved “${trimmed}” — you can keep editing here.`
+              : msg,
+          );
+          setTimeout(() => setStatus(""), 4000);
+          requestAnimationFrame(() => {
+            const w = workspaceRef.current;
+            if (w) svgResize(w);
+          });
+          return;
+        }
+
         const msg = await saveProject({
           missionRecord: {
             missionId: missionForSave.id,
-            displayName,
+            displayName: trimmed,
           },
         });
         setStatus(msg);
         setSaveMissionNameModalOpen(false);
+        setSaveMissionForkFromTemplate(false);
         setSavedMissionEntries(getSavedMissionProgress());
         setTimeout(() => setStatus(""), 3000);
       } finally {
         setSaveMissionNameLoading(false);
       }
     },
-    [missionForSave, saveProject],
+    [missionForSave, saveProject, router],
   );
 
-  /** Reuse the last name for this adventure; only prompt when none exists yet. */
+  /**
+   * Reuse the last name for this adventure when allowed; otherwise prompt.
+   * Signed-in users on a catalog starter (e.g. First Move) must always name a new copy.
+   */
   const saveMissionWithExistingNameOrPrompt = useCallback(() => {
     if (!missionForSave) return;
-    const existing = getSavedMissionProgress().find(
-      (e) => e.missionId === missionForSave.id,
-    );
-    const name = existing?.displayName?.trim();
-    if (name) {
-      void confirmSaveMissionName(name);
-      return;
-    }
-    setSaveMissionNameModalOpen(true);
+    void (async () => {
+      const sb = getSupabaseBrowserClient();
+      let signedIn = false;
+      if (sb) {
+        const {
+          data: { user },
+        } = await sb.auth.getUser();
+        signedIn = !!user;
+      }
+      if (signedIn && isCatalogTemplateMissionId(missionForSave.id)) {
+        setSaveMissionForkFromTemplate(true);
+        setSaveMissionNameModalOpen(true);
+        return;
+      }
+      setSaveMissionForkFromTemplate(false);
+      const existing = getSavedMissionProgress().find(
+        (e) => e.missionId === missionForSave.id,
+      );
+      const name = existing?.displayName?.trim();
+      if (name) {
+        void confirmSaveMissionName(name);
+        return;
+      }
+      setSaveMissionNameModalOpen(true);
+    })();
   }, [missionForSave, confirmSaveMissionName]);
 
   const handleSave = useCallback(() => {
@@ -1140,18 +1224,33 @@ export function OllieWorkspace() {
   }, [saveMissionWithExistingNameOrPrompt]);
 
   const openRenameMissionFromList = useCallback((missionId: string) => {
-    const meta = getMissionById(missionId);
-    const entry = getSavedMissionProgress().find(
-      (e) => e.missionId === missionId,
-    );
-    const defaultName =
-      entry?.displayName?.trim() || meta?.title || "Adventure";
-    setRenameMissionContext({
-      missionId,
-      missionTitle: meta?.title ?? "Adventure",
-      defaultName,
-    });
-    setRenameMissionModalOpen(true);
+    void (async () => {
+      const sb = getSupabaseBrowserClient();
+      if (sb) {
+        const {
+          data: { user },
+        } = await sb.auth.getUser();
+        if (user && isCatalogTemplateMissionId(missionId)) {
+          setStatus(
+            "This starter adventure can’t be renamed — open it and use Save to create your own named copy.",
+          );
+          setTimeout(() => setStatus(""), 5000);
+          return;
+        }
+      }
+      const meta = getMissionById(missionId);
+      const entry = getSavedMissionProgress().find(
+        (e) => e.missionId === missionId,
+      );
+      const defaultName =
+        entry?.displayName?.trim() || meta?.title || "Adventure";
+      setRenameMissionContext({
+        missionId,
+        missionTitle: meta?.title ?? "Adventure",
+        defaultName,
+      });
+      setRenameMissionModalOpen(true);
+    })();
   }, []);
 
   const confirmRenameMission = useCallback(
@@ -1280,7 +1379,7 @@ export function OllieWorkspace() {
         setActors(hydrated);
       })();
     } else {
-      setActors(DEFAULT_STAGE_ACTORS);
+      setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
       setActiveActorId(ACTOR_ROBOT_ID);
       setStageSceneLayers(
         normalizeSceneLayerIdsFromPayload(
@@ -1306,7 +1405,7 @@ export function OllieWorkspace() {
     mergeMissionProgressIntoStorage(payload.savedMissionProgress);
     setSavedMissionEntries(getSavedMissionProgress());
     p5Ref.current?.resetSprite();
-  }, [resetWorkspaceToDefaultStarter]);
+  }, [resetWorkspaceToDefaultStarter, activeMission]);
 
   /**
    * Load an adventure workspace: signed-in users use cloud JSON only; otherwise local snapshot or starter blocks.
@@ -1324,6 +1423,19 @@ export function OllieWorkspace() {
           data: { user },
         } = await sb.auth.getUser();
         if (user) {
+          if (isCatalogTemplateMissionId(missionId)) {
+            resetWorkspaceToDefaultStarter();
+            missionRewardShownRef.current = false;
+            requestAnimationFrame(() => {
+              const w = workspaceRef.current;
+              if (w) svgResize(w);
+            });
+            setStatus(
+              `“${meta.title}” is a starter — use Save to name your own copy and keep working.`,
+            );
+            setTimeout(() => setStatus(""), 4500);
+            return;
+          }
           const { data, error } = await downloadProjectJson(
             sb,
             user.id,
@@ -1430,10 +1542,8 @@ export function OllieWorkspace() {
         setTimeout(() => setStatus(""), 5000);
         return;
       }
-      if (rows.length) {
-        mergeMissionProgressIntoStorage(rows);
-        setSavedMissionEntries(getSavedMissionProgress());
-      }
+      replaceSavedMissionProgressFromServer(rows ?? []);
+      setSavedMissionEntries(getSavedMissionProgress());
     })();
   }, []);
 
@@ -1492,6 +1602,11 @@ export function OllieWorkspace() {
             id,
           );
           if (rowErr) cloudListWarning = rowErr.message;
+          const { data: refreshed, error: refreshErr } =
+            await fetchSavedMissionProgress(sb, user.id);
+          if (!refreshErr) {
+            replaceSavedMissionProgressFromServer(refreshed ?? []);
+          }
         }
       }
       skipNextMissionUrlEffectRef.current = true;
@@ -1572,19 +1687,19 @@ export function OllieWorkspace() {
       return;
     }
     applyProjectPayload(data);
-    const { data: missionRows } = await fetchSavedMissionProgress(
-      supabase,
-      user.id,
-    );
-    if (missionRows.length) mergeMissionProgressIntoStorage(missionRows);
+    const { data: missionRows, error: missionListErr } =
+      await fetchSavedMissionProgress(supabase, user.id);
+    if (!missionListErr) {
+      replaceSavedMissionProgressFromServer(missionRows ?? []);
+    }
     setSavedMissionEntries(getSavedMissionProgress());
     setStatus("Loaded!");
     setTimeout(() => setStatus(""), 2000);
   }, [applyProjectPayload]);
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-[#111827]">
-      <header className="sticky top-0 z-[100000] flex flex-wrap items-center justify-start gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+    <div className="flex h-[100dvh] min-h-0 max-h-[100dvh] flex-col overflow-hidden bg-[#f8fafc] text-[#111827]">
+      <header className="sticky top-0 z-[100000] flex shrink-0 flex-wrap items-center justify-start gap-3 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
         <div className="flex min-w-0 items-center justify-start gap-2">
           <Link
             href="/"
@@ -1895,10 +2010,10 @@ export function OllieWorkspace() {
         </div>
       ) : null}
 
-      <main className="relative flex min-h-0 flex-1 flex-col gap-3 p-3 lg:flex-row">
+      <main className="relative flex min-h-0 flex-1 flex-col gap-3 overflow-x-hidden p-3 lg:min-h-0 lg:flex-row lg:items-stretch lg:overflow-hidden">
         <div
           id="ollie-code-workspace-shell"
-          className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-[calc(100dvh-9rem)]"
+          className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-0"
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
             <Braces
@@ -1927,7 +2042,10 @@ export function OllieWorkspace() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full flex-col gap-3 lg:flex lg:w-[480px] lg:max-w-[38vw] lg:min-h-0 lg:self-stretch">
+        <div className="flex min-h-0 w-full max-w-full flex-col gap-3 lg:flex lg:w-[480px] lg:max-w-[38vw] lg:shrink-0 lg:flex-col lg:overflow-hidden">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden max-h-[min(50vh,24rem)] lg:max-h-none">
+            <WorkspaceLessonInstructions lesson={activeLesson} />
+          </div>
           <div className="flex h-[min(440px,48vh)] min-h-[300px] max-h-[min(520px,55vh)] shrink-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
             <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
               <span
@@ -2423,7 +2541,6 @@ export function OllieWorkspace() {
             </div>
             </div>
           </div>
-          <WorkspaceLessonInstructions lesson={activeLesson} />
         </div>
       </main>
       <AvatarPickerModal
@@ -2561,7 +2678,11 @@ export function OllieWorkspace() {
         missionTitle={missionForSave?.title ?? "Adventure"}
         defaultName={defaultMissionSaveName}
         saving={saveMissionNameLoading}
-        onCancel={() => setSaveMissionNameModalOpen(false)}
+        forkFromCatalogTemplate={saveMissionForkFromTemplate}
+        onCancel={() => {
+          setSaveMissionNameModalOpen(false);
+          setSaveMissionForkFromTemplate(false);
+        }}
         onConfirm={confirmSaveMissionName}
       />
       <SaveMissionNameModal

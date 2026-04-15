@@ -1,4 +1,4 @@
-import type { OllieSceneId } from "@/lib/canvas/stageAssets";
+import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { collectBlockTypesFromWorkspaceSave } from "@/lib/missions/collectBlockTypes";
 
 export type MissionDefinition = {
@@ -12,6 +12,8 @@ export type MissionDefinition = {
    * (e.g. before first Save on this device).
    */
   cardPreviewSceneId?: OllieSceneId;
+  /** Default sprite costume when opening this catalog adventure (workspace starter). */
+  starterCostumeId?: OllieSpriteCostumeId;
 };
 
 function hasBlockTypeInAnyWorkspace(
@@ -33,6 +35,16 @@ export function isCustomMissionId(id: string): boolean {
   return id.startsWith(CUSTOM_MISSION_PREFIX);
 }
 
+/**
+ * Built-in catalog adventures that are starter templates only: signed-in users
+ * cannot overwrite cloud/local progress under this id — they must save a named copy (custom mission).
+ */
+const CATALOG_TEMPLATE_ONLY_IDS = new Set<string>(["first-move"]);
+
+export function isCatalogTemplateMissionId(id: string): boolean {
+  return CATALOG_TEMPLATE_ONLY_IDS.has(id);
+}
+
 /** New blank adventure slot — call from the workspace only (uses `crypto.randomUUID`). */
 export function createCustomMissionId(): string {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -45,12 +57,13 @@ export function createCustomMissionId(): string {
 export const MISSIONS: MissionDefinition[] = [
   {
     id: "first-move",
-    title: "Robot path",
+    title: "Welcome to Ollie Code",
     description:
-      "Help Ollie follow the path: switch the backdrop to Path if you like, snap a Move block under When Run clicked, tap Run, then save your adventure.",
+      "Tap Run to see Ollie say “Welcome Adventurer!” for five seconds. Then use Save to name your own copy of this adventure.",
     isComplete: (workspaces) =>
-      hasBlockTypeInAnyWorkspace(workspaces, "ollie_move_forward"),
+      hasBlockTypeInAnyWorkspace(workspaces, "ollie_say"),
     cardPreviewSceneId: "path",
+    starterCostumeId: "welcomebot",
   },
 ];
 

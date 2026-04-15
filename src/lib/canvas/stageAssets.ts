@@ -860,6 +860,16 @@ export const OLLIE_SPRITE_COSTUMES = [
     spriteCategories: ["robots_tech", "characters"] as const,
   },
   {
+    id: "welcomebot",
+    label: "Welcome bot",
+    kind: "image" as const,
+    src: "/images/sprites/welcomebot.png",
+    width: 200,
+    spriteSheet: { columns: 5, rows: 5 },
+    spriteRotationOffsetDeg: -90,
+    spriteCategories: ["robots_tech", "characters"] as const,
+  },
+  {
     id: "dino",
     label: "Dino",
     kind: "image" as const,
@@ -1721,6 +1731,7 @@ export function resolveCostumeFieldForExecution(
  */
 export const OLLIE_COSTUME_CYCLE_GROUPS: readonly OllieSpriteCostumeId[][] = [
   ["olliebot"],
+  ["welcomebot"],
   ["dino"],
   ["schoolbus"],
   ["skaterboy"],
@@ -1796,6 +1807,7 @@ export const OLLIE_SPRITE_PICKER_ENTRIES: readonly {
   label: string;
 }[] = [
   { costumeId: "olliebot", label: "Ollie Bot" },
+  { costumeId: "welcomebot", label: "Welcome bot" },
   { costumeId: "dino", label: "Dino" },
   { costumeId: "schoolbus", label: "School bus" },
   { costumeId: "skaterboy", label: "Skater boy" },

@@ -11,6 +11,11 @@ type SaveMissionNameModalProps = {
   saving?: boolean;
   /** `rename` — shorter copy and “Rename” primary action. */
   variant?: "save" | "rename";
+  /**
+   * Signed-in save from a catalog starter — copy cannot replace the template;
+   * prompt for the learner’s own adventure name.
+   */
+  forkFromCatalogTemplate?: boolean;
 };
 
 export function SaveMissionNameModal({
@@ -21,6 +26,7 @@ export function SaveMissionNameModal({
   onConfirm,
   saving = false,
   variant = "save",
+  forkFromCatalogTemplate = false,
 }: SaveMissionNameModalProps) {
   const titleId = useId();
   const inputId = useId();
@@ -78,14 +84,33 @@ export function SaveMissionNameModal({
           id={titleId}
           className="font-display text-lg font-bold text-[#111827]"
         >
-          {variant === "rename" ? "Rename your adventure" : "Name your adventure save"}
+          {variant === "rename"
+            ? "Rename your adventure"
+            : forkFromCatalogTemplate
+              ? "Name your adventure"
+              : "Name your adventure save"}
         </h2>
         <p className="mt-1 text-sm text-[#6b7280]">
-          Adventure:{" "}
-          <span className="font-semibold text-[#374151]">{missionTitle}</span>
+          {forkFromCatalogTemplate ? (
+            <>
+              The <span className="font-semibold text-[#374151]">{missionTitle}</span>{" "}
+              starter cannot be saved over. Pick a name for{" "}
+              <span className="font-semibold text-[#374151]">your</span> copy — then you
+              can keep editing and saving it.
+            </>
+          ) : (
+            <>
+              Adventure:{" "}
+              <span className="font-semibold text-[#374151]">{missionTitle}</span>
+            </>
+          )}
         </p>
         <label htmlFor={inputId} className="mt-4 block text-sm font-semibold text-[#374151]">
-          {variant === "rename" ? "Adventure name" : "Save as"}
+          {variant === "rename"
+            ? "Adventure name"
+            : forkFromCatalogTemplate
+              ? "Your adventure name"
+              : "Save as"}
         </label>
         <input
           id={inputId}
@@ -122,7 +147,9 @@ export function SaveMissionNameModal({
                 : "Saving…"
               : variant === "rename"
                 ? "Rename"
-                : "Save"}
+                : forkFromCatalogTemplate
+                  ? "Save my copy"
+                  : "Save"}
           </button>
         </div>
       </div>
