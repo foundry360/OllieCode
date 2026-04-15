@@ -4,14 +4,44 @@ import {
   type LessonAdminRow,
 } from "@/app/admin/lessons/admin-lessons-view";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
-import { LESSONS, lessonCardImageOnly } from "@/lib/lms/lessonsCatalog";
+import {
+  LESSONS,
+  lessonHeroImageUrl,
+  type LessonCatalogEntry,
+} from "@/lib/lms/lessonsCatalog";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
 type Row = {
   id: string;
   published: boolean;
   updated_at: string;
   payload: unknown;
 };
+
+function cloneLesson(l: LessonCatalogEntry): LessonCatalogEntry {
+  return {
+    ...l,
+    modules: l.modules.map((m) => ({ ...m })),
+  };
+}
+
+/** Static catalog + DB `lms_lessons.payload` so card/thumbnail URLs from uploads show in admin. */
+function mergeStaticWithDbPayload(
+  staticLesson: LessonCatalogEntry,
+  dbRow: Row | undefined,
+): LessonCatalogEntry {
+  if (!dbRow) return cloneLesson(staticLesson);
+  const v = parseLessonPayload(dbRow.payload);
+  if (!v || v.id !== staticLesson.id) return cloneLesson(staticLesson);
+  return {
+    ...cloneLesson(staticLesson),
+    ...cloneLesson(v),
+    modules:
+      v.modules.length > 0
+        ? v.modules.map((m) => ({ ...m }))
+        : staticLesson.modules.map((m) => ({ ...m })),
+  };
+}
 
 export default async function AdminLessonsPage() {
   const supabase = await createSupabaseServerClient();
@@ -34,6 +64,7 @@ export default async function AdminLessonsPage() {
     ...LESSONS.map((lesson) => {
       const row = rowById.get(lesson.id);
       const ts = row ? new Date(row.updated_at).getTime() : null;
+      const merged = mergeStaticWithDbPayload(lesson, row);
       return {
         ts,
         row: {
@@ -42,7 +73,7 @@ export default async function AdminLessonsPage() {
           inDatabase: Boolean(row),
           published: row ? row.published : null,
           isDbOnly: false,
-          imageUrl: lessonCardImageOnly(lesson),
+          imageUrl: lessonHeroImageUrl(merged),
           topic: lesson.topic,
         } satisfies LessonAdminRow,
       };
@@ -57,7 +88,7 @@ export default async function AdminLessonsPage() {
           inDatabase: true,
           published: r.published,
           isDbOnly: true,
-          imageUrl: parsed ? lessonCardImageOnly(parsed) : null,
+          imageUrl: parsed ? lessonHeroImageUrl(parsed) : null,
           topic: parsed?.topic ?? null,
         } satisfies LessonAdminRow,
       };

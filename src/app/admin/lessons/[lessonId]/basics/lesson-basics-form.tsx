@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { upsertLessonAction } from "@/app/admin/lessons/actions";
+import { LessonPublishToggle } from "@/app/admin/lessons/lesson-publish-toggle";
 import { LessonImageDropzone } from "@/app/admin/lessons/new/lesson-image-dropzone";
 import { LessonStatusStepper } from "@/app/admin/lessons/lesson-status-stepper";
 import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
@@ -46,6 +47,11 @@ export function LessonBasicsForm({
   );
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [published, setPublished] = useState(initialPublished);
+
+  useEffect(() => {
+    setPublished(initialPublished);
+  }, [initialPublished]);
 
   const categoryOptions = useMemo(() => {
     const base = LESSON_CATEGORY_OPTIONS;
@@ -62,16 +68,25 @@ export function LessonBasicsForm({
 
   return (
     <div className="space-y-8">
-      <div>
-        <p className="text-sm font-semibold text-[#6b9e1f]">
-          <Link href="/admin/lessons" className="hover:underline">
-            ← Lessons
-          </Link>
-        </p>
-        <h1 className="mt-2 font-display text-2xl font-bold text-slate-900">
-          Lesson basics
-        </h1>
-        <p className="mt-1 font-mono text-sm text-slate-500">{lessonId}</p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-[#6b9e1f]">
+            <Link href="/admin/lessons" className="hover:underline">
+              ← Lessons
+            </Link>
+          </p>
+          <h1 className="mt-2 font-display text-2xl font-bold text-slate-900">
+            Lesson basics
+          </h1>
+          <p className="mt-1 font-mono text-sm text-slate-500">{lessonId}</p>
+        </div>
+        <div className="flex max-w-full items-start justify-end">
+          <LessonPublishToggle
+            published={published}
+            onChange={setPublished}
+            disabled={loading}
+          />
+        </div>
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-8">
@@ -105,11 +120,15 @@ export function LessonBasicsForm({
               setMsg("Invalid data. Check required fields.");
               return;
             }
-            const r = await upsertLessonAction(payload, initialPublished);
+            const r = await upsertLessonAction(payload, published);
             if (!r.ok) setMsg(r.message);
             else {
               router.refresh();
-              setMsg("Saved.");
+              setMsg(
+                published
+                  ? "Saved. Lesson is live on the Learning Hub."
+                  : "Saved. Lesson is draft (hidden from the hub).",
+              );
             }
           } finally {
             setLoading(false);

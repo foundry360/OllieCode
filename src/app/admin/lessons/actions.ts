@@ -93,6 +93,11 @@ export type CreateDraftLessonInput = {
   skillLevel: number;
   cardImageUrl?: string | null;
   thumbnailUrl?: string | null;
+  /**
+   * When true, the lesson is visible on the Learning Hub immediately.
+   * Default / false keeps it as a draft (same as explicit draft).
+   */
+  published?: boolean;
 };
 
 export async function upsertLessonAction(
@@ -125,8 +130,17 @@ export async function upsertLessonAction(
 export async function createDraftLessonAction(
   input: CreateDraftLessonInput,
 ): Promise<ActionResult | void> {
-  const { lessonIdRaw, title, summary, topic, skillLevel, cardImageUrl, thumbnailUrl } =
-    input;
+  const {
+    lessonIdRaw,
+    title,
+    summary,
+    topic,
+    skillLevel,
+    cardImageUrl,
+    thumbnailUrl,
+    published: publishedFlag,
+  } = input;
+  const published = publishedFlag === true;
   const raw = lessonIdRaw?.trim() ?? "";
   let id: string | null = null;
 
@@ -210,10 +224,11 @@ export async function createDraftLessonAction(
   const { error } = await r.supabase.from("lms_lessons").insert({
     id,
     payload: payload as unknown as Record<string, unknown>,
-    published: false,
+    published,
   });
   if (error) return { ok: false, message: error.message };
   revalidatePath("/learn");
+  revalidatePath("/learn/" + id);
   revalidatePath("/admin/lessons");
   redirect(`/admin/lessons/${encodeURIComponent(id)}/edit`);
 }

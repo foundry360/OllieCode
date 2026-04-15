@@ -358,9 +358,9 @@ const CAROUSEL_GAP_PX = 16;
 /** Three identical runs of slides so we can jump between copies without reversing scroll direction. */
 const LOOP_SEGMENTS = 3 as const;
 
-/** How many equal-width slides fit in the viewport at this width (matches Tailwind lg/md). */
+/** How many equal-width slides fit in the viewport at this width (matches Tailwind sm/lg). */
 function visibleColumnsForWidth(width: number): number {
-  if (width >= 1024) return 4;
+  if (width >= 1024) return 5;
   if (width >= 640) return 2;
   return 1;
 }
@@ -519,7 +519,7 @@ function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
             alt=""
             fill
             className="object-cover"
-            sizes="(max-width: 639px) 85vw, (max-width: 1023px) 45vw, 25vw"
+            sizes="(max-width: 639px) 85vw, (max-width: 1023px) 45vw, 20vw"
           />
         ) : (
           <ImageIcon
@@ -531,7 +531,7 @@ function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
       </div>
       <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
-          <h3 className="font-display text-lg font-bold leading-snug">
+          <h3 className="font-display text-lg font-bold capitalize leading-snug">
             <Link
               href={lessonDetailHref(lesson.id)}
               className="text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
@@ -594,7 +594,7 @@ function LessonResultRow({
         <div className="flex flex-wrap items-start justify-between gap-3 gap-y-2">
           <Link
             href={detailHref}
-            className="min-w-0 flex-1 font-display text-lg font-semibold leading-[1.15] text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+            className="min-w-0 flex-1 font-display text-lg font-semibold capitalize leading-[1.15] text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
           >
             {lesson.title}
           </Link>

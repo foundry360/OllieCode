@@ -106,7 +106,10 @@ import {
 import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLinks";
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
-import { getLessonById } from "@/lib/lms/lessonsCatalog";
+import {
+  getLessonById,
+  type LessonCatalogEntry,
+} from "@/lib/lms/lessonsCatalog";
 import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
 import {
   getAvatarBySlug,
@@ -164,10 +167,43 @@ export function OllieWorkspace() {
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
-  const activeLesson = useMemo(
+  const staticLesson = useMemo(
     () => (lessonIdParam ? getLessonById(lessonIdParam) : undefined),
     [lessonIdParam],
   );
+  const [mergedLesson, setMergedLesson] = useState<LessonCatalogEntry | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!lessonIdParam) {
+      setMergedLesson(null);
+      return;
+    }
+    let cancelled = false;
+    setMergedLesson(null);
+    void (async () => {
+      try {
+        const r = await fetch(
+          `/api/lessons/${encodeURIComponent(lessonIdParam)}`,
+          { cache: "no-store" },
+        );
+        if (cancelled) return;
+        if (!r.ok) {
+          setMergedLesson(null);
+          return;
+        }
+        const data = (await r.json()) as LessonCatalogEntry;
+        if (cancelled) return;
+        setMergedLesson(data);
+      } catch {
+        if (!cancelled) setMergedLesson(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [lessonIdParam]);
+  const activeLesson = mergedLesson ?? staticLesson;
   /** Adventure used when naming a save: URL param, or the first catalog adventure on plain `/workspace`. */
   const missionForSave = useMemo(
     () => activeMission ?? MISSIONS[0],

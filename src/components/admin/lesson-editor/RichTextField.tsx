@@ -18,6 +18,9 @@ import {
   Heading3,
   Baseline,
 } from "lucide-react";
+import { embellishLessonColorWords } from "@/lib/lms/embellishLessonColorWords";
+import { isTrivialLessonHtml } from "@/lib/lms/htmlContent";
+import { sanitizeLessonBodyHtml } from "@/lib/lms/sanitizeLessonBodyHtml";
 
 const toolbarBtn =
   "inline-flex h-8 min-w-8 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-600 transition hover:bg-white hover:text-slate-900 disabled:pointer-events-none disabled:opacity-35";
@@ -54,11 +57,16 @@ const COLOR_PRESETS = [
   { label: "Violet", value: "#7c3aed" },
 ];
 
+const previewProseClass =
+  "max-w-none text-sm leading-relaxed text-slate-700 [&_p]:mb-2 [&_p:last-child]:mb-0 [&_strong]:font-semibold";
+
 type Props = {
   value: string;
   onChange: (html: string) => void;
   disabled?: boolean;
   placeholder?: string;
+  /** Show sanitized “color word” styling as on the lesson page (module detail). */
+  learnerColorPreview?: boolean;
 };
 
 function RichTextToolbar({
@@ -300,6 +308,7 @@ export function RichTextField({
   onChange,
   disabled = false,
   placeholder = "Write details for learners…",
+  learnerColorPreview = false,
 }: Props) {
   const lastEmitted = useRef<string | null>(null);
 
@@ -368,6 +377,21 @@ export function RichTextField({
         editor={editor}
         className="ollie-rich-text max-w-none px-1 pb-1 text-sm [&_.ProseMirror]:min-h-[140px] [&_.ProseMirror]:px-3 [&_.ProseMirror]:py-2.5 [&_.ProseMirror]:outline-none"
       />
+      {learnerColorPreview && value && !isTrivialLessonHtml(value) ? (
+        <div className="border-t border-slate-200 bg-[#f8fafc] px-3 py-2.5">
+          <p className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+            Color preview (learner view)
+          </p>
+          <div
+            className={previewProseClass}
+            dangerouslySetInnerHTML={{
+              __html: sanitizeLessonBodyHtml(
+                embellishLessonColorWords(value),
+              ),
+            }}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }

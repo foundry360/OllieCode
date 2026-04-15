@@ -225,7 +225,7 @@ export function LessonContentWorkspace({
                     <span className="text-xs font-bold uppercase text-slate-400">
                       Module {index + 1}
                     </span>
-                    <span className="min-w-0 truncate font-semibold text-slate-900">
+                    <span className="min-w-0 truncate font-semibold capitalize text-slate-900">
                       {m.title || "Untitled"}
                     </span>
                   </button>
@@ -273,7 +273,7 @@ export function LessonContentWorkspace({
                           onChange={(e) =>
                             updateModule(index, { title: e.target.value })
                           }
-                          className={inputClass}
+                          className={`${inputClass} capitalize`}
                           disabled={disabled}
                         />
                       </div>
@@ -346,6 +346,7 @@ export function LessonContentWorkspace({
                           }
                           disabled={disabled}
                           placeholder="Describe what learners do in this step…"
+                          learnerColorPreview
                         />
                       </div>
                     </div>

@@ -23,10 +23,35 @@ type ViewMode = "table" | "cards";
 
 type StatusFilter = "all" | "live" | "draft" | "catalog_only";
 
+/** Matches `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` below — used to cap card grid to 3 rows. */
+function gridColumnsForWidth(w: number): number {
+  if (w < 640) return 1;
+  if (w < 1024) return 2;
+  if (w < 1280) return 3;
+  return 4;
+}
+
+function useAdminLessonGridColumns(): number {
+  const [cols, setCols] = useState(() =>
+    typeof window !== "undefined" ? gridColumnsForWidth(window.innerWidth) : 4,
+  );
+  useEffect(() => {
+    const update = () => setCols(gridColumnsForWidth(window.innerWidth));
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return cols;
+}
+
+const CARD_PREVIEW_ROWS = 3;
+
 export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
   const [view, setView] = useState<ViewMode>("cards");
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [topicFilter, setTopicFilter] = useState("");
+  const [cardsExpanded, setCardsExpanded] = useState(false);
+  const gridColumns = useAdminLessonGridColumns();
 
   useEffect(() => {
     try {
@@ -97,6 +122,30 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     }
     return list;
   }, [rows, statusFilter, topicFilter]);
+
+  const filteredRowsKey = useMemo(
+    () =>
+      `${statusFilter}:${topicFilter}:${filteredRows.map((r) => r.id).join(",")}`,
+    [statusFilter, topicFilter, filteredRows],
+  );
+
+  useEffect(() => {
+    setCardsExpanded(false);
+  }, [filteredRowsKey]);
+
+  const cardPreviewLimit = Math.max(1, gridColumns * CARD_PREVIEW_ROWS);
+  const showCardShowMore =
+    view === "cards" &&
+    filteredRows.length > cardPreviewLimit &&
+    !cardsExpanded;
+  const showCardShowLess =
+    view === "cards" &&
+    filteredRows.length > cardPreviewLimit &&
+    cardsExpanded;
+  const visibleCardRows =
+    cardsExpanded || filteredRows.length <= cardPreviewLimit
+      ? filteredRows
+      : filteredRows.slice(0, cardPreviewLimit);
 
   const setMode = (next: ViewMode) => {
     setView(next);
@@ -227,7 +276,7 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                 <td className="px-4 py-3 font-mono text-xs text-slate-700">
                   {row.id}
                 </td>
-                <td className="px-4 py-3 font-medium text-slate-900">
+                <td className="px-4 py-3 font-medium capitalize text-slate-900">
                   {row.title}
                 </td>
                 <td className="px-4 py-3 text-slate-600">
@@ -261,67 +310,91 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
           </tbody>
         </table>
       ) : (
-        <div className="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {filteredRows.map((row) => (
-            <article
-              key={row.id}
-              className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 shadow-sm ${
-                row.isDbOnly ? "bg-[#f8fafc]" : "bg-white"
-              }`}
-            >
-              <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
-                {row.imageUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- lesson URLs may be any host
-                  <img
-                    src={row.imageUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full min-h-[120px] items-center justify-center text-xs font-medium text-slate-400">
-                    No image
-                  </div>
-                )}
-              </div>
-              <div className="flex flex-1 flex-col gap-2 p-4">
-                {row.topic ? (
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                    {row.topic}
-                  </p>
-                ) : null}
-                <h2 className="font-display text-base font-bold leading-snug text-slate-900">
-                  {row.title}
-                </h2>
-                <p className="font-mono text-[11px] text-slate-500">{row.id}</p>
-                <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
-                  <div className="min-w-0 text-xs text-slate-600">
-                    <span className="font-semibold text-slate-500">
-                      Published:
-                    </span>{" "}
-                    {row.inDatabase && row.published !== null ? (
-                      <span
-                        className={
-                          row.published
-                            ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
-                            : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
-                        }
-                      >
-                        {row.published ? "Live" : "Draft"}
-                      </span>
-                    ) : (
-                      "—"
-                    )}
-                  </div>
-                  <Link
-                    href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
-                    className="rounded-lg bg-[#84c126] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#6fa020]"
-                  >
-                    Edit
-                  </Link>
+        <div className="p-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {visibleCardRows.map((row) => (
+              <article
+                key={row.id}
+                className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 shadow-sm ${
+                  row.isDbOnly ? "bg-[#f8fafc]" : "bg-white"
+                }`}
+              >
+                <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
+                  {row.imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- lesson URLs may be any host
+                    <img
+                      src={row.imageUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full min-h-[120px] items-center justify-center text-xs font-medium text-slate-400">
+                      No image
+                    </div>
+                  )}
                 </div>
-              </div>
-            </article>
-          ))}
+                <div className="flex flex-1 flex-col gap-2 p-4">
+                  {row.topic ? (
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      {row.topic}
+                    </p>
+                  ) : null}
+                  <h2 className="font-display text-base font-bold capitalize leading-snug text-slate-900">
+                    {row.title}
+                  </h2>
+                  <p className="font-mono text-[11px] text-slate-500">{row.id}</p>
+                  <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
+                    <div className="min-w-0 text-xs text-slate-600">
+                      <span className="font-semibold text-slate-500">
+                        Published:
+                      </span>{" "}
+                      {row.inDatabase && row.published !== null ? (
+                        <span
+                          className={
+                            row.published
+                              ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
+                              : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                          }
+                        >
+                          {row.published ? "Live" : "Draft"}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                    <Link
+                      href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
+                      className="rounded-lg bg-[#84c126] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#6fa020]"
+                    >
+                      Edit
+                    </Link>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+          {showCardShowMore ? (
+            <div className="mt-4 flex justify-center border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setCardsExpanded(true)}
+                className="text-sm font-semibold text-[#84c126] hover:underline"
+              >
+                Show more
+              </button>
+            </div>
+          ) : null}
+          {showCardShowLess ? (
+            <div className="mt-4 flex justify-center border-t border-slate-100 pt-4">
+              <button
+                type="button"
+                onClick={() => setCardsExpanded(false)}
+                className="text-sm font-semibold text-[#84c126] hover:underline"
+              >
+                Show less
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

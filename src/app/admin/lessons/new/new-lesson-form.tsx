@@ -32,27 +32,32 @@ export function NewLessonForm() {
   const [msg, setMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
+  async function submitLesson(published: boolean) {
+    setMsg("");
+    setLoading(true);
+    try {
+      const r = await createDraftLessonAction({
+        title,
+        summary,
+        topic: category,
+        skillLevel: Number(skillLevel),
+        cardImageUrl: cardImageUrl.trim() || null,
+        thumbnailUrl: thumbnailUrl.trim() || null,
+        published,
+      });
+      if (r && !r.ok) setMsg(r.message);
+      else router.refresh();
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <form
       className="space-y-6"
-      onSubmit={async (e) => {
+      onSubmit={(e) => {
         e.preventDefault();
-        setMsg("");
-        setLoading(true);
-        try {
-          const r = await createDraftLessonAction({
-            title,
-            summary,
-            topic: category,
-            skillLevel: Number(skillLevel),
-            cardImageUrl: cardImageUrl.trim() || null,
-            thumbnailUrl: thumbnailUrl.trim() || null,
-          });
-          if (r && !r.ok) setMsg(r.message);
-          else router.refresh();
-        } finally {
-          setLoading(false);
-        }
+        void submitLesson(false);
       }}
     >
       <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6 lg:p-8">
@@ -156,22 +161,41 @@ export function NewLessonForm() {
           </p>
         ) : null}
 
-        <div className="mt-8 flex flex-wrap justify-end gap-3 border-t border-slate-100 pt-6">
-          <button
-            type="button"
-            disabled={loading}
-            onClick={() => router.push("/admin/lessons")}
-            className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={loading}
-            className="rounded-xl bg-[#84c126] px-5 py-2.5 text-sm font-bold text-white shadow hover:bg-[#6fa020] disabled:opacity-50"
-          >
-            {loading ? "Creating…" : "Create Lesson"}
-          </button>
+        <div className="mt-8 space-y-4 border-t border-slate-100 pt-6">
+          <p className="text-sm leading-relaxed text-slate-600">
+            <strong className="font-semibold text-slate-800">Draft</strong>{" "}
+            lessons stay hidden from the Learning Hub until you publish (here or
+            from the editor).{" "}
+            <strong className="font-semibold text-slate-800">
+              Publish now
+            </strong>{" "}
+            lists the lesson on the hub as soon as it is created.
+          </p>
+          <div className="flex flex-wrap justify-end gap-3">
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => router.push("/admin/lessons")}
+              className="rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => void submitLesson(true)}
+              className="rounded-xl border border-[#84c126] bg-white px-5 py-2.5 text-sm font-bold text-[#3f6212] shadow-sm hover:bg-[#ecfccb] disabled:opacity-50"
+            >
+              {loading ? "Creating…" : "Create & publish"}
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="rounded-xl bg-[#84c126] px-5 py-2.5 text-sm font-bold text-white shadow hover:bg-[#6fa020] disabled:opacity-50"
+            >
+              {loading ? "Creating…" : "Save as draft"}
+            </button>
+          </div>
         </div>
       </div>
     </form>

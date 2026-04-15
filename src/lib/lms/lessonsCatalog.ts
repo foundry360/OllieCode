@@ -81,6 +81,7 @@ export const LESSON_SKILL_LEVEL_OPTIONS = [1, 2, 3, 4] as const;
 /** Preset hub topic / category (stored as `topic` on catalog entries). */
 export const LESSON_CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "General", label: "General" },
+  { value: "Fundamentals", label: "Fundamentals" },
   { value: "Blocks & motion", label: "Blocks & motion" },
   { value: "Sound & looks", label: "Sound & looks" },
   { value: "Games & stories", label: "Games & stories" },
@@ -129,6 +130,59 @@ export const LESSONS: LessonCatalogEntry[] = [
         steps: 2,
         detail:
           "Tap Run, watch the path, then Save so your adventure is stored in the cloud.",
+      },
+    ],
+  },
+  {
+    id: "lvl1-meet-blockly",
+    title: "Meet Ollie Code",
+    summary:
+      "Drag colorful blocks, snap them together, and tap Run—your first hello in Ollie Code!",
+    bodyHtml:
+      "<p>Welcome to <strong>Ollie Code</strong>! Blockly blocks are like puzzle pieces: you <strong>drag</strong> them, <strong>snap</strong> them together, and tap <strong>Run</strong> to see what happens. Look for a <strong>Green</strong> <strong>when run clicked</strong> block and a <strong>Purple</strong> <strong>say</strong> block to say hello.</p>",
+    skillLevel: 1,
+    workspaceHref: "/workspace?mission=first-move&lesson=lvl1-meet-blockly",
+    estimatedMinutes: 7,
+    topic: "Fundamentals",
+    objective: "Meet Ollie Code",
+    levelName: "Beginner",
+    roleLabel: "Explorer",
+    modules: [
+      {
+        id: "blockly-m1",
+        title: "Find the blocks",
+        points: 8,
+        durationMins: 2,
+        steps: 3,
+        detail:
+          "<p>Look at the block palette on the side. Blocks are grouped by color. You’ll use a <strong>Green</strong> block for starting and a <strong>Purple</strong> block for saying something. Try <strong>clicking and dragging</strong>—no need to know every block yet!</p>",
+      },
+      {
+        id: "blockly-m2",
+        title: "Drag and drop",
+        points: 10,
+        durationMins: 2,
+        steps: 3,
+        detail:
+          "<p>Pick the <strong>Green</strong> <strong>when run clicked</strong> block. Drag it to the middle of the workspace and let go. That’s <strong>drag and drop</strong>! The big empty area is where your program lives.</p>",
+      },
+      {
+        id: "blockly-m3",
+        title: "Snap blocks together",
+        points: 12,
+        durationMins: 2,
+        steps: 3,
+        detail:
+          "<p>Drag a <strong>Purple</strong> <strong>say</strong> block (like one that says hello) so it <strong>clicks underneath</strong> the <strong>Green</strong> start block. When blocks snap into a stack, the top tells the computer when to start, and the ones below tell it what to do.</p>",
+      },
+      {
+        id: "blockly-m4",
+        title: "Press Run",
+        points: 15,
+        durationMins: 2,
+        steps: 3,
+        detail:
+          "<p>Make sure your stack has <strong>when run clicked</strong> on top and <strong>say Hello!</strong> (or your say block) snapped below. Tap <strong>Run</strong>. You should see your message—hello! If nothing happens, check that your blocks are snapped, then try <strong>Run</strong> again.</p>",
       },
     ],
   },

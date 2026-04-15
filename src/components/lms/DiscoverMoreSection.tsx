@@ -68,7 +68,7 @@ function DiscoverMoreCard({ lesson }: { lesson: LessonCatalogEntry }) {
         )}
       </Link>
       <div className="border-t border-slate-100 p-4">
-        <h3 className="font-display text-base font-bold leading-snug text-slate-900">
+        <h3 className="font-display text-base font-bold capitalize leading-snug text-slate-900">
           <Link
             href={href}
             className="text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"

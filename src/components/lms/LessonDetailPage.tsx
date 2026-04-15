@@ -22,9 +22,11 @@ import {
   normalizeWorkspaceHrefWithLesson,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
+import { embellishLessonColorWords } from "@/lib/lms/embellishLessonColorWords";
 import { sanitizeLessonBodyHtml } from "@/lib/lms/sanitizeLessonBodyHtml";
 import { isTrivialLessonHtml } from "@/lib/lms/htmlContent";
 import { DiscoverMoreSection } from "@/components/lms/DiscoverMoreSection";
+import { LessonModuleDetailsAccordion } from "@/components/lms/LessonModuleDetailsAccordion";
 
 type LessonDetailPageProps = {
   lesson: LessonCatalogEntry;
@@ -144,7 +146,7 @@ export function LessonDetailPage({
               </div>
 
               <div>
-                <h1 className="font-display text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+                <h1 className="font-display text-3xl font-bold capitalize leading-tight text-slate-900 sm:text-4xl">
                   {lesson.title}
                 </h1>
                 <p className="mt-3 max-w-3xl text-base leading-relaxed text-slate-600">
@@ -163,7 +165,9 @@ export function LessonDetailPage({
                   <div
                     className={`${lessonBodyProseClass} mt-3`}
                     dangerouslySetInnerHTML={{
-                      __html: sanitizeLessonBodyHtml(lesson.bodyHtml),
+                      __html: sanitizeLessonBodyHtml(
+                        embellishLessonColorWords(lesson.bodyHtml),
+                      ),
                     }}
                   />
                 </section>
@@ -203,52 +207,58 @@ export function LessonDetailPage({
                             {i + 1}
                           </span>
                         </div>
-                        <details className="group min-w-0 flex-1 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm open:border-[#84c126]/35 open:shadow-md open:ring-1 open:ring-[#84c126]/20">
-                          <summary className="block cursor-pointer list-none px-5 py-5 transition-colors hover:bg-slate-50/90 sm:px-6 sm:py-6 [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2">
-                            <h3 className="font-display text-xl font-bold leading-snug text-slate-900 sm:text-2xl">
-                              {mod.title}
-                            </h3>
-                            <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm font-medium text-slate-500">
-                              <span className="tabular-nums">
-                                {mod.points > 0
-                                  ? formatPointsLabel(mod.points)
-                                  : "—"}
+                        <LessonModuleDetailsAccordion
+                          defaultOpen={i === 0}
+                          summary={
+                            <summary className="block cursor-pointer list-none px-5 py-5 transition-colors hover:bg-slate-50/90 sm:px-6 sm:py-6 [&::-webkit-details-marker]:hidden focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2">
+                              <h3 className="font-display text-xl font-bold capitalize leading-snug text-slate-900 sm:text-2xl">
+                                {mod.title}
+                              </h3>
+                              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm font-medium text-slate-500">
+                                <span className="tabular-nums">
+                                  {mod.points > 0
+                                    ? formatPointsLabel(mod.points)
+                                    : "—"}
+                                </span>
+                                <span className="tabular-nums">
+                                  {formatModuleDurationMinutes(mod.durationMins)}
+                                  {formatStepCountLabel(mod.steps)
+                                    ? ` · ${formatStepCountLabel(mod.steps)}`
+                                    : ""}
+                                </span>
+                              </div>
+                              <span className="mt-3 inline-flex items-center gap-1.5 text-base font-semibold text-[#84c126] transition hover:text-[#6b9e1f] group-open:hidden">
+                                Show Details
+                                <ChevronDown
+                                  className="size-4 shrink-0"
+                                  strokeWidth={2.5}
+                                  aria-hidden
+                                />
                               </span>
-                              <span className="tabular-nums">
-                                {formatModuleDurationMinutes(mod.durationMins)}
-                                {formatStepCountLabel(mod.steps)
-                                  ? ` · ${formatStepCountLabel(mod.steps)}`
-                                  : ""}
+                              <span className="mt-3 hidden items-center gap-1.5 text-base font-semibold text-[#84c126] group-open:inline-flex hover:text-[#6b9e1f]">
+                                Hide Details
+                                <ChevronDown
+                                  className="size-4 shrink-0 rotate-180"
+                                  strokeWidth={2.5}
+                                  aria-hidden
+                                />
                               </span>
-                            </div>
-                            <span className="mt-3 inline-flex items-center gap-1.5 text-base font-semibold text-[#84c126] transition hover:text-[#6b9e1f] group-open:hidden">
-                              Show Details
-                              <ChevronDown
-                                className="size-4 shrink-0"
-                                strokeWidth={2.5}
-                                aria-hidden
-                              />
-                            </span>
-                            <span className="mt-3 hidden items-center gap-1.5 text-base font-semibold text-[#84c126] group-open:inline-flex hover:text-[#6b9e1f]">
-                              Hide Details
-                              <ChevronDown
-                                className="size-4 shrink-0 rotate-180"
-                                strokeWidth={2.5}
-                                aria-hidden
-                              />
-                            </span>
-                          </summary>
+                            </summary>
+                          }
+                        >
                           <div className="border-t border-slate-100 px-5 pb-5 pt-4 sm:px-6 sm:pb-6">
                             {!isTrivialLessonHtml(mod.detail) ? (
                               <div
                                 className={lessonBodyProseClass}
                                 dangerouslySetInnerHTML={{
-                                  __html: sanitizeLessonBodyHtml(mod.detail),
+                                  __html: sanitizeLessonBodyHtml(
+                                    embellishLessonColorWords(mod.detail),
+                                  ),
                                 }}
                               />
                             ) : null}
                           </div>
-                        </details>
+                        </LessonModuleDetailsAccordion>
                       </li>
                     ))}
                   </ol>

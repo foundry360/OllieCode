@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ExternalLink, Eye, Rocket } from "lucide-react";
+import { ExternalLink, Eye } from "lucide-react";
 import { upsertLessonAction } from "@/app/admin/lessons/actions";
+import { LessonPublishToggle } from "@/app/admin/lessons/lesson-publish-toggle";
 import { LessonStatusStepper } from "@/app/admin/lessons/lesson-status-stepper";
 import { LessonContentWorkspace } from "@/components/admin/lesson-editor/LessonContentWorkspace";
 import { isTrivialLessonHtml } from "@/lib/lms/htmlContent";
@@ -83,28 +84,15 @@ export function LessonEditorForm({
     setLoading(true);
     try {
       const r = await upsertLessonAction(payload, published);
-      setMsg(r.ok ? "Saved." : r.message);
-      if (r.ok) router.refresh();
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const publishLesson = async () => {
-    setMsg("");
-    const payload = buildPayloadOrError();
-    if (!payload) return;
-    setLoading(true);
-    try {
-      const r = await upsertLessonAction(payload, true);
-      setMsg(
-        r.ok
-          ? "Lesson is now live on the Learning Hub."
-          : r.message,
-      );
       if (r.ok) {
-        setPublished(true);
+        setMsg(
+          published
+            ? "Saved. Lesson is live on the Learning Hub."
+            : "Saved. Lesson is draft (hidden from the hub).",
+        );
         router.refresh();
+      } else {
+        setMsg(r.message);
       }
     } finally {
       setLoading(false);
@@ -129,43 +117,26 @@ export function LessonEditorForm({
         </div>
         <div
           id="lesson-publish"
-          className="flex flex-wrap items-center gap-3 scroll-mt-24"
+          className="flex max-w-full flex-wrap items-center justify-end gap-3 scroll-mt-24"
         >
-          <span
-            className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
-              published
-                ? "bg-[#ecfccb] text-[#365314] ring-1 ring-[#84c126]/40"
-                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200"
-            }`}
+          <LessonPublishToggle
+            published={published}
+            onChange={setPublished}
+            disabled={loading}
+          />
+          <Link
+            href={previewHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-[#84c126]/50 hover:bg-[#f8fafc]"
           >
-            {published ? "Published" : "Draft"}
-          </span>
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              href={previewHref}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-800 shadow-sm transition hover:border-[#84c126]/50 hover:bg-[#f8fafc]"
-            >
-              <Eye className="size-4 text-[#84c126]" strokeWidth={2} />
-              Preview
-              <ExternalLink
-                className="size-3.5 text-slate-400"
-                strokeWidth={2}
-              />
-            </Link>
-            {!published ? (
-              <button
-                type="button"
-                disabled={loading}
-                onClick={publishLesson}
-                className="inline-flex items-center gap-2 rounded-xl bg-[#84c126] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020] disabled:opacity-50"
-              >
-                <Rocket className="size-4" strokeWidth={2} aria-hidden />
-                Publish lesson
-              </button>
-            ) : null}
-          </div>
+            <Eye className="size-4 text-[#84c126]" strokeWidth={2} />
+            Preview
+            <ExternalLink
+              className="size-3.5 text-slate-400"
+              strokeWidth={2}
+            />
+          </Link>
         </div>
       </div>
 
@@ -186,11 +157,11 @@ export function LessonEditorForm({
           <p className="mt-1 text-sm text-slate-600">
             Build the lesson visually. Use{" "}
             <strong className="font-semibold text-slate-800">Preview</strong>{" "}
-            to check the learner view. When you’re ready, use{" "}
-            <strong className="font-semibold text-slate-800">
-              Publish lesson
-            </strong>{" "}
-            in the header to go live on the hub.
+            to check the learner view. Set{" "}
+            <strong className="font-semibold text-slate-800">Draft</strong> or{" "}
+            <strong className="font-semibold text-slate-800">Live</strong> in
+            the header, then <strong className="font-semibold text-slate-800">Save</strong>{" "}
+            to update the hub.
           </p>
         </div>
 
