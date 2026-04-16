@@ -2,6 +2,7 @@ import * as Blockly from "blockly/core";
 import { Blocks, FieldDropdown } from "blockly/core";
 import type { Block } from "blockly/core";
 import { getSwitchCostumeDropdownOptions } from "@/lib/blockly/costumeDropdownRegistry";
+import { getSwitchSceneDropdownOptions } from "@/lib/blockly/sceneDropdownRegistry";
 import { sceneDropdownOptions } from "@/lib/canvas/stageAssets";
 import { soundDropdownOptions } from "@/lib/sounds/ollieSounds";
 import { animationDropdownOptions } from "@/lib/canvas/ollieAnimationPresets";
@@ -594,21 +595,6 @@ export function getOllieBlockDefinitions(): Parameters<
     helpUrl: "",
   },
   {
-    type: "ollie_switch_scene",
-    message0: "switch scene to %1",
-    args0: [
-      {
-        type: "field_dropdown",
-        name: "SCENE",
-        options: sceneDropdownOptions(),
-      },
-    ],
-    previousStatement: null,
-    nextStatement: null,
-    style: "scratch_looks",
-    tooltip: "Change the stage scene (same choices as under the canvas).",
-  },
-  {
     type: "ollie_next_scene",
     message0: "next scene",
     previousStatement: null,
@@ -886,7 +872,27 @@ function registerOllieSwitchCostumeBlock() {
   };
 }
 
+function registerOllieSwitchSceneBlock() {
+  Blocks["ollie_switch_scene"] = {
+    init: function (this: Block) {
+      this.setStyle("scratch_looks");
+      this.appendDummyInput()
+        .appendField("switch scene to")
+        .appendField(
+          new FieldDropdown(function (this: FieldDropdown) {
+            return getSwitchSceneDropdownOptions();
+          }),
+          "SCENE",
+        );
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setTooltip("Change the stage scene (same choices as under the canvas).");
+    },
+  };
+}
+
 export function registerOllieBlocks() {
   Blockly.common.defineBlocksWithJsonArray(getOllieBlockDefinitions());
   registerOllieSwitchCostumeBlock();
+  registerOllieSwitchSceneBlock();
 }

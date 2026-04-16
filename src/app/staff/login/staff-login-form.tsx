@@ -48,6 +48,8 @@ export function StaffLoginForm() {
   const [codename, setCodename] = useState("");
   const [password, setPassword] = useState("");
   const [msg, setMsg] = useState("");
+  /** Extra guidance when codename-only sign-in fails (Auth user may use a real email). */
+  const [signInHint, setSignInHint] = useState("");
   const [urlError, setUrlError] = useState("");
   const [loading, setLoading] = useState(false);
   const [signedInNonAdmin, setSignedInNonAdmin] = useState(false);
@@ -88,6 +90,7 @@ export function StaffLoginForm() {
   async function handlePasswordAuth(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
+    setSignInHint("");
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setMsg(
@@ -110,16 +113,16 @@ export function StaffLoginForm() {
         password,
       });
       if (error) {
-        let m = error.message;
+        setMsg(error.message);
         const usedCodenameOnly = !codename.trim().includes("@");
         const looksAuthFail = /invalid login|invalid credentials|email not confirmed/i.test(
           error.message,
         );
         if (usedCodenameOnly && looksAuthFail) {
-          const domain = getAuthEmailDomain();
-          m = `${error.message} Codename-only signs in as yourname@${domain}. If your user in Supabase Authentication uses another email (e.g. a work address), use that full email here instead.`;
+          setSignInHint(
+            "Still failing? Use the exact email from Supabase → Authentication for this user (not only a short codename).",
+          );
         }
-        setMsg(m);
         return;
       }
       router.replace(afterLogin);
@@ -132,6 +135,7 @@ export function StaffLoginForm() {
   async function handleForgotPassword(e: React.FormEvent) {
     e.preventDefault();
     setMsg("");
+    setSignInHint("");
     const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       setMsg("Configure Supabase env vars first.");
@@ -169,9 +173,13 @@ export function StaffLoginForm() {
         Team sign in
       </h1>
       <p className="mt-2 text-sm text-[#6b7280]">
-        Sign in with your Ollie codename (letters, numbers, underscores) or the
-        same email you use in Supabase Auth. This page is separate from learner
-        sign-in.
+        Use your Ollie codename (we sign in as{" "}
+        <span className="whitespace-nowrap font-mono text-[#374151]">
+          codename@{getAuthEmailDomain()}
+        </span>
+        ) or the <strong className="font-semibold text-[#374151]">exact email</strong>{" "}
+        shown for this user in Supabase → Authentication (for example a work
+        address). This page is separate from learner sign-in.
       </p>
 
       {adminDenied ? (
@@ -264,9 +272,14 @@ export function StaffLoginForm() {
         </p>
       ) : null}
       {msg ? (
-        <p className="mt-4 text-sm text-[#374151]" role="status">
-          {msg}
-        </p>
+        <div className="mt-4 space-y-2" role="status">
+          <p className="text-sm font-medium text-red-700">{msg}</p>
+          {signInHint ? (
+            <p className="border-l-2 border-[#84c126]/50 pl-3 text-sm leading-relaxed text-[#4b5563]">
+              {signInHint}
+            </p>
+          ) : null}
+        </div>
       ) : null}
 
       <p className="mt-8 text-center text-sm text-[#6b7280]">

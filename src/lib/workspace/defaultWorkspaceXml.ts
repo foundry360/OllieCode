@@ -21,7 +21,7 @@ export const DEFAULT_WORKSPACE_XML = `<?xml version="1.0" encoding="UTF-8"?>
       <block type="ollie_forever">
         <statement name="DO">
           <block type="ollie_say">
-            <field name="TEXT">Welcome Adventurer!</field>
+            <field name="TEXT">Hi friend!</field>
             <field name="SECS">5</field>
           </block>
         </statement>

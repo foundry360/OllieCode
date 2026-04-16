@@ -342,7 +342,6 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                   <h2 className="font-display text-base font-bold capitalize leading-snug text-slate-900">
                     {row.title}
                   </h2>
-                  <p className="font-mono text-[11px] text-slate-500">{row.id}</p>
                   <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
                     <div className="min-w-0 text-xs text-slate-600">
                       <span className="font-semibold text-slate-500">

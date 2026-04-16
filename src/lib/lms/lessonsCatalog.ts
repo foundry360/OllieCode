@@ -96,7 +96,7 @@ export const DEFAULT_WORKSPACE_LESSON_ID = "lvl1-get-started" as const;
 export const LESSONS: LessonCatalogEntry[] = [
   {
     id: "lvl1-get-started",
-    title: "Get started with Ollie Code",
+    title: "Getting Started",
     summary:
       "Run the Welcome Bot, explore your first blocks, then save a named copy of your adventure—your on-ramp to Ollie Code.",
     bodyHtml:
@@ -118,7 +118,7 @@ export const LESSONS: LessonCatalogEntry[] = [
         durationMins: 4,
         steps: 3,
         detail:
-          "<p>Open this lesson in the workspace (you should see the <strong>Welcome bot</strong> on the stage). You’ll have <strong>two</strong> stacks that both start with <strong>When Run clicked</strong>:</p><ul><li>One loop uses <strong>next costume</strong> and a short <strong>wait</strong> so the sprite animates.</li><li>The other loop <strong>says</strong> <strong>Welcome Adventurer!</strong> for five seconds, over and over.</li></ul><p>Tap <strong>Run</strong> and watch the stage and speech bubble. Tap <strong>Run</strong> again if you need to reset.</p>",
+          "<p>Open this lesson in the workspace (you should see the <strong>Welcome bot</strong> in the scene). You’ll have <strong>two</strong> stacks that both start with <strong>When Run clicked</strong>:</p><ul><li>One loop uses <strong>next costume</strong> and a short <strong>wait</strong> so the sprite animates.</li><li>The other loop <strong>says</strong> <strong>Hi friend!</strong> for five seconds, over and over.</li></ul><p>Tap <strong>Run</strong> and watch the stage and speech bubble. Tap <strong>Run</strong> again if you need to reset.</p>",
       },
       {
         id: "getstarted-m2",

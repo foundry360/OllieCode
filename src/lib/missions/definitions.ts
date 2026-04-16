@@ -59,7 +59,7 @@ export const MISSIONS: MissionDefinition[] = [
     id: "first-move",
     title: "Welcome to Ollie Code",
     description:
-      "Tap Run to see Ollie say “Welcome Adventurer!” for five seconds. Then use Save to name your own copy of this adventure.",
+      "Tap Run to see Ollie say “Hi friend!” for five seconds. Then use Save to name your own copy of this adventure.",
     isComplete: (workspaces) =>
       hasBlockTypeInAnyWorkspace(workspaces, "ollie_say"),
     cardPreviewSceneId: "path",

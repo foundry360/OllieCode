@@ -39,9 +39,14 @@ import {
   spriteScriptPlanHasAnyActions,
 } from "@/lib/blockly/executeBlocks";
 import {
-  PAINTED_COSTUME_FIELD_PREFIX,
+  paintedCostumeMenuOption,
   setSwitchCostumeDropdownExtras,
 } from "@/lib/blockly/costumeDropdownRegistry";
+import {
+  imageUrlToContainThumbDataUrl,
+  preloadCatalogCostumeDropdownThumbs,
+} from "@/lib/blockly/costumeDropdownThumbs";
+import { preloadSceneDropdownThumbs } from "@/lib/blockly/sceneDropdownThumbs";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
@@ -123,6 +128,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import {
+  Blocks,
   Braces,
   Briefcase,
   ChevronDown,
@@ -500,23 +506,47 @@ export function OllieWorkspace() {
   const headerAvatarAsset = getAvatarBySlug(avatarSlug);
 
   useEffect(() => {
-    setSwitchCostumeDropdownExtras(() => {
-      const seen = new Set<string>();
-      const rows: [string, string][] = [];
+    let cancelled = false;
+    void (async () => {
+      const seenUrl = new Set<string>();
+      const urls: string[] = [];
       for (const a of actors) {
         const url = a.paintedCostumeUrl?.trim();
-        if (!url || seen.has(url)) continue;
-        seen.add(url);
-        const label =
-          a.label.length > 48 ? `${a.label.slice(0, 45)}…` : a.label;
-        rows.push([
-          label,
-          `${PAINTED_COSTUME_FIELD_PREFIX}${encodeURIComponent(url)}`,
-        ]);
+        if (!url || seenUrl.has(url)) continue;
+        seenUrl.add(url);
+        urls.push(url);
       }
-      return rows;
-    });
-    return () => setSwitchCostumeDropdownExtras(null);
+      const thumbByUrl = new Map<string, string>();
+      await Promise.all(
+        urls.map(async (url) => {
+          try {
+            thumbByUrl.set(url, await imageUrlToContainThumbDataUrl(url));
+          } catch {
+            thumbByUrl.set(url, url);
+          }
+        }),
+      );
+      if (cancelled) return;
+      setSwitchCostumeDropdownExtras(() => {
+        const seen = new Set<string>();
+        const rows: ReturnType<typeof paintedCostumeMenuOption>[] = [];
+        for (const a of actors) {
+          const url = a.paintedCostumeUrl?.trim();
+          if (!url || seen.has(url)) continue;
+          seen.add(url);
+          const label =
+            a.label.length > 48 ? `${a.label.slice(0, 45)}…` : a.label;
+          rows.push(
+            paintedCostumeMenuOption(label, url, thumbByUrl.get(url)),
+          );
+        }
+        return rows;
+      });
+    })();
+    return () => {
+      cancelled = true;
+      setSwitchCostumeDropdownExtras(null);
+    };
   }, [actors]);
 
   useEffect(() => {
@@ -608,6 +638,10 @@ export function OllieWorkspace() {
         }
 
         registerOllieBlocks();
+        await Promise.all([
+          preloadCatalogCostumeDropdownThumbs(),
+          preloadSceneDropdownThumbs(),
+        ]);
 
         /** Blockly SVG scrollbars — slightly narrower than default 15px. */
         Scrollbar.scrollbarThickness = 11;
@@ -2016,7 +2050,7 @@ export function OllieWorkspace() {
           className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-0"
         >
           <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
-            <Braces
+            <Blocks
               className="size-4 shrink-0 text-[#4d7c0f]"
               strokeWidth={ICON_STROKE}
               aria-hidden

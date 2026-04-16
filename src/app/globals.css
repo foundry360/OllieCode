@@ -203,6 +203,29 @@ html::-webkit-scrollbar-thumb:hover {
 }
 
 /*
+ * Image dropdown menus (e.g. switch costume): white tile behind thumbs on purple Blockly menu.
+ * Do not scope under .ollie-blockly-host — Blockly mounts .blocklyDropDownDiv / .blocklyWidgetDiv
+ * on document.body (unless common.setParentContainer is used), so those rules would never apply.
+ */
+.blocklyDropDownDiv .blocklyMenuItemContent img,
+.blocklyWidgetDiv .blocklyMenuItemContent img {
+  background-color: #ffffff;
+  border-radius: 6px;
+  padding: 4px;
+  box-sizing: border-box;
+  vertical-align: middle;
+}
+
+/*
+ * “Switch costume” preview on the block (closed field): Blockly uses SVG <rect.blocklyDropdownRect>.
+ * With the menu closed, fill is transparent so the purple block face shows through the thumb.
+ * Costume field images are 52×52 (see COSTUME_MENU_THUMB_PX); the arrow <image> is 12px.
+ */
+.ollie-blockly-host .blocklyDropdownField:has(> image[width="52"]) rect.blocklyDropdownRect {
+  fill: #ffffff !important;
+}
+
+/*
  * Workspace lesson card — native scrollbar hidden until hover over the card
  * (same slate thumb feel as `.ollie-scroll`; wheel / trackpad still scrolls).
  */

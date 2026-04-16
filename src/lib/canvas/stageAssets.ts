@@ -35,10 +35,10 @@ export const SPRITE_CATEGORY_LABELS: Record<SpriteCategoryId, string> = {
 
 export const OLLIE_SCENES = [
   {
-    id: "white_dots",
-    label: "White dots",
+    id: "mint",
+    label: "Mint",
     kind: "solid" as const,
-    rgb: [255, 255, 255] as const,
+    rgb: [209, 250, 229] as const,
     grid: true,
   },
   {
@@ -49,10 +49,10 @@ export const OLLIE_SCENES = [
     grid: true,
   },
   {
-    id: "mint",
-    label: "Mint",
+    id: "white_dots",
+    label: "White dots",
     kind: "solid" as const,
-    rgb: [209, 250, 229] as const,
+    rgb: [255, 255, 255] as const,
     grid: true,
   },
   {
@@ -1657,10 +1657,6 @@ export function getChromaKeyForSpriteSrc(src: string): CostumeChromaKey | undefi
 
 export function sceneDropdownOptions(): [string, string][] {
   return OLLIE_SCENES.map((b) => [b.label, b.id]);
-}
-
-export function costumeDropdownOptions(): [string, string][] {
-  return OLLIE_SPRITE_COSTUMES.map((c) => [c.label, c.id]);
 }
 
 export function isOllieSceneId(s: string): s is OllieSceneId {
