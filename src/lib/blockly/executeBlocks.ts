@@ -14,6 +14,7 @@ import {
   getBlocklyVariableId,
   getBlocklyVariableName,
   serializeBoolExpr,
+  serializeColorExpr,
   serializeNumExpr,
   serializeStringExpr,
 } from "@/lib/blockly/sensingSerialize";
@@ -100,35 +101,6 @@ function walkStatementChain(
         let forwardPx = 0;
         let lateralPx: number | undefined;
         let lateralPct: number | undefined;
-        // #region agent log
-        {
-          const offField = current.getField("OFFPCT");
-          const rawOff = current.getFieldValue("OFFPCT");
-          fetch(
-            "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "X-Debug-Session-Id": "3a7dbb",
-              },
-              body: JSON.stringify({
-                sessionId: "3a7dbb",
-                runId: "pre-fix",
-                hypothesisId: "H1",
-                location: "executeBlocks.ts:ollie_set_point_toward_aim",
-                message: "compile set_point_toward_aim",
-                data: {
-                  hasOffField: !!offField,
-                  rawOff,
-                  rawType: typeof rawOff,
-                },
-                timestamp: Date.now(),
-              }),
-            },
-          ).catch(() => {});
-        }
-        // #endregion
         if (current.getField("OFFPCT")) {
           lateralPct = Number(current.getFieldValue("OFFPCT")) || 0;
         } else if (current.getField("OFFSET")) {
@@ -148,27 +120,6 @@ function walkStatementChain(
           lateralPx,
           lateralPct,
         });
-        // #region agent log
-        fetch(
-          "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "X-Debug-Session-Id": "3a7dbb",
-            },
-            body: JSON.stringify({
-              sessionId: "3a7dbb",
-              runId: "pre-fix",
-              hypothesisId: "H1",
-              location: "executeBlocks.ts:setPointTowardAim push",
-              message: "compiled action payload",
-              data: { forwardPx, lateralPx, lateralPct },
-              timestamp: Date.now(),
-            }),
-          },
-        ).catch(() => {});
-        // #endregion
         break;
       }
       case "ollie_point_towards": {
@@ -269,6 +220,16 @@ function walkStatementChain(
         });
         break;
       }
+      case "ollie_set_speech_bubble_color": {
+        const expr = serializeColorExpr(
+          current.getInputTargetBlock("COLOR") ??
+            current.getInputTargetBlock("COLOUR"),
+        );
+        if (expr) {
+          actions.push({ type: "setSpeechBubbleColor", expr });
+        }
+        break;
+      }
       case "ollie_switch_costume": {
         const raw = String(current.getFieldValue("COSTUME") ?? "");
         const paintedUrl = parsePaintedCostumeFieldValue(raw);
@@ -352,6 +313,14 @@ function walkStatementChain(
         actions.push({ type: "wait", ms: Math.max(0, secs * 1000) });
         break;
       }
+      case "ollie_wait_until": {
+        const boolBlock = current.getInputTargetBlock("BOOL");
+        const dyn = serializeBoolExpr(boolBlock);
+        if (dyn) {
+          actions.push({ type: "waitUntilDynamic", cond: dyn });
+        }
+        break;
+      }
       case "ollie_broadcast": {
         const msg = String(current.getFieldValue("MESSAGE") ?? "message1");
         actions.push({ type: "broadcast", message: msg });
@@ -394,6 +363,9 @@ function walkStatementChain(
       case "ollie_delete_this_clone":
         actions.push({ type: "deleteThisClone" });
         return;
+      case "ollie_create_clone":
+        actions.push({ type: "createClone" });
+        break;
       case "ollie_sensing_reset_timer":
         actions.push({ type: "resetTimer" });
         break;
@@ -615,6 +587,7 @@ function emptyPlan(): SpriteScriptPlan {
     stageClickScripts: [],
     backdropScripts: [],
     broadcastScripts: [],
+    cloneScripts: [],
   };
 }
 
@@ -623,6 +596,7 @@ function emptyPlan(): SpriteScriptPlan {
  */
 const HAT_TYPES = new Set([
   "ollie_start",
+  "ollie_clone_start",
   "ollie_event_key_pressed",
   "ollie_event_stage_clicked",
   "ollie_event_backdrop_switches",
@@ -639,6 +613,7 @@ export function spriteScriptPlanHasAnyActions(plan: SpriteScriptPlan): boolean {
   if (plan.stageClickScripts.some((c) => c.length > 0)) return true;
   if (plan.backdropScripts.some((b) => b.actions.length > 0)) return true;
   if (plan.broadcastScripts.some((b) => b.actions.length > 0)) return true;
+  if ((plan.cloneScripts ?? []).some((c) => c.length > 0)) return true;
   return false;
 }
 
@@ -657,8 +632,14 @@ export function extractSpriteScriptPlan(
       case "ollie_start":
         plan.runScripts.push(chain);
         break;
+      case "ollie_clone_start":
+        plan.cloneScripts.push(chain);
+        break;
       case "ollie_event_key_pressed": {
-        const keyId = String(block.getFieldValue("KEY") ?? "space");
+        const raw = String(block.getFieldValue("KEY") ?? "space")
+          .trim()
+          .toLowerCase();
+        const keyId = raw || "space";
         plan.keyScripts.push({ keyId, actions: chain });
         break;
       }

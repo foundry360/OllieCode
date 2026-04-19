@@ -7,6 +7,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type ReactElement,
 } from "react";
 import { useIsClient } from "@/hooks/useIsClient";
@@ -35,7 +36,6 @@ import { OLLIE_TOOLBOX } from "@/lib/blockly/toolbox";
 import { OLLIE_TOOLBOX_CATEGORY_ICON_CSS } from "@/lib/blockly/toolboxCategoryIconCss";
 import {
   extractSpriteScriptPlan,
-  extractSpriteScriptPlanFromSave,
   spriteScriptPlanHasAnyActions,
 } from "@/lib/blockly/executeBlocks";
 import {
@@ -48,6 +48,7 @@ import {
 } from "@/lib/blockly/costumeDropdownThumbs";
 import { preloadSceneDropdownThumbs } from "@/lib/blockly/sceneDropdownThumbs";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
+import { setTouchingSpriteDropdownActors } from "@/lib/blockly/spriteTouchingDropdownRegistry";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
 import {
@@ -76,6 +77,7 @@ import {
   getMissionById,
   getSavedMissionProgress,
   isCatalogTemplateMissionId,
+  isCustomMissionId,
   loadMissionProjectSnapshotLocal,
   mergeMissionProgressIntoStorage,
   missionCloudProjectId,
@@ -116,6 +118,7 @@ import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLes
 import {
   DEFAULT_WORKSPACE_LESSON_ID,
   getLessonById,
+  WORKSPACE_NO_LESSON_QUERY,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
 import type { MissionDefinition } from "@/lib/missions/definitions";
@@ -133,6 +136,7 @@ import {
   Briefcase,
   ChevronDown,
   CopyPlus,
+  Expand,
   ImageUp,
   LogOut,
   Maximize2,
@@ -146,6 +150,7 @@ import {
   RefreshCw,
   Save,
   Settings,
+  Shrink,
   Square,
   Trash2,
   Undo,
@@ -159,6 +164,24 @@ const ICON_STROKE = 2;
 /** Max PNG size for user-uploaded sprite images (same order of magnitude as painted costume uploads). */
 const SPRITE_LABEL_MAX_LEN = 48;
 const CREATE_SPRITE_PAINT_DEFAULT_NAME = "Untitled Sprite";
+
+const ADVENTURE_STAGE_SIZE_STORAGE_KEY = "ollie_workspace_adventure_stage";
+
+type AdventureStageSizeMode = "default" | "compact";
+
+function adventureCardShellClass(
+  lessonChromeCompact: boolean,
+  mode: AdventureStageSizeMode,
+): string {
+  if (mode === "compact") {
+    return lessonChromeCompact
+      ? "min-h-[260px] flex-1 max-h-[min(520px,78vh)]"
+      : "h-[min(340px,46vh)] min-h-[260px] max-h-[min(520px,58vh)] shrink-0";
+  }
+  return lessonChromeCompact
+    ? "min-h-[300px] flex-1 max-h-[min(520px,85vh)]"
+    : "h-[min(440px,48vh)] min-h-[300px] max-h-[min(520px,55vh)] shrink-0";
+}
 
 /** Legacy id from older saves — migrated on load to {@link ACTOR_ROBOT_ID}. */
 const LEGACY_ACTOR_OLLIE_ID = "actor-ollie";
@@ -180,13 +203,27 @@ export function OllieWorkspace() {
   const searchParams = useSearchParams();
   const missionIdParam = searchParams.get("mission");
   const rawLessonId = searchParams.get("lesson")?.trim() ?? "";
+  /**
+   * Getting Started modules (“Run the Welcome Bot”, …) only when `lesson=lvl1-get-started`
+   * (or default for non-custom workspaces). Custom adventures (`mission=custom-…`) never
+   * inherit that default — use {@link WORKSPACE_NO_LESSON_QUERY} or omit `lesson` with a custom mission id.
+   */
   const lessonIdParam =
-    rawLessonId.length > 0 ? rawLessonId : DEFAULT_WORKSPACE_LESSON_ID;
+    rawLessonId === WORKSPACE_NO_LESSON_QUERY
+      ? WORKSPACE_NO_LESSON_QUERY
+      : rawLessonId.length > 0
+        ? rawLessonId
+        : missionIdParam && isCustomMissionId(missionIdParam)
+          ? WORKSPACE_NO_LESSON_QUERY
+          : DEFAULT_WORKSPACE_LESSON_ID;
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
   const staticLesson = useMemo(
-    () => getLessonById(lessonIdParam),
+    () =>
+      lessonIdParam === WORKSPACE_NO_LESSON_QUERY
+        ? undefined
+        : getLessonById(lessonIdParam),
     [lessonIdParam],
   );
   const [mergedLesson, setMergedLesson] = useState<LessonCatalogEntry | null>(
@@ -195,6 +232,11 @@ export function OllieWorkspace() {
   useEffect(() => {
     let cancelled = false;
     setMergedLesson(null);
+    if (lessonIdParam === WORKSPACE_NO_LESSON_QUERY) {
+      return () => {
+        cancelled = true;
+      };
+    }
     void (async () => {
       try {
         const r = await fetch(
@@ -218,6 +260,34 @@ export function OllieWorkspace() {
     };
   }, [lessonIdParam]);
   const activeLesson = mergedLesson ?? staticLesson;
+  /** No hub lesson + collapsed lesson card: shrink lesson rail so the stage column can grow up. */
+  const [lessonChromeCompact, setLessonChromeCompact] = useState(
+    () => !activeLesson,
+  );
+  const [adventureStageSize, setAdventureStageSize] =
+    useState<AdventureStageSizeMode>(() => {
+      if (typeof window === "undefined") return "compact";
+      try {
+        const v = localStorage.getItem(ADVENTURE_STAGE_SIZE_STORAGE_KEY);
+        if (v === "default") return "default";
+        if (v === "compact") return "compact";
+        return "compact";
+      } catch {
+        return "compact";
+      }
+    });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        ADVENTURE_STAGE_SIZE_STORAGE_KEY,
+        adventureStageSize,
+      );
+    } catch {
+      /* ignore quota */
+    }
+  }, [adventureStageSize]);
+
   /** Adventure used when naming a save: URL param, or the first catalog adventure on plain `/workspace`. */
   const missionForSave = useMemo(
     () => activeMission ?? MISSIONS[0],
@@ -242,6 +312,16 @@ export function OllieWorkspace() {
     ),
   );
   const [activeActorId, setActiveActorId] = useState<string>(ACTOR_ROBOT_ID);
+  const activeActorIdRef = useRef(activeActorId);
+  activeActorIdRef.current = activeActorId;
+
+  useEffect(() => {
+    setTouchingSpriteDropdownActors(
+      actors.map((a) => ({ id: a.id, label: a.label })),
+    );
+    return () => setTouchingSpriteDropdownActors(null);
+  }, [actors]);
+
   const [scenePickerOpen, setScenePickerOpen] = useState(false);
   const [spritePickerOpen, setSpritePickerOpen] = useState(false);
   const [costumePaintOpen, setCostumePaintOpen] = useState(false);
@@ -260,6 +340,10 @@ export function OllieWorkspace() {
     | null
     | { type: "scene" }
     | { type: "sprite"; actorId: string; label: string }
+  >(null);
+  /** Right-click menu on a sprite strip tile (below canvas). */
+  const [spriteStripContextMenu, setSpriteStripContextMenu] = useState<
+    null | { clientX: number; clientY: number; actorId: string }
   >(null);
   /** Profile username / codename for header (from `profiles` or synthetic email local part). */
   const [userCodename, setUserCodename] = useState<string | null>(null);
@@ -719,6 +803,48 @@ export function OllieWorkspace() {
     };
   }, [blocklyMounted, blocklyInjectKey]);
 
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(() => svgResize(ws));
+    });
+    return () => cancelAnimationFrame(id);
+  }, [blocklyMounted]);
+
+  /** Pre-fill “go to x: y:” with the active sprite’s current stage position when the block is added. */
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const onCreate = (e: { type: string; blockId?: string }) => {
+      if (!Events.isEnabled() || e.type !== Events.BLOCK_CREATE || !e.blockId) {
+        return;
+      }
+      const block = ws.getBlockById(e.blockId);
+      if (!block || block.type !== "ollie_go_to_xy" || block.isInFlyout) {
+        return;
+      }
+      const coords = p5Ref.current?.getScratchCoordsForActor(
+        activeActorIdRef.current,
+      );
+      if (!coords) return;
+      const xr = Math.round(Math.min(100, Math.max(-100, coords.xPct)));
+      const yr = Math.round(Math.min(100, Math.max(-100, coords.yPct)));
+      const prev = Events.getGroup();
+      try {
+        Events.setGroup(true);
+        block.setFieldValue(String(xr), "XPCT");
+        block.setFieldValue(String(yr), "YPCT");
+      } finally {
+        Events.setGroup(prev);
+      }
+    };
+    ws.addChangeListener(onCreate);
+    return () => ws.removeChangeListener(onCreate);
+  }, [blocklyMounted, blocklyInjectKey]);
+
   const switchActor = useCallback(
     (nextId: string) => {
       const ws = workspaceRef.current;
@@ -741,6 +867,82 @@ export function OllieWorkspace() {
     },
     [activeActorId],
   );
+
+  const openSpriteStripContextMenu = useCallback(
+    (e: ReactMouseEvent, actorId: string) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const menuW = 168;
+      const menuH = 44;
+      const pad = 8;
+      let x = e.clientX;
+      let y = e.clientY;
+      if (typeof window !== "undefined") {
+        x = Math.min(Math.max(pad, x), window.innerWidth - menuW - pad);
+        y = Math.min(Math.max(pad, y), window.innerHeight - menuH - pad);
+      }
+      setSpriteStripContextMenu({ clientX: x, clientY: y, actorId });
+    },
+    [],
+  );
+
+  const duplicateActor = useCallback(
+    (sourceId: string) => {
+      const ws = workspaceRef.current;
+      if (!ws) return;
+      spriteWorkspacesRef.current[activeActorId] =
+        serialization.workspaces.save(ws) as Record<string, unknown>;
+
+      const source = actors.find((a) => a.id === sourceId);
+      if (!source) return;
+
+      const blob =
+        spriteWorkspacesRef.current[sourceId] ?? getEmptyWorkspaceSave();
+      const clonedBlob = JSON.parse(
+        JSON.stringify(blob),
+      ) as Record<string, unknown>;
+
+      const newId = `actor-${Date.now()}`;
+      const maxBase = Math.max(0, SPRITE_LABEL_MAX_LEN - 5);
+      const labelBase = source.label.trim().slice(0, maxBase);
+      const newLabel = `${labelBase} copy`.slice(0, SPRITE_LABEL_MAX_LEN);
+
+      const clampPos = (v: number) => Math.min(100, Math.max(-100, v));
+      const newActor: StageActor = {
+        ...source,
+        id: newId,
+        label: newLabel,
+        ...(typeof source.stageXPct === "number"
+          ? { stageXPct: clampPos(source.stageXPct + 10) }
+          : {}),
+        ...(typeof source.stageYPct === "number"
+          ? { stageYPct: clampPos(source.stageYPct - 10) }
+          : {}),
+      };
+
+      spriteWorkspacesRef.current[newId] = clonedBlob;
+
+      setActors((prev) => {
+        const idx = prev.findIndex((a) => a.id === sourceId);
+        const next = [...prev];
+        if (idx >= 0) next.splice(idx + 1, 0, newActor);
+        else next.push(newActor);
+        return next;
+      });
+      setSpriteStripContextMenu(null);
+      switchActor(newId);
+    },
+    [actors, activeActorId, switchActor],
+  );
+
+  useEffect(() => {
+    if (!spriteStripContextMenu) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSpriteStripContextMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [spriteStripContextMenu]);
 
   const confirmRemoveScene = useCallback(() => {
     setStageSceneLayers([DEFAULT_SCENE_ID]);
@@ -917,25 +1119,50 @@ export function OllieWorkspace() {
         stageClickScripts: [],
         backdropScripts: [],
         broadcastScripts: [],
+        cloneScripts: [],
       });
-      const bundles = actors.map((actor) => {
-        const raw = spriteWorkspacesRef.current[actor.id];
-        let plan: SpriteScriptPlan = emptyPlan();
-        if (raw && Object.keys(raw).length > 0) {
+      for (const a of actors) {
+        if (!spriteWorkspacesRef.current[a.id]) {
+          spriteWorkspacesRef.current[a.id] = getEmptyWorkspaceSave();
+        }
+      }
+      /**
+       * Compile every sprite from the same serialized blobs the editor uses. Loading into a
+       * throwaway `Workspace()` (extractSpriteScriptPlanFromSave) can miss blocks for non-active
+       * sprites; loading each save into the real `WorkspaceSvg` matches Scratch-style reliability.
+       */
+      const restoreBlob =
+        serialization.workspaces.save(ws) as Record<string, unknown>;
+      const bundles: { spriteId: string; plan: SpriteScriptPlan }[] = [];
+      const host = blocklyDiv.current;
+      const prevVis = host?.style.visibility;
+      Events.disable();
+      try {
+        if (host) host.style.visibility = "hidden";
+        for (const actor of actors) {
+          const blob =
+            spriteWorkspacesRef.current[actor.id] ?? getEmptyWorkspaceSave();
           try {
-            /** Live workspace avoids save→temp reload, which can desync variable ids vs `assignRunVar` (compare read 0, snap had Answer). */
-            if (actor.id === activeActorId && workspaceRef.current) {
-              plan = extractSpriteScriptPlan(workspaceRef.current);
-            } else {
-              plan = extractSpriteScriptPlanFromSave(raw);
-            }
+            serialization.workspaces.load(blob, ws, { recordUndo: false });
+            bundles.push({
+              spriteId: actor.id,
+              plan: extractSpriteScriptPlan(ws),
+            });
           } catch {
-            plan = emptyPlan();
+            bundles.push({ spriteId: actor.id, plan: emptyPlan() });
           }
         }
-        return { spriteId: actor.id, plan };
-      });
-      p5.resetSprite();
+      } finally {
+        try {
+          serialization.workspaces.load(restoreBlob, ws, { recordUndo: false });
+        } catch {
+          /* switchActor / refresh can recover workspace */
+        }
+        if (host) host.style.visibility = prevVis ?? "";
+        svgResize(ws);
+        Events.enable();
+      }
+      p5.resetSpriteForRun();
       const hasGreenFlagActions = bundles.some((b) =>
         b.plan.runScripts.some((chain) => chain.length > 0),
       );
@@ -974,25 +1201,30 @@ export function OllieWorkspace() {
     }
   }, [actors, activeActorId, activeMission]);
 
-  const resetWorkspaceToDefaultStarter = useCallback(() => {
-    const ws = workspaceRef.current;
-    if (!ws) return;
-    setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
-    setActiveActorId(ACTOR_ROBOT_ID);
-    setStageSceneLayers([DEFAULT_SCENE_ID]);
-    const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
-    Events.disable();
-    ws.clear();
-    Xml.clearWorkspaceAndLoadFromXml(xml, ws);
-    Events.enable();
-    spriteWorkspacesRef.current = {
-      [ACTOR_ROBOT_ID]: serialization.workspaces.save(ws) as Record<
-        string,
-        unknown
-      >,
-    };
-    p5Ref.current?.resetSprite();
-  }, [activeMission]);
+  const resetWorkspaceToStarter = useCallback(
+    (kind: "welcome" | "minimal" = "welcome") => {
+      const ws = workspaceRef.current;
+      if (!ws) return;
+      setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
+      setActiveActorId(ACTOR_ROBOT_ID);
+      setStageSceneLayers([DEFAULT_SCENE_ID]);
+      const xmlStr =
+        kind === "welcome" ? DEFAULT_WORKSPACE_XML : EMPTY_START_WORKSPACE_XML;
+      const xml = utils.xml.textToDom(xmlStr);
+      Events.disable();
+      ws.clear();
+      Xml.clearWorkspaceAndLoadFromXml(xml, ws);
+      Events.enable();
+      spriteWorkspacesRef.current = {
+        [ACTOR_ROBOT_ID]: serialization.workspaces.save(ws) as Record<
+          string,
+          unknown
+        >,
+      };
+      p5Ref.current?.resetSprite();
+    },
+    [activeMission],
+  );
 
   const handleRefresh = useCallback(() => {
     p5Ref.current?.resetRunToBeginning();
@@ -1398,7 +1630,7 @@ export function OllieWorkspace() {
         serialization.workspaces.load(blob, ws, { recordUndo: false });
       } catch {
         Events.enable();
-        resetWorkspaceToDefaultStarter();
+        resetWorkspaceToStarter();
         return;
       }
       Events.enable();
@@ -1429,7 +1661,7 @@ export function OllieWorkspace() {
         });
       } catch {
         Events.enable();
-        resetWorkspaceToDefaultStarter();
+        resetWorkspaceToStarter();
         return;
       }
       Events.enable();
@@ -1439,7 +1671,7 @@ export function OllieWorkspace() {
     mergeMissionProgressIntoStorage(payload.savedMissionProgress);
     setSavedMissionEntries(getSavedMissionProgress());
     p5Ref.current?.resetSprite();
-  }, [resetWorkspaceToDefaultStarter, activeMission]);
+  }, [resetWorkspaceToStarter, activeMission]);
 
   /**
    * Load an adventure workspace: signed-in users use cloud JSON only; otherwise local snapshot or starter blocks.
@@ -1458,7 +1690,7 @@ export function OllieWorkspace() {
         } = await sb.auth.getUser();
         if (user) {
           if (isCatalogTemplateMissionId(missionId)) {
-            resetWorkspaceToDefaultStarter();
+            resetWorkspaceToStarter();
             missionRewardShownRef.current = false;
             requestAnimationFrame(() => {
               const w = workspaceRef.current;
@@ -1486,7 +1718,7 @@ export function OllieWorkspace() {
             setTimeout(() => setStatus(""), 2000);
             return;
           }
-          resetWorkspaceToDefaultStarter();
+          resetWorkspaceToStarter();
           missionRewardShownRef.current = false;
           requestAnimationFrame(() => {
             const w = workspaceRef.current;
@@ -1513,7 +1745,7 @@ export function OllieWorkspace() {
         return;
       }
 
-      resetWorkspaceToDefaultStarter();
+      resetWorkspaceToStarter();
       missionRewardShownRef.current = false;
       requestAnimationFrame(() => {
         const w = workspaceRef.current;
@@ -1524,7 +1756,7 @@ export function OllieWorkspace() {
       );
       setTimeout(() => setStatus(""), 4000);
     },
-    [applyProjectPayload, resetWorkspaceToDefaultStarter],
+    [applyProjectPayload, resetWorkspaceToStarter],
   );
 
   /** Open adventure from URL (direct links / refresh) and when Blockly becomes ready after navigation. */
@@ -1600,7 +1832,7 @@ export function OllieWorkspace() {
     if (!ws) return;
     const newId = createCustomMissionId();
     skipNextMissionUrlEffectRef.current = true;
-    resetWorkspaceToDefaultStarter();
+    resetWorkspaceToStarter("minimal");
     missionRewardShownRef.current = false;
     requestAnimationFrame(() => {
       const w = workspaceRef.current;
@@ -1608,10 +1840,11 @@ export function OllieWorkspace() {
     });
     const q = new URLSearchParams();
     q.set("mission", newId);
+    q.set("lesson", WORKSPACE_NO_LESSON_QUERY);
     router.replace(`/workspace?${q.toString()}`, { scroll: false });
     setStatus("New adventure — use Save to name it.");
     setTimeout(() => setStatus(""), 3500);
-  }, [resetWorkspaceToDefaultStarter, router]);
+  }, [resetWorkspaceToStarter, router]);
 
   const canDeleteCurrentMission = Boolean(activeMission && missionIdParam);
 
@@ -1644,7 +1877,7 @@ export function OllieWorkspace() {
         }
       }
       skipNextMissionUrlEffectRef.current = true;
-      resetWorkspaceToDefaultStarter();
+      resetWorkspaceToStarter();
       missionRewardShownRef.current = false;
       router.replace("/workspace", { scroll: false });
       requestAnimationFrame(() => {
@@ -1665,7 +1898,7 @@ export function OllieWorkspace() {
     } finally {
       setDeleteMissionLoading(false);
     }
-  }, [missionIdParam, resetWorkspaceToDefaultStarter, router]);
+  }, [missionIdParam, resetWorkspaceToStarter, router]);
 
   const handleLoad = useCallback(async () => {
     const ws = workspaceRef.current;
@@ -2049,13 +2282,15 @@ export function OllieWorkspace() {
           id="ollie-code-workspace-shell"
           className="relative flex min-h-[50vh] min-w-0 flex-1 flex-col overflow-hidden rounded-2xl border border-[#e5e7eb] bg-white shadow-sm lg:min-h-0"
         >
-          <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2">
+          <div className="flex shrink-0 items-center gap-2 border-b border-[#e5e7eb] bg-[#ecfccb] px-3 py-2 sm:px-4">
             <Blocks
               className="size-4 shrink-0 text-[#4d7c0f]"
               strokeWidth={ICON_STROKE}
               aria-hidden
             />
-            <span className="text-sm font-semibold text-[#365314]">Workspace</span>
+            <span className="text-sm font-semibold text-[#365314]">
+              Workspace
+            </span>
           </div>
           <div className="relative min-h-[480px] w-full min-w-0 flex-1 overflow-hidden rounded-b-2xl">
             <style
@@ -2076,12 +2311,21 @@ export function OllieWorkspace() {
           </div>
         </div>
 
-        <div className="flex min-h-0 w-full max-w-full flex-col gap-3 lg:flex lg:w-[480px] lg:max-w-[38vw] lg:shrink-0 lg:flex-col lg:overflow-hidden">
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden max-h-[min(50vh,24rem)] lg:max-h-none">
-            <WorkspaceLessonInstructions lesson={activeLesson} />
-          </div>
-          <div className="flex h-[min(440px,48vh)] min-h-[300px] max-h-[min(520px,55vh)] shrink-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm">
-            <div className="shrink-0 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-4 py-2 text-sm font-semibold text-[#365314]">
+        <div
+          className={[
+            "flex min-h-0 w-full max-w-full flex-col gap-3 lg:shrink-0 lg:overflow-hidden",
+            adventureStageSize === "compact"
+              ? "lg:w-[400px] lg:max-w-[32vw]"
+              : "lg:w-[480px] lg:max-w-[38vw]",
+          ].join(" ")}
+        >
+          <div
+            className={[
+              "flex min-h-0 flex-col rounded-2xl border border-[#e5e7eb] bg-white shadow-sm",
+              adventureCardShellClass(lessonChromeCompact, adventureStageSize),
+            ].join(" ")}
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-3 py-2 text-sm font-semibold text-[#365314] sm:px-4">
               <span
                 className="flex min-w-0 items-center gap-2"
                 title={canvasMissionTooltip}
@@ -2093,6 +2337,50 @@ export function OllieWorkspace() {
                 />
                 <span className="min-w-0 truncate">{canvasMissionLabel}</span>
               </span>
+              <div
+                className="flex shrink-0 items-center gap-px rounded-md border border-[#e2e8f0]/90 bg-[#f8fafc]/70 p-px"
+                role="group"
+                aria-label="Stage size"
+              >
+                <button
+                  type="button"
+                  onClick={() => setAdventureStageSize("default")}
+                  aria-pressed={adventureStageSize === "default"}
+                  aria-label="Standard stage — larger preview"
+                  title="Standard stage — larger preview"
+                  className={[
+                    "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
+                    adventureStageSize === "default"
+                      ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
+                      : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
+                  ].join(" ")}
+                >
+                  <Expand
+                    className="size-3 shrink-0 opacity-90"
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAdventureStageSize("compact")}
+                  aria-pressed={adventureStageSize === "compact"}
+                  aria-label="Compact stage — more room for blocks"
+                  title="Compact stage — more room for blocks"
+                  className={[
+                    "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
+                    adventureStageSize === "compact"
+                      ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
+                      : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
+                  ].join(" ")}
+                >
+                  <Shrink
+                    className="size-3 shrink-0 opacity-90"
+                    strokeWidth={1.75}
+                    aria-hidden
+                  />
+                </button>
+              </div>
             </div>
             <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
               {askOverlay ? (
@@ -2300,6 +2588,8 @@ export function OllieWorkspace() {
                   pointTowardsForwardPx: a.pointTowardsForwardPx,
                   pointTowardsLateralPx: a.pointTowardsLateralPx,
                   pointTowardsLateralPct: a.pointTowardsLateralPct,
+                  stageXPct: a.stageXPct,
+                  stageYPct: a.stageYPct,
                 }))}
                 pauseActorCostumePropSync={programRunning}
                 onSceneChange={(id) => setStageSceneLayers([id])}
@@ -2328,6 +2618,13 @@ export function OllieWorkspace() {
                   setActors((prev) =>
                     prev.map((a) =>
                       a.id === actorId ? { ...a, ...patch } : a,
+                    ),
+                  )
+                }
+                onActorStagePositionChange={(actorId, stageXPct, stageYPct) =>
+                  setActors((prev) =>
+                    prev.map((a) =>
+                      a.id === actorId ? { ...a, stageXPct, stageYPct } : a,
                     ),
                   )
                 }
@@ -2464,6 +2761,9 @@ export function OllieWorkspace() {
                                 ? "border-[#84c126] bg-[#f7fee7]"
                                 : "border-[#e5e7eb] bg-white",
                             ].join(" ")}
+                            onContextMenu={(e) =>
+                              openSpriteStripContextMenu(e, actor.id)
+                            }
                           >
                             <div className="group relative min-h-0 min-w-0 w-full aspect-square overflow-hidden rounded-[3px] bg-[#f1f5f9]">
                               <button
@@ -2575,8 +2875,56 @@ export function OllieWorkspace() {
             </div>
             </div>
           </div>
+          <div
+            className={[
+              "flex min-h-0 flex-col overflow-hidden max-h-[min(50vh,24rem)]",
+              lessonChromeCompact
+                ? "shrink-0 flex-none lg:max-h-none"
+                : "flex-1 min-h-0 lg:max-h-none",
+            ].join(" ")}
+          >
+            <WorkspaceLessonInstructions
+              lesson={activeLesson}
+              onLessonChromeCompact={setLessonChromeCompact}
+            />
+          </div>
         </div>
       </main>
+      {spriteStripContextMenu ? (
+        <>
+          <div
+            className="fixed inset-0 z-[200]"
+            aria-hidden
+            onClick={() => setSpriteStripContextMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setSpriteStripContextMenu(null);
+            }}
+          />
+          <div
+            role="menu"
+            className="fixed z-[201] min-w-[10.5rem] overflow-hidden rounded-md border border-[#e5e7eb] bg-white py-1 shadow-lg"
+            style={{
+              left: spriteStripContextMenu.clientX,
+              top: spriteStripContextMenu.clientY,
+            }}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-[#111827] transition hover:bg-[#f3f4f6] focus:bg-[#f3f4f6] focus:outline-none"
+              onClick={() => duplicateActor(spriteStripContextMenu.actorId)}
+            >
+              <CopyPlus
+                className="size-4 shrink-0 text-[#6b7280]"
+                strokeWidth={ICON_STROKE}
+                aria-hidden
+              />
+              Duplicate
+            </button>
+          </div>
+        </>
+      ) : null}
       <AvatarPickerModal
         open={avatarPickerOpen}
         onClose={() => setAvatarPickerOpen(false)}
@@ -2845,7 +3193,11 @@ function ToolbarIconButton({
         aria-expanded={ariaExpanded}
         aria-controls={ariaControls}
         disabled={disabled}
-        onClick={onClick}
+        onClick={(e) => {
+          onClick();
+          /** If focus stays on this button, Space/Enter fire a second click — bad for “when space key pressed” scripts after Run. */
+          e.currentTarget.blur();
+        }}
         className={`${base} ${styles} ${disabledStyles}`}
       >
         {children}

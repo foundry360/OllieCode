@@ -31,6 +31,34 @@ function restyleMathChangeAsMathCategory(): void {
  * learners must nest **ask** first, but the mismatch is confusing. Scratch-style stacks are
  * effectively untyped here; the runtime still coerces ask / math correctly.
  */
+/**
+ * `@blockly/field-colour` registers reporters with the library default output check.
+ * After init we switch sockets to the American spelling `Color` for consistency in the UI.
+ */
+function patchColorReporterBlocksToColorType(): void {
+  const types = [
+    "colour_picker",
+    "colour_random",
+    "colour_rgb",
+    "colour_blend",
+  ] as const;
+  for (const type of types) {
+    const def = Blocks[type] as
+      | { init?: (this: Block) => void }
+      | undefined;
+    if (!def?.init) continue;
+    const origInit = def.init;
+    def.init = function (this: Block) {
+      origInit.call(this);
+      this.outputConnection?.setCheck("Color");
+      if (type === "colour_blend") {
+        this.getInput("COLOUR1")?.connection?.setCheck("Color");
+        this.getInput("COLOUR2")?.connection?.setCheck("Color");
+      }
+    };
+  }
+}
+
 function ollieRelaxVariablesSetDynamicValueCheck(): void {
   const def = Blocks.variables_set_dynamic as
     | { init?: (this: Block) => void }
@@ -62,6 +90,7 @@ export async function loadBlocklyLibraryBlocks(): Promise<void> {
       await import("blockly/blocks");
       const { installAllBlocks } = await import("@blockly/field-colour");
       installAllBlocks();
+      patchColorReporterBlocksToColorType();
       restyleMathChangeAsMathCategory();
       ollieRelaxVariablesSetDynamicValueCheck();
     })();

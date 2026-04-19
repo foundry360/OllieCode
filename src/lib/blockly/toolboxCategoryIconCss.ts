@@ -74,7 +74,7 @@ function buildToolboxCategoryIconCss(): string {
 .ollie-blockly-host .blocklyToolboxCategoryGroup > .blocklyToolboxCategoryContainer:last-child {
   margin-block-end: 0;
 }
-/* Blockly paints the category colour on the row when selected; keep the list neutral. */
+/* Blockly paints the category color on the row when selected; keep the list neutral. */
 .ollie-blockly-host .blocklyToolboxCategory.ollie-toolbox-row.blocklyToolboxSelected {
   background-color: transparent !important;
 }
@@ -104,7 +104,7 @@ function buildToolboxCategoryIconCss(): string {
 }
 
 /**
- * Injected next to the Blockly host: toolbox icons are hidden and the colour “swatch” is a
+ * Injected next to the Blockly host: toolbox icons are hidden and the color “swatch” is a
  * border strip by default — this shows the circle icons and removes the strip.
  */
 export const OLLIE_TOOLBOX_CATEGORY_ICON_CSS = buildToolboxCategoryIconCss();

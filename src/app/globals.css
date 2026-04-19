@@ -97,6 +97,16 @@ html::-webkit-scrollbar-thumb:hover {
   z-index: 100;
 }
 
+/*
+ * Core Blockly uses z-index 99999 for .blocklyWidgetDiv / .blocklyDropDownDiv (field dropdowns).
+ * The workspace sticky header is z-index 100000, so menus were painting *under* the header: taps
+ * and keyboard interaction hit toolbar controls (e.g. Run) instead of the key dropdown.
+ */
+.blocklyWidgetDiv,
+.blocklyDropDownDiv {
+  z-index: 100010 !important;
+}
+
 /* Inset toolbox category color strips from the panel edge */
 .blocklyToolbox .blocklyToolboxCategoryGroup {
   padding-left: 10px;

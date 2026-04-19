@@ -2,6 +2,7 @@ import * as Blockly from "blockly/core";
 import { Blocks, FieldDropdown } from "blockly/core";
 import type { Block } from "blockly/core";
 import { getSwitchCostumeDropdownOptions } from "@/lib/blockly/costumeDropdownRegistry";
+import { getTouchingSpriteDropdownOptions } from "@/lib/blockly/spriteTouchingDropdownRegistry";
 import { getSwitchSceneDropdownOptions } from "@/lib/blockly/sceneDropdownRegistry";
 import { sceneDropdownOptions } from "@/lib/canvas/stageAssets";
 import { soundDropdownOptions } from "@/lib/sounds/ollieSounds";
@@ -304,7 +305,7 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_motion",
     tooltip:
-      "Scratch-style position: x is left (−100) to right (+100); y is up (+100) to down (−100). Center is 0, 0.",
+      "Scratch-style position: x is left (−100) to right (+100); y is up (+100) to down (−100). Center is 0, 0. Drag a sprite on the stage, then add this block to fill in where it is.",
   },
   {
     type: "ollie_go_to_target",
@@ -385,7 +386,8 @@ export function getOllieBlockDefinitions(): Parameters<
         value: 1,
         min: 0.1,
         max: 15,
-        precision: 1,
+        /** Same step as “wait” — 0.1, 0.2, 1.5 s, etc. (Blockly uses precision as rounding step). */
+        precision: 0.01,
       },
       {
         type: "field_number",
@@ -408,7 +410,7 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: null,
     style: "scratch_motion",
     tooltip:
-      "Glide to a Scratch-style position: x left (−100) to right (+100); y up (+100) to down (−100).",
+      "Glide to a Scratch-style position: x left (−100) to right (+100); y up (+100) to down (−100). Seconds can be decimals (e.g. 0.2, 1.5).",
   },
   {
     type: "ollie_if_on_edge_bounce",
@@ -670,6 +672,22 @@ export function getOllieBlockDefinitions(): Parameters<
     tooltip: "Pause before the next block. Use decimals (e.g. 0.2, 0.5, 0.75).",
   },
   {
+    type: "ollie_wait_until",
+    message0: "wait until %1",
+    args0: [
+      {
+        type: "input_value",
+        name: "BOOL",
+        check: "Boolean",
+      },
+    ],
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_control",
+    tooltip:
+      "Pause this script until the condition is true. Use Sensing + Logic blocks (e.g. key pressed, touching mouse-pointer).",
+  },
+  {
     type: "ollie_repeat",
     message0: "repeat %1 times",
     args0: [
@@ -739,22 +757,22 @@ export function getOllieBlockDefinitions(): Parameters<
       "Remove this clone from the stage (only affects clones). On the main sprite, does nothing.",
   },
   {
-    type: "ollie_sensing_touching",
-    message0: "touching %1 ?",
-    args0: [
-      {
-        type: "field_dropdown",
-        name: "TOUCHING",
-        options: [
-          ["mouse-pointer", "MOUSE"],
-          ["edge", "EDGE"],
-        ],
-      },
-    ],
-    output: "Boolean",
-    style: "scratch_sensing",
-    tooltip: "Like Scratch / mBlock — true when this sprite touches the pointer or the stage edge.",
-    helpUrl: "",
+    type: "ollie_clone_start",
+    message0: "when I start as a clone",
+    nextStatement: true,
+    style: "scratch_control",
+    tooltip:
+      "When this sprite is created with “create clone of myself”, the blocks below run for that new copy.",
+    hat: "cap",
+  },
+  {
+    type: "ollie_create_clone",
+    message0: "create clone of myself",
+    previousStatement: null,
+    nextStatement: true,
+    style: "scratch_control",
+    tooltip:
+      "Makes another copy of this sprite on the stage and runs “when I start as a clone” for it.",
   },
   {
     type: "ollie_sensing_key_pressed",
@@ -777,6 +795,15 @@ export function getOllieBlockDefinitions(): Parameters<
     output: "Boolean",
     style: "scratch_sensing",
     tooltip: "True while the mouse button is pressed on the stage.",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_sensing_is_clone",
+    message0: "is a clone?",
+    output: "Boolean",
+    style: "scratch_sensing",
+    tooltip:
+      "True for a sprite that was created with “create clone of myself”; false for the main sprite.",
     helpUrl: "",
   },
   {
@@ -872,6 +899,28 @@ function registerOllieSwitchCostumeBlock() {
   };
 }
 
+function registerOllieSensingTouchingBlock() {
+  Blocks["ollie_sensing_touching"] = {
+    init: function (this: Block) {
+      this.setStyle("scratch_sensing");
+      this.appendDummyInput()
+        .appendField("touching")
+        .appendField(
+          new FieldDropdown(function (this: FieldDropdown) {
+            return getTouchingSpriteDropdownOptions();
+          }),
+          "TOUCHING",
+        )
+        .appendField("?");
+      this.setOutput(true, "Boolean");
+      this.setTooltip(
+        "True when this sprite overlaps the pointer, the stage edge, or another sprite from this project.",
+      );
+      this.setHelpUrl("");
+    },
+  };
+}
+
 function registerOllieSwitchSceneBlock() {
   Blocks["ollie_switch_scene"] = {
     init: function (this: Block) {
@@ -891,8 +940,25 @@ function registerOllieSwitchSceneBlock() {
   };
 }
 
+function registerOllieSetSpeechBubbleColorBlock() {
+  Blocks["ollie_set_speech_bubble_color"] = {
+    init: function (this: Block) {
+      this.setStyle("scratch_looks");
+      this.appendDummyInput().appendField("set speech bubble color to");
+      this.appendValueInput("COLOR").setCheck("Color");
+      this.setPreviousStatement(true, null);
+      this.setNextStatement(true, null);
+      this.setTooltip(
+        "Sets the fill color for say and think bubbles (use Color blocks). Default is white.",
+      );
+    },
+  };
+}
+
 export function registerOllieBlocks() {
   Blockly.common.defineBlocksWithJsonArray(getOllieBlockDefinitions());
   registerOllieSwitchCostumeBlock();
+  registerOllieSensingTouchingBlock();
   registerOllieSwitchSceneBlock();
+  registerOllieSetSpeechBubbleColorBlock();
 }

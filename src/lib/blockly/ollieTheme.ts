@@ -29,10 +29,10 @@ const S = {
 };
 
 /**
- * Left-strip indicator colour for each toolbox row — Blockly `colour` accepts hex;
+ * Left-strip indicator color for each toolbox row — Blockly `colour` accepts hex;
  * these match `blockStyles` primary faces so the list matches block colors.
  */
-export const scratchToolboxCategoryColour = {
+export const scratchToolboxCategoryColor = {
   events: S.events.colourPrimary,
   motion: S.operators.colourPrimary,
   looks: S.looks.colourPrimary,
@@ -86,8 +86,8 @@ export const ollieBlocklyTheme = Theme.defineTheme("ollie", {
   },
 });
 
-/** Primary face colour per block `style` — used for category strip icons on blocks. */
-export const blockStyleColourPrimary: Readonly<Record<string, string>> = {
+/** Primary face color per block `style` — used for category strip icons on blocks. */
+export const blockStyleColorPrimary: Readonly<Record<string, string>> = {
   scratch_events: S.events.colourPrimary,
   scratch_motion: S.operators.colourPrimary,
   scratch_looks: S.looks.colourPrimary,

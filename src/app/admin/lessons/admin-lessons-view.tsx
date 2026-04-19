@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import { LayoutGrid, Table2 } from "lucide-react";
+import {
+  ArrowUpDown,
+  ChevronDown,
+  ChevronUp,
+  LayoutGrid,
+  Pencil,
+  Table2,
+} from "lucide-react";
 import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
 
 export type LessonAdminRow = {
@@ -23,26 +30,54 @@ type ViewMode = "table" | "cards";
 
 type StatusFilter = "all" | "live" | "draft" | "catalog_only";
 
-/** Matches `sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4` below — used to cap card grid to 3 rows. */
-function gridColumnsForWidth(w: number): number {
-  if (w < 640) return 1;
-  if (w < 1024) return 2;
-  if (w < 1280) return 3;
-  return 4;
+type TableSortKey = "id" | "title" | "inDatabase" | "published";
+
+function SortableColumnHeader({
+  label,
+  sortKey,
+  sort,
+  onSort,
+}: {
+  label: string;
+  sortKey: TableSortKey;
+  sort: { key: TableSortKey; dir: "asc" | "desc" };
+  onSort: (key: TableSortKey) => void;
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      scope="col"
+      className="px-4 py-3"
+      aria-sort={
+        active
+          ? sort.dir === "asc"
+            ? "ascending"
+            : "descending"
+          : "none"
+      }
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 rounded-md -mx-1 px-1 py-0.5 text-left hover:bg-slate-200/60 hover:text-slate-800"
+      >
+        {label}
+        {active ? (
+          sort.dir === "asc" ? (
+            <ChevronUp className="size-3.5 shrink-0" aria-hidden />
+          ) : (
+            <ChevronDown className="size-3.5 shrink-0" aria-hidden />
+          )
+        ) : (
+          <ArrowUpDown className="size-3.5 shrink-0 opacity-40" aria-hidden />
+        )}
+      </button>
+    </th>
+  );
 }
 
-function useAdminLessonGridColumns(): number {
-  const [cols, setCols] = useState(() =>
-    typeof window !== "undefined" ? gridColumnsForWidth(window.innerWidth) : 4,
-  );
-  useEffect(() => {
-    const update = () => setCols(gridColumnsForWidth(window.innerWidth));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, []);
-  return cols;
-}
+/** Fixed columns for lesson cards — used to cap card grid to 3 rows. */
+const ADMIN_LESSON_GRID_COLUMNS = 6;
 
 const CARD_PREVIEW_ROWS = 3;
 
@@ -51,7 +86,10 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [topicFilter, setTopicFilter] = useState("");
   const [cardsExpanded, setCardsExpanded] = useState(false);
-  const gridColumns = useAdminLessonGridColumns();
+  const [tableSort, setTableSort] = useState<{
+    key: TableSortKey;
+    dir: "asc" | "desc";
+  }>({ key: "title", dir: "asc" });
 
   useEffect(() => {
     try {
@@ -123,6 +161,40 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     return list;
   }, [rows, statusFilter, topicFilter]);
 
+  const sortedRows = useMemo(() => {
+    const list = [...filteredRows];
+    const mult = tableSort.dir === "asc" ? 1 : -1;
+    const publishedRank = (p: boolean | null) =>
+      p === null ? 0 : p ? 2 : 1;
+
+    list.sort((a, b) => {
+      switch (tableSort.key) {
+        case "id":
+          return (
+            a.id.localeCompare(b.id, undefined, { sensitivity: "base" }) * mult
+          );
+        case "title":
+          return (
+            a.title.localeCompare(b.title, undefined, {
+              sensitivity: "base",
+            }) * mult
+          );
+        case "inDatabase": {
+          const av = a.inDatabase ? 1 : 0;
+          const bv = b.inDatabase ? 1 : 0;
+          return (av - bv) * mult;
+        }
+        case "published":
+          return (
+            (publishedRank(a.published) - publishedRank(b.published)) * mult
+          );
+        default:
+          return 0;
+      }
+    });
+    return list;
+  }, [filteredRows, tableSort]);
+
   const filteredRowsKey = useMemo(
     () =>
       `${statusFilter}:${topicFilter}:${filteredRows.map((r) => r.id).join(",")}`,
@@ -133,7 +205,10 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     setCardsExpanded(false);
   }, [filteredRowsKey]);
 
-  const cardPreviewLimit = Math.max(1, gridColumns * CARD_PREVIEW_ROWS);
+  const cardPreviewLimit = Math.max(
+    1,
+    ADMIN_LESSON_GRID_COLUMNS * CARD_PREVIEW_ROWS,
+  );
   const showCardShowMore =
     view === "cards" &&
     filteredRows.length > cardPreviewLimit &&
@@ -143,9 +218,9 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     filteredRows.length > cardPreviewLimit &&
     cardsExpanded;
   const visibleCardRows =
-    cardsExpanded || filteredRows.length <= cardPreviewLimit
-      ? filteredRows
-      : filteredRows.slice(0, cardPreviewLimit);
+    cardsExpanded || sortedRows.length <= cardPreviewLimit
+      ? sortedRows
+      : sortedRows.slice(0, cardPreviewLimit);
 
   const setMode = (next: ViewMode) => {
     setView(next);
@@ -172,6 +247,14 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     } catch {
       /* ignore */
     }
+  };
+
+  const cycleTableSort = (key: TableSortKey) => {
+    setTableSort((prev) =>
+      prev.key === key
+        ? { key, dir: prev.dir === "asc" ? "desc" : "asc" }
+        : { key, dir: "asc" },
+    );
   };
 
   return (
@@ -256,22 +339,42 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
         <table className="w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-xs font-bold uppercase tracking-wide text-slate-500">
             <tr>
-              <th className="px-4 py-3">Lesson id</th>
-              <th className="px-4 py-3">Title</th>
-              <th className="px-4 py-3">Database</th>
-              <th className="px-4 py-3">Published</th>
-              <th className="px-4 py-3" />
+              <SortableColumnHeader
+                label="Lesson id"
+                sortKey="id"
+                sort={tableSort}
+                onSort={cycleTableSort}
+              />
+              <SortableColumnHeader
+                label="Title"
+                sortKey="title"
+                sort={tableSort}
+                onSort={cycleTableSort}
+              />
+              <SortableColumnHeader
+                label="Database"
+                sortKey="inDatabase"
+                sort={tableSort}
+                onSort={cycleTableSort}
+              />
+              <SortableColumnHeader
+                label="Published"
+                sortKey="published"
+                sort={tableSort}
+                onSort={cycleTableSort}
+              />
+              <th className="px-4 py-3" scope="col" aria-label="Actions" />
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {filteredRows.map((row) => (
+            {sortedRows.map((row) => (
               <tr
                 key={row.id}
-                className={
+                className={`group ${
                   row.isDbOnly
                     ? "bg-[#f8fafc] hover:bg-slate-100/80"
                     : "hover:bg-slate-50/80"
-                }
+                }`}
               >
                 <td className="px-4 py-3 font-mono text-xs text-slate-700">
                   {row.id}
@@ -297,12 +400,13 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                     "—"
                   )}
                 </td>
-                <td className="px-4 py-3 text-right">
+                <td className="px-4 py-3 text-right align-middle">
                   <Link
                     href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
-                    className="font-semibold text-[#84c126] hover:underline"
+                    className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 opacity-0 transition-opacity hover:bg-slate-200/60 hover:text-[#84c126] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] group-hover:opacity-100"
+                    aria-label={`Edit ${row.title}`}
                   >
-                    Edit
+                    <Pencil className="h-4 w-4" strokeWidth={2} aria-hidden />
                   </Link>
                 </td>
               </tr>
@@ -311,14 +415,21 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
         </table>
       ) : (
         <div className="p-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          <div className="grid grid-cols-6 gap-4">
             {visibleCardRows.map((row) => (
               <article
                 key={row.id}
-                className={`flex flex-col overflow-hidden rounded-xl border border-slate-200 shadow-sm ${
+                className={`group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 shadow-sm ${
                   row.isDbOnly ? "bg-[#f8fafc]" : "bg-white"
                 }`}
               >
+                <Link
+                  href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
+                  className="absolute right-2 top-2 z-10 inline-flex items-center justify-center rounded-lg bg-white/95 p-2 text-slate-600 opacity-0 shadow-md ring-1 ring-slate-200/80 transition-opacity hover:bg-white hover:text-[#84c126] focus-visible:opacity-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] group-hover:opacity-100"
+                  aria-label={`Edit ${row.title}`}
+                >
+                  <Pencil className="h-4 w-4" strokeWidth={2} aria-hidden />
+                </Link>
                 <div className="relative aspect-[16/10] overflow-hidden bg-slate-100">
                   {row.imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element -- lesson URLs may be any host
@@ -333,16 +444,19 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                     </div>
                   )}
                 </div>
-                <div className="flex flex-1 flex-col gap-2 p-4">
+                <div className="flex min-w-0 flex-1 flex-col gap-2 p-4">
                   {row.topic ? (
                     <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
                       {row.topic}
                     </p>
                   ) : null}
-                  <h2 className="font-display text-base font-bold capitalize leading-snug text-slate-900">
+                  <h2
+                    className="min-w-0 truncate font-display text-base font-bold capitalize leading-snug text-slate-900"
+                    title={row.title}
+                  >
                     {row.title}
                   </h2>
-                  <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="mt-auto flex flex-wrap items-center gap-3 pt-2">
                     <div className="min-w-0 text-xs text-slate-600">
                       <span className="font-semibold text-slate-500">
                         Published:
@@ -361,12 +475,6 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                         "—"
                       )}
                     </div>
-                    <Link
-                      href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
-                      className="rounded-lg bg-[#84c126] px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:bg-[#6fa020]"
-                    >
-                      Edit
-                    </Link>
                   </div>
                 </div>
               </article>

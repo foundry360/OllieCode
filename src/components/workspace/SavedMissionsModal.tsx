@@ -135,19 +135,19 @@ function MissionCard({
               </span>
             ) : null}
           </div>
-          <div className="flex flex-col gap-1 px-3.5 py-3">
-            <span className="font-display text-base font-bold leading-snug text-[#111827]">
+          <div className="flex min-w-0 flex-col gap-1 px-3.5 py-3">
+            <span
+              className="block min-w-0 truncate font-display text-base font-bold leading-snug text-[#111827]"
+              title={name}
+            >
               {name}
             </span>
             {metaLine ? (
               <span className="text-xs font-medium text-[#9ca3af]">{metaLine}</span>
             ) : null}
-            <span className="text-xs text-[#6b7280]">
+            <span className="text-xs font-semibold text-[#64748b]">
               {savedAtIso ? (
-                <>
-                  <span className="font-semibold text-[#64748b]">Saved: </span>
-                  {formatSavedAt(savedAtIso)}
-                </>
+                formatSavedAt(savedAtIso)
               ) : (
                 <span className="text-[#9ca3af]">No saves yet</span>
               )}

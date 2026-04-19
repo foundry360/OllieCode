@@ -43,6 +43,12 @@ export type StageActor = {
    * When set, overrides {@link pointTowardsLateralPx} for the block-driven custom aim.
    */
   pointTowardsLateralPct?: number;
+  /**
+   * Scratch-style stage position (−100…100) for editor layout — set when the learner drags
+   * the sprite on the canvas; used to pre-fill “go to x: y:” and kept in project saves.
+   */
+  stageXPct?: number;
+  stageYPct?: number;
 };
 
 /** Legacy saves used `name` for sprite label; map to {@link StageActor.label}. */
@@ -56,6 +62,8 @@ export function normalizeStageActor(
     pointTowardsForwardPx?: number;
     pointTowardsLateralPx?: number;
     pointTowardsLateralPct?: number;
+    stageXPct?: number;
+    stageYPct?: number;
   },
 ): StageActor {
   const label = raw.label ?? raw.name ?? "Sprite";
@@ -90,6 +98,8 @@ export function normalizeStageActor(
     ...(typeof raw.pointTowardsLateralPct === "number"
       ? { pointTowardsLateralPct: raw.pointTowardsLateralPct }
       : {}),
+    ...(typeof raw.stageXPct === "number" ? { stageXPct: raw.stageXPct } : {}),
+    ...(typeof raw.stageYPct === "number" ? { stageYPct: raw.stageYPct } : {}),
   };
 }
 
@@ -144,6 +154,10 @@ export type OllieAction =
   /** Speech bubble with text from Text / Join / variables / math at Run time. */
   | { type: "sayDynamic"; expr: SerializedStringExpr; ms: number }
   | { type: "think"; text: string; ms: number }
+  | {
+      type: "setSpeechBubbleColor";
+      expr: SerializedColorExpr;
+    }
   | { type: "costume"; id: OllieSpriteCostumeId }
   /** Use a user-painted / uploaded image URL from the project (“My Sprite” in switch costume). */
   | { type: "setPaintedCostumeUrl"; url: string }
@@ -169,6 +183,8 @@ export type OllieAction =
   | { type: "stop"; scope: "all" | "script" }
   /** Remove this clone from the stage and end this script (no-op on the main sprite). */
   | { type: "deleteThisClone" }
+  /** Spawn a copy of this sprite and run each “when I start as a clone” stack for it. */
+  | { type: "createClone" }
   /**
    * Scratch-style timer — resets with {@link OllieAction} `resetTimer` or at the start of a run.
    */
@@ -216,6 +232,10 @@ export type OllieAction =
       body: OllieAction[];
     }
   /**
+   * Scratch-style `wait until` — blocks until a sensing condition becomes true (re-evaluated each frame).
+   */
+  | { type: "waitUntilDynamic"; cond: SerializedBoolExpr }
+  /**
    * Scratch-style `forever` — body runs each frame until Run stops (not unrolled at compile time).
    */
   | { type: "foreverLoop"; body: OllieAction[] }
@@ -245,7 +265,11 @@ export type SerializedBoolExpr =
   | { k: "keyDown"; keyId: string }
   | { k: "touchEdge" }
   | { k: "touchMouse" }
+  /** True when this sprite’s hit circle overlaps another actor’s (main sprites by id). */
+  | { k: "touchSprite"; actorId: string }
   | { k: "mouseDown" }
+  /** True when this sprite is a runtime clone (not the main actor). */
+  | { k: "isClone" }
   /**
    * Blockly `math_number_property` (even / odd / prime / …) — evaluated as true/false at runtime.
    */
@@ -295,6 +319,25 @@ export type SerializedNumExpr =
   | { k: "var"; id: string; name?: string };
 
 /**
+ * Blockly color reporters (`colour_picker`, `colour_rgb`, etc.) for runtime evaluation.
+ */
+export type SerializedColorExpr =
+  | { k: "pick"; hex: string }
+  | { k: "rand" }
+  | {
+      k: "rgb";
+      r: SerializedNumExpr;
+      g: SerializedNumExpr;
+      b: SerializedNumExpr;
+    }
+  | {
+      k: "blend";
+      c1: SerializedColorExpr;
+      c2: SerializedColorExpr;
+      ratio: SerializedNumExpr;
+    };
+
+/**
  * String for dynamic `say` / ask: literals, join, variables, or numeric expression.
  */
 export type SerializedStringExpr =
@@ -313,6 +356,8 @@ export type SpriteScriptPlan = {
   stageClickScripts: OllieAction[][];
   backdropScripts: { sceneId: OllieSceneId; actions: OllieAction[] }[];
   broadcastScripts: { message: string; actions: OllieAction[] }[];
+  /** Each `when I start as a clone` stack (runs when `create clone` spawns a copy). */
+  cloneScripts: OllieAction[][];
 };
 
 /** Adventures the user has saved work for (merged across saves / devices via project JSON). */

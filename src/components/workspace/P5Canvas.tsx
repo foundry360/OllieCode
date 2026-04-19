@@ -4,6 +4,7 @@ import {
   forwardRef,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
 } from "react";
 import type p5Types from "p5";
@@ -11,6 +12,7 @@ import type { OllieAction, SpriteScriptPlan } from "@/types/ollie";
 import {
   assignRunVar,
   evalSerializedBool,
+  evalSerializedColorExpr,
   evalSerializedNum,
   evalSerializedString,
   readVarValue,
@@ -53,6 +55,9 @@ export type StageActorPaint = {
   pointTowardsForwardPx?: number;
   pointTowardsLateralPx?: number;
   pointTowardsLateralPct?: number;
+  /** Scratch coords from last drag or project load — syncs sprite on the stage. */
+  stageXPct?: number;
+  stageYPct?: number;
 };
 
 export type P5CanvasHandle = {
@@ -64,10 +69,22 @@ export type P5CanvasHandle = {
   stopRun: () => void;
   resetSprite: () => void;
   /**
+   * Before Run: place sprites on default stage slots so motion blocks (e.g. “go to x: y:”)
+   * move the character from a clear starting point. Editor drag positions stay in project state.
+   */
+  resetSpriteForRun: () => void;
+  /**
    * Stop sounds, clear key / stage / backdrop session hooks from the last Run, and reset
    * sprites on the stage so the next Run starts from the same visual state as the first Run.
    */
   resetRunToBeginning: () => void;
+  /**
+   * Current Scratch-style position (−100…100) for a sprite from its canvas center
+   * — used to pre-fill “go to x: y:” from the live stage.
+   */
+  getScratchCoordsForActor: (
+    actorId: string,
+  ) => { xPct: number; yPct: number } | null;
 };
 
 export type P5CanvasProps = {
@@ -99,6 +116,15 @@ export type P5CanvasProps = {
     >,
   ) => void;
   /**
+   * After the learner drags a sprite on the stage (when not running), persist Scratch coords
+   * so saves and “go to x: y:” stay aligned.
+   */
+  onActorStagePositionChange?: (
+    actorId: string,
+    stageXPct: number,
+    stageYPct: number,
+  ) => void;
+  /**
    * When set, `ask` / number prompts use this instead of `window.prompt`
    * (e.g. in-app modal over the stage).
    */
@@ -123,7 +149,16 @@ type Sprite = {
   visible: boolean;
   /** Runtime clones only — used by “delete this clone”. */
   isClone?: boolean;
-  bubble?: { text: string; kind: "say" | "think"; until: number };
+  /** Actor id whose Blockly plan applies (original sprite); set on clones for “create clone”. */
+  planSourceActorId?: string;
+  /** Fill for say/think bubbles (`ollie_set_speech_bubble_color`); default white. */
+  speechBubbleFillHex?: string;
+  bubble?: {
+    text: string;
+    kind: "say" | "think";
+    until: number;
+    fillHex?: string;
+  };
   pointTowardsAimOrigin?: PointTowardsAimOrigin;
   pointTowardsForwardPx?: number;
   pointTowardsLateralPx?: number;
@@ -189,6 +224,8 @@ const MAX_SPRITE_SIZE_PCT = 500;
 const MAX_REPEAT_DYNAMIC_ITER = 2_000;
 /** Cap for `while` / `until` with live conditions. */
 const MAX_DYNAMIC_WHILE_ITER = 10_000;
+/** Upper bound on `wait until` loop iterations (re-checks each animation frame). */
+const MAX_WAIT_UNTIL_ITER = 1_000_000;
 
 /**
  * Use capture so Run key handlers run before Blockly (which otherwise consumes arrow keys
@@ -406,8 +443,6 @@ function resolveMouseOnStagePx(
 }
 
 /** Debug session: cap aim-resolve logs (see agent instrumentation). */
-let applyAimDbgLogCount = 0;
-let actorsRunDbgLogCount = 0;
 
 /** Squared distance below this → skip heading update (atan2 is unstable on the pivot). Keep tiny so tracking doesn’t trail. */
 const AIM_MOUSE_DEAD_ZONE_SQ = 1;
@@ -431,37 +466,6 @@ function applyHeadingTowardsResolvedMouse(
   if (!mouse) return;
   const { mx, my } = mouse;
   const { fwd, lat } = resolvePointTowardFwdLat(s);
-  // #region agent log
-  if (applyAimDbgLogCount < 8) {
-    applyAimDbgLogCount += 1;
-    fetch(
-      "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Debug-Session-Id": "3a7dbb",
-        },
-        body: JSON.stringify({
-          sessionId: "3a7dbb",
-          runId: "pre-fix",
-          hypothesisId: "H3",
-          location: "P5Canvas.tsx:applyHeadingTowardsResolvedMouse",
-          message: "resolved aim offsets",
-          data: {
-            aimOrigin: s.pointTowardsAimOrigin,
-            lateralPct: s.pointTowardsLateralPct,
-            lateralPx: s.pointTowardsLateralPx,
-            fwd,
-            lat,
-            fwdLatZero: fwd === 0 && lat === 0,
-          },
-          timestamp: Date.now(),
-        }),
-      },
-    ).catch(() => {});
-  }
-  // #endregion
   const aimPoint = (hDeg: number) => {
     const h = normHeading(hDeg);
     const rad = (h * Math.PI) / 180;
@@ -651,7 +655,8 @@ function drawSceneLayers(
 
 /** Matches Blockly event key dropdown values (`ollie_event_key_pressed`). */
 function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
-  switch (keyId) {
+  const id = keyId.trim().toLowerCase();
+  switch (id) {
     case "space":
       return e.code === "Space" || e.key === " ";
     case "up":
@@ -662,10 +667,14 @@ function keyEventMatches(keyId: string, e: KeyboardEvent): boolean {
       return e.code === "ArrowLeft" || e.key === "ArrowLeft";
     case "right":
       return e.code === "ArrowRight" || e.key === "ArrowRight";
-    default:
-      return (
-        e.key.length === 1 && e.key.toLowerCase() === keyId.toLowerCase()
-      );
+    default: {
+      if (id.length !== 1) return false;
+      const charMatch = e.key.length === 1 && e.key.toLowerCase() === id;
+      /** Toolbox letters a–z — `e.code` is stable when `e.key` is wrong (IME, some WebViews). */
+      const physicalLetter =
+        /^[a-z]$/.test(id) && e.code === `Key${id.toUpperCase()}`;
+      return charMatch || physicalLetter;
+    }
   }
 }
 
@@ -677,6 +686,8 @@ function keyIdFromKeyboardEvent(e: KeyboardEvent): string | null {
   if (e.code === "ArrowLeft" || e.key === "ArrowLeft") return "left";
   if (e.code === "ArrowRight" || e.key === "ArrowRight") return "right";
   if (e.key.length === 1) return e.key.toLowerCase();
+  const m = /^Key([A-Z])$/.exec(e.code);
+  if (m) return m[1]!.toLowerCase();
   return null;
 }
 
@@ -764,6 +775,84 @@ function drawSpriteForCostume(
   }
 }
 
+/** Rough hit radius (px) for drag picking — circle around costume center. */
+function spriteHitRadiusPx(
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): number {
+  const sc = spriteSizeScale(s);
+  const painted = s.paintedCostumeSrc?.trim();
+  if (painted) {
+    const img = images.get(painted);
+    if (img && img.width > 0) {
+      const b = paintedContentBoundsForKey(painted, img);
+      const { w, h } = paintedCostumeFitInBox(
+        b.sw,
+        b.sh,
+        PAINTED_COSTUME_FIT_BOX_PX,
+      );
+      return Math.hypot(w / 2, h / 2) * sc;
+    }
+    return 34 * sc;
+  }
+  const def =
+    getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
+  const img = images.get(def.src);
+  if (img && img.width > 0) {
+    const cols = def.spriteSheet?.columns ?? 1;
+    const rows = def.spriteSheet?.rows ?? 1;
+    const cellW = Math.floor(img.width / cols);
+    const cellH = Math.floor(img.height / rows);
+    const w = def.width;
+    const h = w * (cellH / cellW);
+    return Math.hypot(w / 2, h / 2) * sc;
+  }
+  return 34 * sc;
+}
+
+/**
+ * Circle–circle overlap for “touching [sprite]?” — drag picking uses full costume bounds;
+ * those radii are huge for painted PNGs, so uncapped circles read as overlapping from far away.
+ * Use **small** effective radii for sprite–sprite sensing so “touching” ≈ visible contact.
+ */
+function spritesTouchingForSensing(
+  a: Sprite,
+  b: Sprite,
+  images: Map<string, p5Types.Image>,
+  cw: number,
+  ch: number,
+): boolean {
+  let r1 = spriteHitRadiusPx(a, images);
+  let r2 = spriteHitRadiusPx(b, images);
+  const stageMin = Math.min(Math.max(1, cw), Math.max(1, ch));
+  /** ~3.5% of shorter side, 10–22px — tight vs drag hit areas (Scratch-like visual overlap). */
+  const cap = Math.max(10, Math.min(22, stageMin * 0.035));
+  r1 = Math.min(r1, cap);
+  r2 = Math.min(r2, cap);
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy <= (r1 + r2) * (r1 + r2);
+}
+
+function pickDraggableActorIdAt(
+  mx: number,
+  my: number,
+  actorsList: StageActorPaint[],
+  map: Map<string, Sprite>,
+  images: Map<string, p5Types.Image>,
+): string | null {
+  for (let i = actorsList.length - 1; i >= 0; i--) {
+    const id = actorsList[i]!.id;
+    const s = map.get(id);
+    if (!s || s.visible === false) continue;
+    const r = spriteHitRadiusPx(s, images);
+    const dx = mx - s.x;
+    const dy = my - s.y;
+    if (dx * dx + dy * dy <= r * r) return id;
+  }
+  return null;
+}
+
 export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
   function P5Canvas(
     {
@@ -774,6 +863,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       onSceneChange,
       onActorCostumeChange,
       onActorPointTowardAimChange,
+      onActorStagePositionChange,
       requestNumberInput,
     },
     ref,
@@ -781,6 +871,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const p5Ref = useRef<p5Types | null>(null);
     const spritesByIdRef = useRef<Map<string, Sprite>>(new Map());
+    /** Latest costume images from the p5 draw loop — used for “touching [sprite]?” radii. */
+    const stageImagesForSensingRef = useRef<Map<string, p5Types.Image>>(
+      new Map(),
+    );
     const normalizedLayers = normalizeSceneLayerIdsFromPayload(
       sceneLayerIds,
       undefined,
@@ -803,6 +897,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     onActorPointTowardAimChangeRef.current = onActorPointTowardAimChange;
     actorsRef.current = actors;
 
+    const onActorStagePositionChangeRef = useRef(onActorStagePositionChange);
+    onActorStagePositionChangeRef.current = onActorStagePositionChange;
+    const dragActorIdRef = useRef<string | null>(null);
+    const dragOffsetRef = useRef({ dx: 0, dy: 0 });
+
     const requestNumberInputRef = useRef<
       typeof requestNumberInput | undefined
     >(requestNumberInput);
@@ -821,7 +920,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       runSequence: (spriteId: string, actions: OllieAction[]) => Promise<void>;
     } | null>(null);
     const stageClickHandlerRef = useRef<(() => void) | null>(null);
-    const keyDownHandlerRef = useRef<((e: KeyboardEvent) => void) | null>(
+    /**
+     * Scratch-style “when key pressed” scripts. One window {@link keydown} listener is installed
+     * on mount (capture phase) so it runs before Blockly’s injectionDiv handler; this ref holds the
+     * active handler while a run session is live.
+     */
+    const keyScriptDispatchRef = useRef<((e: KeyboardEvent) => void) | null>(
       null,
     );
     /**
@@ -866,6 +970,22 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       return () => document.removeEventListener("pointermove", onMove);
     }, []);
 
+    /** Layout: register before paint so we run before later window listeners in the same capture phase. */
+    useLayoutEffect(() => {
+      const onWindowKeyDown = (e: KeyboardEvent) => {
+        keyScriptDispatchRef.current?.(e);
+      };
+      window.addEventListener("keydown", onWindowKeyDown, {
+        capture: true,
+        passive: false,
+      });
+      return () => {
+        window.removeEventListener("keydown", onWindowKeyDown, {
+          capture: true,
+        });
+      };
+    }, []);
+
     useEffect(() => {
       currentSceneRef.current = topSceneId;
     }, [topSceneId]);
@@ -897,6 +1017,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       const ids = new Set(actors.map((a) => a.id));
       for (const id of [...map.keys()]) {
         if (!ids.has(id)) {
+          if (id.startsWith("ollie-clone-") && runningRef.current) continue;
           map.delete(id);
           headingLegacyMigratedRef.current.delete(id);
         }
@@ -908,34 +1029,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           existing.sizePct = existing.sizePct ?? 100;
           existing.visible = existing.visible !== false;
           existing.paintedCostumeSrc = nextPainted;
-          // #region agent log
-          if (runningRef.current && actorsRunDbgLogCount < 12) {
-            actorsRunDbgLogCount += 1;
-            fetch(
-              "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "X-Debug-Session-Id": "3a7dbb",
-                },
-                body: JSON.stringify({
-                  sessionId: "3a7dbb",
-                  runId: "pre-fix",
-                  hypothesisId: "H4",
-                  location: "P5Canvas.tsx:actors-sync",
-                  message: "actors effect while run (no aim stomp)",
-                  data: {
-                    actorId: a.id,
-                    propPct: a.pointTowardsLateralPct,
-                    spritePct: existing.pointTowardsLateralPct,
-                  },
-                  timestamp: Date.now(),
-                }),
-              },
-            ).catch(() => {});
-          }
-          // #endregion
           /**
            * `runningRef` is set true synchronously at the start of `runProjectPlans`, before any
            * `await`. `programRunning` / `pauseActorCostumePropSync` only updates after React commits,
@@ -959,7 +1052,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             headingLegacyMigratedRef.current.add(a.id);
           }
         } else {
-          const pos = layoutSlot(i, actors.length, w, h);
+          const pos =
+            typeof a.stageXPct === "number" &&
+            typeof a.stageYPct === "number"
+              ? scratchStageToPixel(a.stageXPct, a.stageYPct, w, h)
+              : layoutSlot(i, actors.length, w, h);
           map.set(a.id, {
             x: pos.x,
             y: pos.y,
@@ -979,7 +1076,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     }, [actors, pauseActorCostumePropSync]);
 
     useImperativeHandle(ref, () => {
-      const resetSpriteImpl = () => {
+      /**
+       * `editor` — use saved drag / project coords when set (load + between edits).
+       * `runHome` — always use default slots so “go to” / motion blocks visibly move the sprite.
+       */
+      const resetSpriteImpl = (placement: "editor" | "runHome" = "editor") => {
         const el = containerRef.current;
         const w = Math.min(
           CANVAS_MAX_PX,
@@ -994,11 +1095,18 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         list.forEach((a, i) => {
           const s = map.get(a.id);
           if (!s) return;
-          const pos = layoutSlot(i, list.length, w, h);
+          const pos =
+            placement === "runHome"
+              ? layoutSlot(i, list.length, w, h)
+              : typeof a.stageXPct === "number" &&
+                  typeof a.stageYPct === "number"
+                ? scratchStageToPixel(a.stageXPct, a.stageYPct, w, h)
+                : layoutSlot(i, list.length, w, h);
           s.x = pos.x;
           s.y = pos.y;
           s.heading = DEFAULT_SPRITE_HEADING_DEG;
           s.bubble = undefined;
+          s.speechBubbleFillHex = undefined;
           s.costume = a.costumeId;
           s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
           s.sheetFrame = defaultSheetFrameForCostumeId(a.costumeId);
@@ -1016,14 +1124,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         plans: { spriteId: string; plan: SpriteScriptPlan }[],
       ) {
         if (runningRef.current) return { aborted: false };
-        if (keyDownHandlerRef.current) {
-          window.removeEventListener(
-            "keydown",
-            keyDownHandlerRef.current,
-            KEY_LISTENER_CAPTURE,
-          );
-          keyDownHandlerRef.current = null;
-        }
+        keyScriptDispatchRef.current = null;
         sessionActiveRef.current = false;
         backdropPackRef.current = null;
         stageClickHandlerRef.current = null;
@@ -1032,6 +1133,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         abortRunRef.current = false;
         const runVars: Record<string, number> = Object.create(null);
         let broadcastDepth = 0;
+        let cloneSpawnSeq = 0;
         let stopAllScripts = false;
 
         const shouldCancel = () => {
@@ -1088,10 +1190,12 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             mouseX = p.mouseX;
             mouseY = p.mouseY;
           }
+          const imgs = stageImagesForSensingRef.current;
           return {
             cw,
             ch,
             spriteId: sid,
+            isCloneSprite: sprite?.isClone === true,
             spriteX: sprite?.x ?? 0,
             spriteY: sprite?.y ?? 0,
             mouseX,
@@ -1100,6 +1204,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             keysDown: keysHeldRef.current,
             timerSecs: (performance.now() - timerStartMsRef.current) / 1000,
             vars: runVars,
+            touchingSprite: (otherActorId: string) => {
+              if (!otherActorId || otherActorId === sid) return false;
+              const self = spritesByIdRef.current.get(sid);
+              const other = spritesByIdRef.current.get(otherActorId);
+              if (!self || !other || other.visible === false) return false;
+              return spritesTouchingForSensing(self, other, imgs, cw, ch);
+            },
           };
         }
 
@@ -1219,6 +1330,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               const pos = scratchStageToPixel(nx, yPct, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
+              /**
+               * Instant motion in a repeat loop otherwise runs in one JS turn — p5 never draws
+               * between steps, so “jump up then down” looks like no movement (net Δ often 0).
+               */
+              await waitNextAnimationFrame(shouldCancel);
             } else if (a.type === "changeYPctBy") {
               const { xPct, yPct } = pixelToScratchStage(
                 s.x,
@@ -1230,6 +1346,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               const pos = scratchStageToPixel(xPct, ny, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
+              await waitNextAnimationFrame(shouldCancel);
             } else if (a.type === "glideTo") {
               const { x: tx, y: ty } = scratchStageToPixel(
                 a.xPct,
@@ -1274,31 +1391,40 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 s.heading = normHeading(s.heading + 180);
               }
             } else if (a.type === "say") {
+              const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text: a.text,
                 kind: "say",
                 until: Date.now() + a.ms,
+                ...(fillHex ? { fillHex } : {}),
               };
               await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "sayDynamic") {
               const ctx = buildSensingCtx(spriteId);
               const text = evalSerializedString(a.expr, ctx).slice(0, 120);
+              const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text,
                 kind: "say",
                 until: Date.now() + a.ms,
+                ...(fillHex ? { fillHex } : {}),
               };
               await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "think") {
+              const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text: a.text,
                 kind: "think",
                 until: Date.now() + a.ms,
+                ...(fillHex ? { fillHex } : {}),
               };
               await waitMs(a.ms, shouldCancel);
               s.bubble = undefined;
+            } else if (a.type === "setSpeechBubbleColor") {
+              const ctx = buildSensingCtx(spriteId);
+              s.speechBubbleFillHex = evalSerializedColorExpr(a.expr, ctx);
             } else if (a.type === "changeSize") {
               const cur = s.sizePct ?? 100;
               s.sizePct = Math.min(
@@ -1314,33 +1440,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               s.visible = a.visible;
             } else if (a.type === "setPointTowardAim") {
               s.pointTowardsAimOrigin = a.origin;
-              // #region agent log
-              fetch(
-                "http://127.0.0.1:7833/ingest/e924e2ad-468e-412a-bdf8-e4b573ccccd5",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    "X-Debug-Session-Id": "3a7dbb",
-                  },
-                  body: JSON.stringify({
-                    sessionId: "3a7dbb",
-                    runId: "pre-fix",
-                    hypothesisId: "H2",
-                    location: "P5Canvas.tsx:setPointTowardAim",
-                    message: "runtime setPointTowardAim action",
-                    data: {
-                      origin: a.origin,
-                      lateralPct: a.lateralPct,
-                      lateralPctType: typeof a.lateralPct,
-                      forwardPx: a.forwardPx,
-                      lateralPx: a.lateralPx,
-                    },
-                    timestamp: Date.now(),
-                  }),
-                },
-              ).catch(() => {});
-              // #endregion
               if (a.origin === "custom") {
                 if (typeof a.lateralPct === "number") {
                   s.pointTowardsLateralPct = a.lateralPct;
@@ -1519,6 +1618,18 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 await runSequenceForSprite(spriteId, a.body);
                 w += 1;
               }
+            } else if (a.type === "waitUntilDynamic") {
+              // One frame before first check: other green-flag scripts can advance, and
+              // sensing matches the first painted frame after Run (Scratch-like ordering).
+              await waitNextAnimationFrame(shouldCancel);
+              let w = 0;
+              while (w < MAX_WAIT_UNTIL_ITER) {
+                if (shouldCancel()) return;
+                const ctx = buildSensingCtx(spriteId);
+                if (evalSerializedBool(a.cond, ctx)) break;
+                await waitNextAnimationFrame(shouldCancel);
+                w += 1;
+              }
             } else if (a.type === "foreverLoop") {
               while (!shouldCancel()) {
                 await runSequenceForSprite(spriteId, a.body);
@@ -1538,6 +1649,33 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 return;
               }
               return;
+            } else if (a.type === "createClone") {
+              const MAX_RUNTIME_CLONES = 64;
+              const nClones = [...spritesByIdRef.current.keys()].filter((id) =>
+                id.startsWith("ollie-clone-"),
+              ).length;
+              if (nClones >= MAX_RUNTIME_CLONES) continue;
+              const parentTemplate =
+                s.planSourceActorId ??
+                (spriteId.startsWith("ollie-clone-") ? null : spriteId);
+              if (!parentTemplate) continue;
+              const bundle = plans.find((p) => p.spriteId === parentTemplate);
+              const chains = bundle?.plan.cloneScripts ?? [];
+              if (chains.length === 0) continue;
+              cloneSpawnSeq += 1;
+              const newId = `ollie-clone-${parentTemplate}-${cloneSpawnSeq}`;
+              const copy: Sprite = {
+                ...s,
+                isClone: true,
+                planSourceActorId: parentTemplate,
+                x: Math.min(cw - 1, Math.max(1, s.x + 10)),
+                y: Math.min(ch - 1, Math.max(1, s.y + 10)),
+                bubble: undefined,
+              };
+              spritesByIdRef.current.set(newId, copy);
+              for (const chain of chains) {
+                void runSequenceForSprite(newId, chain);
+              }
             } else if (a.type === "deleteThisClone") {
               if (s.isClone) {
                 spritesByIdRef.current.delete(spriteId);
@@ -1563,12 +1701,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           }
           if (handled) e.stopPropagation();
         };
-        keyDownHandlerRef.current = keyHandler;
-        window.addEventListener(
-          "keydown",
-          keyHandler,
-          KEY_LISTENER_CAPTURE,
-        );
+        keyScriptDispatchRef.current = keyHandler;
 
         stageClickHandlerRef.current = () => {
           for (const { spriteId: sid, plan } of plans) {
@@ -1601,29 +1734,33 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           aborted = abortRunRef.current;
           abortRunRef.current = false;
           runningRef.current = false;
+          if (aborted) {
+            keyScriptDispatchRef.current = null;
+          }
         }
         return { aborted };
       },
       stopRun() {
         abortRunRef.current = true;
+        keyScriptDispatchRef.current = null;
         stopOllieSounds();
       },
-      resetSprite: resetSpriteImpl,
+      resetSprite: () => resetSpriteImpl("editor"),
+      resetSpriteForRun: () => resetSpriteImpl("runHome"),
       resetRunToBeginning() {
         abortRunRef.current = true;
         stopOllieSounds();
-        if (keyDownHandlerRef.current) {
-          window.removeEventListener(
-            "keydown",
-            keyDownHandlerRef.current,
-            KEY_LISTENER_CAPTURE,
-          );
-          keyDownHandlerRef.current = null;
-        }
+        keyScriptDispatchRef.current = null;
         sessionActiveRef.current = false;
         backdropPackRef.current = null;
         stageClickHandlerRef.current = null;
-        resetSpriteImpl();
+        resetSpriteImpl("runHome");
+      },
+      getScratchCoordsForActor(actorId: string) {
+        const pInst = p5Ref.current;
+        const s = spritesByIdRef.current.get(actorId);
+        if (!pInst || !s || pInst.width <= 0) return null;
+        return pixelToScratchStage(s.x, s.y, pInst.width, pInst.height);
       },
     };
     });
@@ -1658,7 +1795,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             map.clear();
             const list = actorsRef.current;
             list.forEach((a, i) => {
-              const pos = layoutSlot(i, list.length, cw, ch);
+              const pos =
+                typeof a.stageXPct === "number" &&
+                typeof a.stageYPct === "number"
+                  ? scratchStageToPixel(a.stageXPct, a.stageYPct, cw, ch)
+                  : layoutSlot(i, list.length, cw, ch);
               map.set(a.id, {
                 x: pos.x,
                 y: pos.y,
@@ -1677,6 +1818,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           };
 
           p.draw = () => {
+            stageImagesForSensingRef.current = stageImages;
             const layers = latestSceneLayerIdsRef.current;
             const sid =
               layers[layers.length - 1] ?? DEFAULT_SCENE_ID;
@@ -1685,8 +1827,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             if (sceneMeta.grid) {
               drawDotsBackground(p);
             }
-            const order = actorsRef.current.map((a) => a.id);
-            for (const id of order) {
+            const actorIds = actorsRef.current.map((a) => a.id);
+            const cloneIds = [...spritesByIdRef.current.keys()].filter(
+              (id) =>
+                id.startsWith("ollie-clone-") && !actorIds.includes(id),
+            );
+            const drawOrder = [...actorIds, ...cloneIds];
+            for (const id of drawOrder) {
               const s = spritesByIdRef.current.get(id);
               if (!s || s.visible === false) continue;
               ensurePaintedCostumeImage(
@@ -1704,14 +1851,21 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               drawSpriteForCostume(p, s, stageImages);
               p.pop();
             }
-            for (const id of order) {
+            for (const id of drawOrder) {
               const s = spritesByIdRef.current.get(id);
               if (
                 s?.visible !== false &&
                 s?.bubble &&
                 Date.now() < s.bubble.until
               ) {
-                drawBubble(p, s.x, s.y, s.bubble.text, s.bubble.kind);
+                drawBubble(
+                  p,
+                  s.x,
+                  s.y,
+                  s.bubble.text,
+                  s.bubble.kind,
+                  s.bubble.fillHex,
+                );
               }
             }
           };
@@ -1727,7 +1881,58 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           };
 
           p.mousePressed = () => {
-            stageClickHandlerRef.current?.();
+            if (runningRef.current) {
+              stageClickHandlerRef.current?.();
+              return;
+            }
+            const list = actorsRef.current;
+            const map = spritesByIdRef.current;
+            const id = pickDraggableActorIdAt(
+              p.mouseX,
+              p.mouseY,
+              list,
+              map,
+              stageImages,
+            );
+            if (!id) return;
+            const s = map.get(id);
+            if (!s) return;
+            dragActorIdRef.current = id;
+            dragOffsetRef.current = {
+              dx: s.x - p.mouseX,
+              dy: s.y - p.mouseY,
+            };
+          };
+
+          p.mouseDragged = () => {
+            const id = dragActorIdRef.current;
+            if (!id || runningRef.current) return;
+            const s = spritesByIdRef.current.get(id);
+            if (!s) return;
+            let nx = p.mouseX + dragOffsetRef.current.dx;
+            let ny = p.mouseY + dragOffsetRef.current.dy;
+            const m = 2;
+            nx = Math.min(p.width - m, Math.max(m, nx));
+            ny = Math.min(p.height - m, Math.max(m, ny));
+            s.x = nx;
+            s.y = ny;
+          };
+
+          p.mouseReleased = () => {
+            const id = dragActorIdRef.current;
+            if (!id) return;
+            dragActorIdRef.current = null;
+            const s = spritesByIdRef.current.get(id);
+            if (!s || p.width <= 0) return;
+            const { xPct, yPct } = pixelToScratchStage(
+              s.x,
+              s.y,
+              p.width,
+              p.height,
+            );
+            const xr = Math.round(Math.min(100, Math.max(-100, xPct)));
+            const yr = Math.round(Math.min(100, Math.max(-100, yPct)));
+            onActorStagePositionChangeRef.current?.(id, xr, yr);
           };
         };
 
@@ -1786,6 +1991,7 @@ function drawBubble(
   y: number,
   text: string,
   kind: "say" | "think",
+  fillHex?: string,
 ) {
   p.push();
   p.resetMatrix();
@@ -1804,7 +2010,15 @@ function drawBubble(
   let by = y - h - 36;
   bx = Math.max(8, Math.min(bx, p.width - w - 8));
   by = Math.max(8, by);
-  p.fill(255);
+  let br = 255;
+  let bg = 255;
+  let bb = 255;
+  if (fillHex && /^#[0-9a-fA-F]{6}$/.test(fillHex)) {
+    br = parseInt(fillHex.slice(1, 3), 16);
+    bg = parseInt(fillHex.slice(3, 5), 16);
+    bb = parseInt(fillHex.slice(5, 7), 16);
+  }
+  p.fill(br, bg, bb);
   p.stroke(30);
   p.strokeWeight(1.5);
   const ctx = p.drawingContext as CanvasRenderingContext2D;
@@ -1813,7 +2027,12 @@ function drawBubble(
   }
   p.rect(bx, by, w, h, 8);
   ctx.setLineDash([]);
-  p.fill(17, 24, 39);
+  const lum = 0.2126 * br + 0.7152 * bg + 0.0722 * bb;
+  if (lum > 186) {
+    p.fill(17, 24, 39);
+  } else {
+    p.fill(255, 255, 255);
+  }
   p.noStroke();
   let ly = by + pad;
   for (const line of lines) {

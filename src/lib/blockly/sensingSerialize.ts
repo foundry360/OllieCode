@@ -1,6 +1,8 @@
 import type { Block } from "blockly/core";
+import { TOUCHING_SPRITE_FIELD_PREFIX } from "@/lib/blockly/spriteTouchingDropdownRegistry";
 import type {
   SerializedBoolExpr,
+  SerializedColorExpr,
   SerializedListExpr,
   SerializedNumExpr,
   SerializedStringExpr,
@@ -217,6 +219,13 @@ export function serializeBoolExpr(block: Block | null): SerializedBoolExpr | nul
     case "ollie_sensing_touching": {
       const v = String(block.getFieldValue("TOUCHING") ?? "MOUSE");
       if (v === "EDGE") return { k: "touchEdge" };
+      if (v === "MOUSE") return { k: "touchMouse" };
+      if (v.startsWith(TOUCHING_SPRITE_FIELD_PREFIX)) {
+        return {
+          k: "touchSprite",
+          actorId: v.slice(TOUCHING_SPRITE_FIELD_PREFIX.length),
+        };
+      }
       return { k: "touchMouse" };
     }
     case "ollie_sensing_key_pressed": {
@@ -225,6 +234,8 @@ export function serializeBoolExpr(block: Block | null): SerializedBoolExpr | nul
     }
     case "ollie_sensing_mouse_down":
       return { k: "mouseDown" };
+    case "ollie_sensing_is_clone":
+      return { k: "isClone" };
     case "math_number_property": {
       const property = String(block.getFieldValue("PROPERTY") ?? "");
       const n = serializeNumExpr(block.getInputTargetBlock("NUMBER_TO_CHECK"));
@@ -371,6 +382,37 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       const ref = serializedVariableRef(block);
       if (!ref) return null;
       return { k: "var", id: ref.id, ...(ref.name ? { name: ref.name } : {}) };
+    }
+    default:
+      return null;
+  }
+}
+
+/** Blockly color reporters → serialized form for {@link evalSerializedColorExpr} at Run time. */
+export function serializeColorExpr(
+  block: Block | null,
+): SerializedColorExpr | null {
+  if (!block) return null;
+  switch (block.type) {
+    case "colour_picker": {
+      const raw = String(block.getFieldValue("COLOUR") ?? "#ffffff");
+      return { k: "pick", hex: raw };
+    }
+    case "colour_random":
+      return { k: "rand" };
+    case "colour_rgb": {
+      const r = serializeNumExpr(block.getInputTargetBlock("RED"));
+      const g = serializeNumExpr(block.getInputTargetBlock("GREEN"));
+      const b = serializeNumExpr(block.getInputTargetBlock("BLUE"));
+      if (!r || !g || !b) return null;
+      return { k: "rgb", r, g, b };
+    }
+    case "colour_blend": {
+      const c1 = serializeColorExpr(block.getInputTargetBlock("COLOUR1"));
+      const c2 = serializeColorExpr(block.getInputTargetBlock("COLOUR2"));
+      const ratio = serializeNumExpr(block.getInputTargetBlock("RATIO"));
+      if (!c1 || !c2 || !ratio) return null;
+      return { k: "blend", c1, c2, ratio };
     }
     default:
       return null;
@@ -656,6 +698,8 @@ export type SensingEvalContext = {
   cw: number;
   ch: number;
   spriteId: string;
+  /** True when the running sprite was spawned by `create clone` (not the main actor). */
+  isCloneSprite?: boolean;
   spriteX: number;
   spriteY: number;
   mouseX: number;
@@ -665,6 +709,10 @@ export type SensingEvalContext = {
   timerSecs: number;
   /** Blockly variable values for the current Run (optional; defaults to empty). */
   vars?: Record<string, number>;
+  /**
+   * When set, used by “touching [sprite]?” — overlap of costume hit circles on the stage.
+   */
+  touchingSprite?: (otherActorId: string) => boolean;
 };
 
 function scratchMouseX(mouseX: number, cw: number): number {
@@ -733,8 +781,12 @@ export function evalSerializedBool(
       return (
         Math.hypot(ctx.mouseX - ctx.spriteX, ctx.mouseY - ctx.spriteY) < 32
       );
+    case "touchSprite":
+      return ctx.touchingSprite?.(e.actorId) ?? false;
     case "mouseDown":
       return ctx.mouseIsPressed;
+    case "isClone":
+      return ctx.isCloneSprite === true;
     case "numProp": {
       const v = evalSerializedNum(e.n, ctx);
       switch (e.property) {
@@ -761,6 +813,79 @@ export function evalSerializedBool(
     }
     default:
       return false;
+  }
+}
+
+function normalizeColorHex6(hex: string): string {
+  const s = hex.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(s)) {
+    return `#${s.slice(1).toLowerCase()}`;
+  }
+  if (/^#[0-9a-fA-F]{3}$/.test(s)) {
+    const r = s[1];
+    const g = s[2];
+    const b = s[3];
+    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+  }
+  return "#ffffff";
+}
+
+/** Scratch-style 0–100 per channel → #rrggbb (matches Blockly `colour_rgb` JS generator name). */
+function scratchRgbChannelsToHex(r: number, g: number, b: number): string {
+  const clampCh = (n: number) =>
+    Math.max(0, Math.min(100, Number(n))) * 2.55;
+  const ri = Math.round(clampCh(r));
+  const gi = Math.round(clampCh(g));
+  const bi = Math.round(clampCh(b));
+  const hx = (x: number) => (`0${(x || 0).toString(16)}`).slice(-2);
+  return `#${hx(ri)}${hx(gi)}${hx(bi)}`;
+}
+
+function blendHexColors(c1: string, c2: string, ratio: number): string {
+  const a = normalizeColorHex6(c1);
+  const b = normalizeColorHex6(c2);
+  const t = Math.max(0, Math.min(1, Number(ratio)));
+  const r1 = parseInt(a.slice(1, 3), 16);
+  const g1 = parseInt(a.slice(3, 5), 16);
+  const b1 = parseInt(a.slice(5, 7), 16);
+  const r2 = parseInt(b.slice(1, 3), 16);
+  const g2 = parseInt(b.slice(3, 5), 16);
+  const b2 = parseInt(b.slice(5, 7), 16);
+  const r = Math.round(r1 * (1 - t) + r2 * t);
+  const g = Math.round(g1 * (1 - t) + g2 * t);
+  const bl = Math.round(b1 * (1 - t) + b2 * t);
+  const hx = (x: number) => (`0${(x || 0).toString(16)}`).slice(-2);
+  return `#${hx(r)}${hx(g)}${hx(bl)}`;
+}
+
+/**
+ * Evaluate Blockly color blocks at Run time (same semantics as bundled JS generators).
+ */
+export function evalSerializedColorExpr(
+  e: SerializedColorExpr,
+  ctx: SensingEvalContext,
+): string {
+  switch (e.k) {
+    case "pick":
+      return normalizeColorHex6(e.hex);
+    case "rand": {
+      const num = Math.floor(Math.random() * 0x1000000);
+      return `#${`000000${num.toString(16)}`.slice(-6)}`;
+    }
+    case "rgb": {
+      const r = evalSerializedNum(e.r, ctx);
+      const g = evalSerializedNum(e.g, ctx);
+      const b = evalSerializedNum(e.b, ctx);
+      return scratchRgbChannelsToHex(r, g, b);
+    }
+    case "blend": {
+      const x = evalSerializedColorExpr(e.c1, ctx);
+      const y = evalSerializedColorExpr(e.c2, ctx);
+      const t = evalSerializedNum(e.ratio, ctx);
+      return blendHexColors(x, y, t);
+    }
+    default:
+      return "#ffffff";
   }
 }
 

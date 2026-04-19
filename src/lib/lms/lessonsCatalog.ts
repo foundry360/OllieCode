@@ -93,6 +93,12 @@ export const LESSON_CATEGORY_OPTIONS: { value: string; label: string }[] = [
  */
 export const DEFAULT_WORKSPACE_LESSON_ID = "lvl1-get-started" as const;
 
+/**
+ * `?lesson=none` — lesson panel shows the Learning Hub empty state, not Getting Started
+ * (e.g. after **New adventure** in the workspace header).
+ */
+export const WORKSPACE_NO_LESSON_QUERY = "none" as const;
+
 export const LESSONS: LessonCatalogEntry[] = [
   {
     id: "lvl1-get-started",

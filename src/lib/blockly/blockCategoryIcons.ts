@@ -1,12 +1,12 @@
-import { blockStyleColourPrimary } from "@/lib/blockly/ollieTheme";
+import { blockStyleColorPrimary } from "@/lib/blockly/ollieTheme";
 
-const FALLBACK_STYLE_COLOUR = "#9ca3af";
+const FALLBACK_STYLE_COLOR = "#9ca3af";
 
 const W = "#ffffff";
 
 /**
  * White glyph centered in an 18×18 view (circle drawn separately).
- * Keys align with {@link blockStyleColourPrimary}.
+ * Keys align with {@link blockStyleColorPrimary}.
  * Used only for the **toolbox category list** — not on workspace blocks.
  */
 const CATEGORY_ICON_INNER: Readonly<Record<string, string>> = {
@@ -36,7 +36,7 @@ function categoryIconInnerForStyle(style: string): string {
  * @see toolboxCategoryIconCss
  */
 export function categoryIconSrcForStyle(style: string): string {
-  const hex = blockStyleColourPrimary[style] ?? FALLBACK_STYLE_COLOUR;
+  const hex = blockStyleColorPrimary[style] ?? FALLBACK_STYLE_COLOR;
   const inner = categoryIconInnerForStyle(style);
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 18 18"><circle cx="9" cy="9" r="8" fill="${hex}"/>${inner}</svg>`;
   return `data:image/svg+xml,${encodeURIComponent(svg)}`;
