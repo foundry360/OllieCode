@@ -22,7 +22,7 @@ const LEGAL_LINKS = [
 
 export function Footer() {
   return (
-    <footer className="relative z-10 -mt-14 w-full -translate-y-px bg-[#84c126] text-white sm:-mt-16 md:-mt-20">
+    <footer className="relative z-10 -mt-14 w-full -translate-y-px bg-[#111727] text-white sm:-mt-16 md:-mt-20">
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
           <div className="sm:col-span-2 lg:col-span-4">
@@ -32,7 +32,7 @@ export function Footer() {
               aria-label="Ollie Code home"
             >
               <Image
-                src="/images/footer_logo.png"
+                src="/images/logo_blue.png"
                 alt=""
                 width={434}
                 height={91}
@@ -175,14 +175,12 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="bg-[#0a1528]">
-        <div className="mx-auto max-w-6xl px-4 py-6 text-center sm:px-6 lg:px-8">
-          <p className="text-xs text-white/85">
-            ©{" "}
-            <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
-            Ollie Code. All rights reserved.
-          </p>
-        </div>
+      <div className="mx-auto max-w-6xl px-4 py-6 text-center sm:px-6 lg:px-8">
+        <p className="text-xs text-white/85">
+          ©{" "}
+          <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
+          Ollie Code. All rights reserved.
+        </p>
       </div>
       <ContactChatLauncher />
     </footer>

@@ -2,14 +2,14 @@ import Image from "next/image";
 import Link from "next/link";
 
 type LandingNavProps = {
-  /** White header for marketing home (`/`) only; other routes use `default` (lime bar). */
+  /** Home (`/`) header; other routes use `default` (lime bar). */
   appearance?: "default" | "mint";
 };
 
 export function LandingNav({ appearance = "default" }: LandingNavProps) {
   const isMint = appearance === "mint";
   const headerClass = isMint
-    ? "sticky top-0 z-40 relative w-full max-w-full overflow-x-clip bg-white/95 backdrop-blur-sm"
+    ? "sticky top-0 z-40 relative w-full max-w-full overflow-x-clip border-b border-white/10 bg-[#111727]"
     : "sticky top-0 z-40 w-full max-w-full overflow-x-clip bg-[#ecfccb]/90 backdrop-blur";
 
   return (
@@ -23,7 +23,7 @@ export function LandingNav({ appearance = "default" }: LandingNavProps) {
           aria-label="Ollie Code home"
         >
           <Image
-            src="/images/logo.png"
+            src={isMint ? "/images/logo_blue.png" : "/images/logo.png"}
             alt=""
             width={434}
             height={91}
@@ -35,10 +35,16 @@ export function LandingNav({ appearance = "default" }: LandingNavProps) {
           className="flex min-w-0 shrink flex-wrap items-center justify-end gap-3 text-sm font-semibold sm:gap-6"
           aria-label="Primary"
         >
-          <a href="#features" className="hidden text-[#374151] hover:text-[#84c126] sm:inline">
+          <a
+            href="#features"
+            className={`hidden sm:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
+          >
             What we do
           </a>
-          <a href="#stories" className="hidden text-[#374151] hover:text-[#84c126] md:inline">
+          <a
+            href="#stories"
+            className={`hidden md:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
+          >
             Fun stuff
           </a>
           <Link

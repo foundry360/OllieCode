@@ -32,10 +32,10 @@ export function Features() {
     >
       <div className="relative z-10 mx-auto max-w-6xl pb-2 sm:pb-3 lg:pb-4">
         <h2 className="font-section text-center text-3xl font-extrabold leading-tight text-[#111827] sm:text-4xl">
-          Learn to Code, Build Games, Create Fun Projects
+          Turning Ideas Into Games and Creations
         </h2>
         <p className="mx-auto mt-4 max-w-2xl text-center text-base leading-relaxed text-[#4b5563] sm:text-lg">
-          Three big ways to grow — all in one colorful workspace.
+          A fun, all-in-one space to learn, build, and explore.
         </p>
         <FeatureCardsAnimated items={ITEMS} />
       </div>

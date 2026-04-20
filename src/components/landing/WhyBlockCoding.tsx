@@ -6,7 +6,7 @@ export function WhyBlockCoding() {
   return (
     <section
       id="why-block-coding"
-      className="relative z-10 scroll-mt-20 overflow-x-clip bg-[#d2e0ce] px-4 pb-24 pt-20 sm:pb-28 sm:pt-24 lg:pb-36 lg:pt-28"
+      className="relative z-10 scroll-mt-20 overflow-x-clip bg-[#d2e0ce] px-4 pb-16 pt-20 sm:pb-20 sm:pt-24 lg:pb-24 lg:pt-28"
       aria-labelledby="why-block-coding-heading"
     >
       {/* Top wave: fill matches previous section (Features, white). */}

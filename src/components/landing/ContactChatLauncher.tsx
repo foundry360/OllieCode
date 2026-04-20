@@ -34,6 +34,7 @@ export function ContactChatLauncher() {
     setMailtoTarget(null);
   }, []);
 
+  /** Portals to `document.body` so `position: fixed` is viewport-relative (footer uses `transform`). */
   useEffect(() => {
     setPortalReady(true);
   }, []);
@@ -236,19 +237,20 @@ export function ContactChatLauncher() {
     </dialog>
   );
 
-  return (
+  const floating = (
     <>
       <button
         type="button"
         onClick={open}
         aria-haspopup="dialog"
-        className="fixed bottom-6 left-6 z-50 flex max-w-[calc(100vw-5rem)] items-center gap-2.5 whitespace-nowrap rounded-full bg-[#111827] px-4 py-3 text-sm font-bold text-white shadow-lg ring-2 ring-white/40 transition hover:bg-[#1f2937] hover:shadow-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] sm:px-5 sm:text-base"
+        className="fixed bottom-6 left-6 z-50 flex max-w-[calc(100vw-5rem)] items-center gap-2.5 whitespace-nowrap rounded-full border-2 border-[var(--ollie-primary)] bg-[var(--ollie-primary)] px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:border-[#6fa020] hover:bg-[#6fa020] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] sm:px-5 sm:text-base"
       >
-        <MessageCircle className="h-5 w-5 shrink-0 sm:h-6 sm:w-6" strokeWidth={2} aria-hidden />
+        <MessageCircle className="h-5 w-5 shrink-0 sm:h-6 sm:w-6 text-current" strokeWidth={2} aria-hidden />
         <span>Have a question?</span>
       </button>
-
-      {portalReady ? createPortal(dialog, document.body) : null}
+      {dialog}
     </>
   );
+
+  return portalReady ? createPortal(floating, document.body) : null;
 }

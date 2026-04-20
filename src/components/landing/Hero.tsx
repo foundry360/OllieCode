@@ -32,32 +32,20 @@ const HERO_HIGHLIGHTS: {
 
 export function Hero() {
   return (
-    <section className="relative isolate box-border min-h-0 w-full min-w-0 max-w-full overflow-x-clip bg-[#0a1628] px-4 pb-32 pt-14 max-sm:min-h-[min(92dvh,52rem)] sm:pb-40 sm:pt-24 lg:pb-44 lg:pt-24">
+    <section className="relative isolate box-border min-h-0 w-full min-w-0 max-w-full overflow-x-clip bg-gradient-to-b from-[#3a6288] via-[#2d4f6e] via-40% to-[#1f3d58] px-4 pb-24 pt-14 max-sm:min-h-[min(92dvh,52rem)] sm:pb-28 sm:pt-24 lg:pb-32 lg:pt-24">
       <LandingSectionWave variant="bottom" colorClassName="text-white" />
       <div className="relative z-10 mx-auto min-w-0 max-w-6xl">
         <div className="mx-auto min-w-0 max-w-5xl text-center">
           <h1 className="font-section text-balance text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-[3.25rem]">
-            Code games, build adventures, and make friends, one block at a time.
+            Build, Play, and Learn to Code.
           </h1>
-          <p className="mt-5 text-lg text-white/90">
-            Ollie Code is a friendly place to learn programming. Drag blocks, run your
-            code, and watch your ideas come alive on the canvas.
-          </p>
-          <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <Link
-              href="/auth/login"
-              className="inline-flex items-center justify-center rounded-full border-2 border-white bg-transparent px-8 py-3.5 text-base font-bold text-white transition-colors hover:bg-[var(--ollie-primary)]"
-            >
-              Start Coding
-            </Link>
-          </div>
         </div>
 
         <ul className="mx-auto mt-12 grid w-full max-w-6xl list-none grid-cols-1 gap-4 p-0 sm:grid-cols-2 lg:grid-cols-4">
           {HERO_HIGHLIGHTS.map(({ icon: Icon, title, description }) => (
             <li
               key={title}
-              className="relative rounded-2xl border-2 border-transparent bg-[#132746] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[#d3dfce] hover:bg-[#0a1528]"
+              className="relative rounded-2xl border-2 border-white/12 bg-[#234b68] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[#c8dcc8] hover:bg-[#1d3f58]"
             >
               <span className="absolute left-5 top-5 flex size-10 items-center justify-center rounded-full bg-white/20 text-white sm:size-11">
                 <Icon className="size-5 shrink-0" aria-hidden />
@@ -69,6 +57,15 @@ export function Hero() {
             </li>
           ))}
         </ul>
+
+        <div className="mx-auto mt-10 flex flex-wrap justify-center gap-4 sm:mt-12">
+          <Link
+            href="/auth/login"
+            className="inline-flex items-center justify-center rounded-full bg-[var(--ollie-primary)] px-8 py-3.5 text-base font-bold text-white transition-colors hover:bg-[#6fa020]"
+          >
+            Get Started Today!
+          </Link>
+        </div>
       </div>
     </section>
   );
