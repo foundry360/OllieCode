@@ -1,79 +1,190 @@
 import Image from "next/image";
 import Link from "next/link";
+import { ContactChatLauncher } from "@/components/landing/ContactChatLauncher";
 
-const FOOTER_LINKS = [
-  { href: "/#features", label: "Programs" },
-  { href: "/auth/login?next=/workspace", label: "Workspace" },
-  { href: "/auth/login?next=/workspace", label: "Sign in" },
-  { href: "/staff/login", label: "Staff login" },
+const EXPLORE_LINKS = [
+  { href: "/#features", label: "What we do" },
+  { href: "/#stories", label: "Fun stuff" },
+];
+
+const START_LINKS = [
+  { href: "/auth/login", label: "Sign in" },
+  { href: "/auth/signup", label: "Create an account" },
+  { href: "/auth/login?next=/workspace", label: "Open workspace" },
+];
+
+const STAFF_LINKS = [{ href: "/staff/login", label: "Staff login" }];
+
+const LEGAL_LINKS = [
+  { href: "/legal/terms", label: "Terms of Use" },
+  { href: "/legal/privacy", label: "Privacy Policy" },
 ];
 
 export function Footer() {
   return (
-    <footer className="border-t border-[#6b9e1f] bg-[#84c126] px-4 py-12">
-      <div className="mx-auto flex max-w-6xl flex-col items-center gap-8 sm:flex-row sm:justify-between">
-        <div className="flex flex-col items-center gap-3 text-center sm:items-start sm:text-left">
-          <Link
-            href="/"
-            className="inline-block shrink-0"
-            aria-label="Ollie Code home"
-          >
-            <Image
-              src="/images/footer_logo.png"
-              alt=""
-              width={434}
-              height={91}
-              className="h-8 w-auto sm:h-9"
-            />
-          </Link>
-          <p className="text-sm text-white/90">Fun coding for kids 7–13.</p>
-        </div>
-        <nav className="flex flex-wrap justify-center gap-6 text-sm font-semibold text-white">
-          {FOOTER_LINKS.map((l) => (
+    <footer className="w-full bg-[#84c126] text-white">
+      <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
+        <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
+          <div className="sm:col-span-2 lg:col-span-4">
             <Link
-              key={l.label}
-              href={l.href}
-              className="transition hover:text-[#ecfccb] hover:underline"
+              href="/"
+              className="inline-block shrink-0"
+              aria-label="Ollie Code home"
             >
-              {l.label}
+              <Image
+                src="/images/footer_logo.png"
+                alt=""
+                width={434}
+                height={91}
+                className="h-9 w-auto sm:h-10"
+              />
             </Link>
-          ))}
-        </nav>
-        <div className="flex gap-4" aria-label="Social links">
-          <a
-            href="https://youtube.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
-            aria-label="YouTube"
+            <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/90">
+              Fun, block-based coding for kids 7–13. Build games, learn logic, and see ideas
+              come alive on the canvas.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3" aria-label="Social links">
+              <a
+                href="https://youtube.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/20 transition hover:bg-white/25"
+                aria-label="YouTube"
+              >
+                <SocialIconYouTube />
+              </a>
+              <a
+                href="https://instagram.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/20 transition hover:bg-white/25"
+                aria-label="Instagram"
+              >
+                <SocialIconInstagram />
+              </a>
+              <a
+                href="https://facebook.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/20 transition hover:bg-white/25"
+                aria-label="Facebook"
+              >
+                <SocialIconFacebook />
+              </a>
+            </div>
+          </div>
+
+          <nav
+            className="sm:col-span-1 lg:col-span-2"
+            aria-labelledby="footer-explore-heading"
           >
-            <SocialIconYouTube />
-          </a>
-          <a
-            href="https://instagram.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
-            aria-label="Instagram"
+            <h2
+              id="footer-explore-heading"
+              className="text-xs font-bold uppercase tracking-wider text-[#ecfccb]/90"
+            >
+              Explore
+            </h2>
+            <ul className="mt-4 space-y-3 text-sm font-semibold">
+              {EXPLORE_LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-white/95 transition hover:text-white hover:underline"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav
+            className="sm:col-span-1 lg:col-span-2"
+            aria-labelledby="footer-start-heading"
           >
-            <SocialIconInstagram />
-          </a>
-          <a
-            href="https://facebook.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-white transition hover:bg-white/30"
-            aria-label="Facebook"
+            <h2
+              id="footer-start-heading"
+              className="text-xs font-bold uppercase tracking-wider text-[#ecfccb]/90"
+            >
+              Get started
+            </h2>
+            <ul className="mt-4 space-y-3 text-sm font-semibold">
+              {START_LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-white/95 transition hover:text-white hover:underline"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav
+            className="sm:col-span-1 lg:col-span-2"
+            aria-labelledby="footer-legal-heading"
           >
-            <SocialIconFacebook />
-          </a>
+            <h2
+              id="footer-legal-heading"
+              className="text-xs font-bold uppercase tracking-wider text-[#ecfccb]/90"
+            >
+              Legal
+            </h2>
+            <ul className="mt-4 space-y-3 text-sm font-semibold">
+              {LEGAL_LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-white/95 transition hover:text-white hover:underline"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <nav
+            className="sm:col-span-2 lg:col-span-2"
+            aria-labelledby="footer-staff-heading"
+          >
+            <h2
+              id="footer-staff-heading"
+              className="text-xs font-bold uppercase tracking-wider text-[#ecfccb]/90"
+            >
+              Educators
+            </h2>
+            <ul className="mt-4 space-y-3 text-sm font-semibold">
+              {STAFF_LINKS.map((l) => (
+                <li key={l.href}>
+                  <Link
+                    href={l.href}
+                    className="text-white/95 transition hover:text-white hover:underline"
+                  >
+                    {l.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-6 max-w-xs text-xs leading-relaxed text-white/75">
+              Teachers and program leads use staff tools to manage lessons and learners.
+            </p>
+          </nav>
         </div>
       </div>
-      <p className="mx-auto mt-10 max-w-6xl text-center text-xs text-white/75">
-        ©{" "}
-        <span suppressHydrationWarning>{new Date().getFullYear()}</span> Ollie
-        Code. Scaffold for demos — replace links and copy for production.
-      </p>
+
+      <div className="bg-[#0a1528]">
+        <div className="mx-auto max-w-6xl px-4 py-6 text-center sm:px-6 lg:px-8">
+          <p className="text-xs text-white/85">
+            ©{" "}
+            <span suppressHydrationWarning>{new Date().getFullYear()}</span>{" "}
+            Ollie Code. All rights reserved.
+          </p>
+        </div>
+      </div>
+      <ContactChatLauncher />
     </footer>
   );
 }

@@ -1,10 +1,22 @@
 import Image from "next/image";
 import Link from "next/link";
 
-export function LandingNav() {
+type LandingNavProps = {
+  /** White header for marketing home (`/`) only; other routes use `default` (lime bar). */
+  appearance?: "default" | "mint";
+};
+
+export function LandingNav({ appearance = "default" }: LandingNavProps) {
+  const isMint = appearance === "mint";
+  const headerClass = isMint
+    ? "sticky top-0 z-40 relative w-full max-w-full overflow-x-clip bg-white/95 backdrop-blur-sm"
+    : "sticky top-0 z-40 w-full max-w-full overflow-x-clip bg-[#ecfccb]/90 backdrop-blur";
+
   return (
-    <header className="sticky top-0 z-40 border-b border-[#d9f99d] bg-[#ecfccb]/90 backdrop-blur">
-      <div className="flex w-full items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10">
+    <header className={headerClass}>
+      <div
+        className={`flex min-w-0 w-full max-w-full items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-10${isMint ? " relative z-10" : ""}`}
+      >
         <Link
           href="/"
           className="block shrink-0"
@@ -20,7 +32,7 @@ export function LandingNav() {
           />
         </Link>
         <nav
-          className="flex flex-wrap items-center justify-end gap-3 text-sm font-semibold sm:gap-6"
+          className="flex min-w-0 shrink flex-wrap items-center justify-end gap-3 text-sm font-semibold sm:gap-6"
           aria-label="Primary"
         >
           <a href="#features" className="hidden text-[#374151] hover:text-[#84c126] sm:inline">
