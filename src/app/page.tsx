@@ -2,6 +2,8 @@ import { BackToTop } from "@/components/landing/BackToTop";
 import { LandingNav } from "@/components/landing/LandingNav";
 import { Hero } from "@/components/landing/Hero";
 import { Features } from "@/components/landing/Features";
+import { WhyBlockCoding } from "@/components/landing/WhyBlockCoding";
+import { WhyOllieCode } from "@/components/landing/WhyOllieCode";
 import { Testimonials } from "@/components/landing/Testimonials";
 import { FaqSection } from "@/components/landing/FaqSection";
 import { Footer } from "@/components/landing/Footer";
@@ -13,6 +15,8 @@ export default function Home() {
       <main className="min-w-0 w-full max-w-full flex-1">
         <Hero />
         <Features />
+        <WhyBlockCoding />
+        <WhyOllieCode />
         <Testimonials />
         <FaqSection />
       </main>

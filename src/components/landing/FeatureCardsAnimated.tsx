@@ -7,6 +7,11 @@ export type FeatureCardItem = {
   title: string;
   body: string;
   icon: string;
+  /** Intrinsic size for `next/image` (use real file dimensions for PNGs). */
+  iconWidth?: number;
+  iconHeight?: number;
+  /** Extra classes on the icon container (e.g. border to match another card’s artwork). */
+  iconWrapperClassName?: string;
 };
 
 type FeatureCardsAnimatedProps = {
@@ -52,7 +57,7 @@ export function FeatureCardsAnimated({ items }: FeatureCardsAnimatedProps) {
   return (
     <ul
       ref={listRef}
-      className="mt-10 grid gap-8 sm:grid-cols-3 lg:mt-12 lg:gap-10"
+      className="mt-8 grid gap-6 sm:grid-cols-3 lg:mt-10 lg:gap-8"
     >
       {items.map((item, index) => (
         <li
@@ -69,14 +74,27 @@ export function FeatureCardsAnimated({ items }: FeatureCardsAnimatedProps) {
               : { transitionDelay: visible ? `${index * 110}ms` : "0ms" }
           }
         >
-          <div className="ollie-feature-card flex h-full flex-col rounded-2xl border border-[#e5e7eb] bg-[#f8fafc] p-7 text-center shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-[#84c126] sm:p-8">
-            <div className="relative mx-auto mb-4 h-24 w-24 sm:h-28 sm:w-28">
-              <Image src={item.icon} alt="" width={112} height={112} className="h-full w-full" />
+          <div className="ollie-feature-card flex h-full flex-col rounded-xl border border-[#e5e7eb] bg-[#f8fafc] p-5 text-center shadow-sm transition-[border-color,box-shadow] duration-200 hover:border-[#84c126] sm:p-6">
+            <div
+              className={[
+                /* Fixed square matches Build Games on-screen footprint; all cards share it. */
+                "relative mx-auto mb-3 flex h-24 w-24 shrink-0 items-center justify-center sm:h-28 sm:w-28",
+                item.iconWrapperClassName ?? "",
+              ].join(" ")}
+            >
+              <Image
+                src={item.icon}
+                alt=""
+                width={item.iconWidth ?? 80}
+                height={item.iconHeight ?? 80}
+                sizes="(max-width: 640px) 96px, 112px"
+                className="max-h-full max-w-full object-contain object-center"
+              />
             </div>
-            <h3 className="font-section text-xl font-bold text-[#111827] sm:text-2xl">
+            <h3 className="font-section text-lg font-bold text-[#111827] sm:text-xl">
               {item.title}
             </h3>
-            <p className="mt-3 font-section text-sm leading-relaxed text-[#6b7280] sm:text-base">
+            <p className="mt-2 font-section text-xs leading-relaxed text-[#6b7280] sm:text-sm">
               {item.body}
             </p>
           </div>

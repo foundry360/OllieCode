@@ -4,17 +4,23 @@ const ITEMS = [
   {
     title: "Learn to Code",
     body: "Snap blocks together like puzzle pieces. No typing stress — just ideas and logic.",
-    icon: "/placeholders/icon-code.svg",
+    icon: "/images/code_blocks.png",
+    iconWidth: 260,
+    iconHeight: 268,
   },
   {
     title: "Build Games",
     body: "Make characters move, add sounds, and see your game on the canvas in seconds.",
-    icon: "/placeholders/icon-game.svg",
+    icon: "/images/games.png",
+    iconWidth: 267,
+    iconHeight: 272,
   },
   {
     title: "Create Fun Projects",
     body: "Explore fun adventures and projects designed for curious young creators.",
-    icon: "/placeholders/icon-ai.svg",
+    icon: "/images/fun-projects.png",
+    iconWidth: 256,
+    iconHeight: 262,
   },
 ];
 
@@ -22,9 +28,9 @@ export function Features() {
   return (
     <section
       id="features"
-      className="relative scroll-mt-20 overflow-x-clip bg-white px-4 pb-12 pt-16 sm:pb-16 sm:pt-20 lg:pb-20 lg:pt-24"
+      className="relative scroll-mt-20 overflow-x-clip bg-white px-4 pb-12 pt-8 sm:pb-16 sm:pt-10 lg:pb-20 lg:pt-14"
     >
-      <div className="relative mx-auto max-w-6xl pb-6 sm:pb-8 lg:pb-10">
+      <div className="relative z-10 mx-auto max-w-6xl pb-2 sm:pb-3 lg:pb-4">
         <h2 className="font-section text-center text-3xl font-extrabold leading-tight text-[#111827] sm:text-4xl">
           Learn to Code, Build Games, Create Fun Projects
         </h2>

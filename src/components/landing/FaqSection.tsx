@@ -1,5 +1,6 @@
 "use client";
 
+import { LandingSectionWave } from "@/components/landing/sectionWaves";
 import Image from "next/image";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useState } from "react";
@@ -53,23 +54,20 @@ export function FaqSection() {
   return (
     <section
       id="faq"
-      className="relative scroll-mt-20 overflow-hidden px-4 py-16 sm:py-20 lg:py-24"
+      className="relative scroll-mt-20 overflow-x-clip px-4 pb-28 pt-16 sm:pb-32 sm:pt-20 lg:pb-36 lg:pt-24"
       aria-labelledby="faq-heading"
     >
-      <div className="pointer-events-none absolute inset-0" aria-hidden>
+      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
         <Image
-          src="/images/cactus.png"
+          src="/images/grass_bg.png"
           alt=""
           fill
           sizes="100vw"
           className="object-cover object-center"
         />
       </div>
-      <div
-        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-[#ecfccb]/90 via-[#f7fee7]/55 to-[#d9f99d]/75"
-        aria-hidden
-      />
-      <div className="relative mx-auto max-w-6xl">
+      <LandingSectionWave variant="bottom" colorClassName="text-[#84c126]" />
+      <div className="relative z-10 mx-auto max-w-6xl">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 lg:items-start">
           <div className="lg:sticky lg:top-28">
             <h2

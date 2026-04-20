@@ -10,9 +10,9 @@ export function Testimonials() {
   return (
     <section
       id="stories"
-      className="scroll-mt-20 bg-[#111727] px-4 py-24 sm:py-28 lg:py-32"
+      className="relative z-10 -translate-y-px scroll-mt-20 overflow-x-clip bg-[#0a1628] px-4 pb-24 pt-20 sm:pb-28 sm:pt-24 lg:pb-32 lg:pt-28"
     >
-      <div className="mx-auto max-w-6xl">
+      <div className="relative z-10 mx-auto max-w-6xl">
         <h2 className="font-section text-center text-3xl font-extrabold text-white sm:text-4xl">
           What kids are saying
         </h2>

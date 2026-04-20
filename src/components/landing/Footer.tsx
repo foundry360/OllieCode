@@ -22,7 +22,7 @@ const LEGAL_LINKS = [
 
 export function Footer() {
   return (
-    <footer className="w-full bg-[#84c126] text-white">
+    <footer className="relative z-10 -mt-14 w-full -translate-y-px bg-[#84c126] text-white sm:-mt-16 md:-mt-20">
       <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
           <div className="sm:col-span-2 lg:col-span-4">
