@@ -1,7 +1,6 @@
 "use client";
 
 import { LandingSectionWave } from "@/components/landing/sectionWaves";
-import Image from "next/image";
 import { ChevronDown } from "lucide-react";
 import { useCallback, useState } from "react";
 
@@ -34,7 +33,7 @@ const FAQS: { id: string; question: string; answer: string }[] = [
     id: "curriculum",
     question: "Is there a structured curriculum?",
     answer:
-      "Yes. Learners can follow guided lessons and missions while still experimenting freely in the workspace. Staff and teachers can publish or assign content depending on your program setup.",
+      "Yes. Learners can follow guided lessons and adventures while still experimenting freely in the workspace. Staff and teachers can publish or assign content depending on your program setup.",
   },
   {
     id: "help",
@@ -45,28 +44,19 @@ const FAQS: { id: string; question: string; answer: string }[] = [
 ];
 
 export function FaqSection() {
-  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [openId, setOpenId] = useState<string | null>(null);
 
   const toggle = useCallback((id: string) => {
-    setOpen((prev) => ({ ...prev, [id]: !prev[id] }));
+    setOpenId((prev) => (prev === id ? null : id));
   }, []);
 
   return (
     <section
       id="faq"
-      className="relative scroll-mt-20 overflow-x-clip px-4 pb-28 pt-16 sm:pb-32 sm:pt-20 lg:pb-36 lg:pt-24"
+      className="relative -mt-px scroll-mt-20 overflow-x-clip bg-white px-4 pb-24 pt-16 sm:pb-28 sm:pt-20 lg:pb-32 lg:pt-24"
       aria-labelledby="faq-heading"
     >
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden>
-        <Image
-          src="/images/grass_bg.png"
-          alt=""
-          fill
-          sizes="100vw"
-          className="object-cover object-center"
-        />
-      </div>
-      <LandingSectionWave variant="bottom" colorClassName="text-[#84c126]" />
+      <LandingSectionWave variant="bottom" colorClassName="text-[#d9eeff]" />
       <div className="relative z-10 mx-auto max-w-6xl">
         <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 lg:items-start">
           <div className="lg:sticky lg:top-28">
@@ -87,7 +77,7 @@ export function FaqSection() {
 
           <div className="min-w-0">
             {FAQS.map((item) => {
-              const isOpen = Boolean(open[item.id]);
+              const isOpen = openId === item.id;
               const panelId = `faq-panel-${item.id}`;
               const triggerId = `faq-trigger-${item.id}`;
               return (

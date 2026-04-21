@@ -9,7 +9,7 @@ type LandingNavProps = {
 export function LandingNav({ appearance = "default" }: LandingNavProps) {
   const isMint = appearance === "mint";
   const headerClass = isMint
-    ? "sticky top-0 z-40 relative w-full max-w-full overflow-x-clip border-b border-white/10 bg-[#111727]"
+    ? "sticky top-0 z-40 relative w-full max-w-full overflow-x-clip bg-[#111727]"
     : "sticky top-0 z-40 w-full max-w-full overflow-x-clip bg-[#ecfccb]/90 backdrop-blur";
 
   return (

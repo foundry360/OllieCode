@@ -118,7 +118,6 @@ const BENEFITS: {
     imageAlt:
       "Woman and two children in white shirts cheering at a blue laptop in a bright room with bookshelves, in a rounded photo with a blue frame on a light blue shape.",
     showBlobs: false,
-    imageColumnClassName: "max-lg:mb-3",
     imageClassName:
       "max-lg:scale-[1.1] max-lg:origin-bottom lg:scale-[1.42] lg:origin-right xl:scale-[1.36] will-change-transform",
   },
@@ -139,7 +138,7 @@ const BENEFITS: {
     showBlobs: false,
   },
   {
-    title: "Designed for Curious Minds (Ages 7 to 13)",
+    title: "Designed for Curious Minds",
     body: "Ollie Code is tailored specifically for young creators, balancing fun and foundational skills to prepare them for the future, without ever feeling like school.",
     imageSrc: "/images/curious-minds.png",
     imageAlt:
@@ -152,24 +151,50 @@ export function WhyOllieCode() {
   return (
     <section
       id="why-ollie-code"
-      className="relative z-10 scroll-mt-20 overflow-x-visible overflow-y-visible bg-white px-4 pb-12 pt-12 sm:pb-14 sm:pt-14 lg:pb-16 lg:pt-16"
+      className="relative z-10 scroll-mt-20 overflow-x-visible overflow-y-visible px-4 pb-8 pt-8 sm:pb-10 sm:pt-10 lg:pb-12 lg:pt-12"
       aria-labelledby="why-ollie-code-heading"
     >
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-gradient-to-br from-[#eef5ea] via-[#fafdfb] to-[#dce8d8]"
+        aria-hidden
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-0"
+        aria-hidden
+        style={{
+          backgroundImage: [
+            "radial-gradient(ellipse 110% 70% at 50% -15%, rgb(200 220 190 / 0.55), transparent 58%)",
+            "radial-gradient(ellipse 80% 55% at 100% 100%, rgb(180 205 215 / 0.22), transparent 52%)",
+            "radial-gradient(ellipse 65% 50% at 0% 75%, rgb(210 228 198 / 0.35), transparent 48%)",
+          ].join(","),
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 z-0 bg-repeat"
+        aria-hidden
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 50% 50%, rgb(100 116 139 / 0.22) 0.55px, transparent 0.65px)",
+          backgroundSize: "5px 5px",
+        }}
+      />
       <LandingSectionWave variant="top" colorClassName="text-[#d2e0ce]" />
       <div className="relative z-10 mx-auto max-w-6xl">
-        <header className="mx-auto max-w-3xl pt-10 text-center sm:pt-12 lg:pt-14">
+        <header className="mx-auto w-full max-w-6xl pb-2 pt-10 text-center sm:pb-2 sm:pt-12 lg:pb-2.5 lg:pt-14">
           <h2
             id="why-ollie-code-heading"
-            className="font-section text-3xl font-extrabold leading-tight text-[#111827] sm:text-4xl"
+            className="font-section text-balance text-3xl font-extrabold leading-tight text-[#111827] sm:text-4xl"
           >
-            Why Ollie Code
+            The Magic Behind Ollie Code!
           </h2>
-          <p className="mt-2 text-lg font-medium leading-snug text-[#374151] sm:text-xl">
-            Where creativity meets coding, and kids actually love learning.
+          <p className="mx-auto mt-3 w-full max-w-6xl text-pretty text-base font-medium leading-snug text-[#374151] sm:mt-3 sm:text-lg sm:leading-relaxed">
+            Ollie Code is a fun, interactive learning space where kids learn real coding skills by
+            doing, not just reading or watching. Instead of typing long lines of code, they use simple
+            drag-and-drop blocks to build games, solve challenges, and bring their ideas to life.
           </p>
         </header>
 
-        <ul className="mx-auto mt-3 flex w-full max-w-6xl list-none flex-col gap-3 p-0 sm:mt-3 sm:gap-3 lg:mt-4 lg:gap-4">
+        <ul className="mx-auto flex w-full max-w-6xl list-none flex-col gap-0 px-0 pb-10 sm:pb-12 lg:pb-14">
           {BENEFITS.map(
             (
               {
@@ -189,7 +214,7 @@ export function WhyOllieCode() {
               <li
                 key={title}
                 className={[
-                  "flex min-h-0 min-w-0 flex-col gap-3 overflow-visible lg:flex-row lg:items-center lg:gap-x-4 xl:gap-x-5",
+                  "flex min-h-0 min-w-0 flex-col gap-0.5 overflow-visible lg:flex-row lg:items-center lg:gap-x-2 lg:gap-y-0 xl:gap-x-3",
                   reverseDesktop ? "max-lg:flex-col-reverse lg:flex-row-reverse" : "",
                 ].join(" ")}
               >
@@ -249,10 +274,10 @@ export function WhyOllieCode() {
                   </div>
                 </div>
                 <div className="relative z-10 flex w-full min-w-0 flex-1 flex-col justify-center bg-transparent text-left lg:pl-0">
-                  <h3 className="font-section text-2xl font-extrabold leading-tight tracking-tight text-[#0a0a0a] sm:text-3xl lg:text-[1.75rem] xl:text-3xl">
+                  <h3 className="font-section text-2xl font-extrabold leading-snug tracking-tight text-[#0a0a0a] sm:text-3xl sm:leading-tight lg:text-[1.75rem] xl:text-3xl">
                     {title}
                   </h3>
-                  <p className="mt-2 font-section text-base leading-relaxed text-[#525252] sm:text-lg">
+                  <p className="mt-1 font-section text-base leading-snug text-[#525252] sm:text-lg sm:leading-relaxed">
                     {body}
                   </p>
                 </div>

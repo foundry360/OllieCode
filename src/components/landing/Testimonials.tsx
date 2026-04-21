@@ -1,4 +1,5 @@
 import Image from "next/image";
+import { LandingSectionWave } from "@/components/landing/sectionWaves";
 
 const PLACEHOLDERS = [
   { quote: "I made my turtle dance!", name: "Alex, 9", img: "/placeholders/avatar-1.svg" },
@@ -12,6 +13,7 @@ export function Testimonials() {
       id="stories"
       className="relative z-10 -translate-y-px scroll-mt-20 overflow-x-clip bg-gradient-to-b from-[#3a6288] via-[#2d4f6e] via-40% to-[#1f3d58] px-4 pb-24 pt-20 sm:pb-28 sm:pt-24 lg:pb-32 lg:pt-28"
     >
+      <LandingSectionWave variant="bottom" colorClassName="text-white" />
       <div className="relative z-10 mx-auto max-w-6xl">
         <h2 className="font-section text-center text-3xl font-extrabold text-white sm:text-4xl">
           What kids are saying

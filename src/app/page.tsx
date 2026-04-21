@@ -6,6 +6,7 @@ import { WhyBlockCoding } from "@/components/landing/WhyBlockCoding";
 import { WhyOllieCode } from "@/components/landing/WhyOllieCode";
 import { Testimonials } from "@/components/landing/Testimonials";
 import { FaqSection } from "@/components/landing/FaqSection";
+import { PreFooterCtaSection } from "@/components/landing/PreFooterCtaSection";
 import { Footer } from "@/components/landing/Footer";
 
 export default function Home() {
@@ -19,6 +20,7 @@ export default function Home() {
         <WhyOllieCode />
         <Testimonials />
         <FaqSection />
+        <PreFooterCtaSection />
       </main>
       <Footer />
       <BackToTop />

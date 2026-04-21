@@ -22,8 +22,8 @@ const LEGAL_LINKS = [
 
 export function Footer() {
   return (
-    <footer className="relative z-10 -mt-14 w-full -translate-y-px bg-[#111727] text-white sm:-mt-16 md:-mt-20">
-      <div className="mx-auto max-w-6xl px-4 py-14 sm:px-6 lg:px-8 lg:py-16">
+    <footer className="relative z-10 w-full overflow-x-clip bg-[#111727] text-white">
+      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-14 pt-16 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
           <div className="sm:col-span-2 lg:col-span-4">
             <Link
@@ -40,7 +40,7 @@ export function Footer() {
               />
             </Link>
             <p className="mt-4 max-w-sm text-sm leading-relaxed text-white/90">
-              Fun, block-based coding for kids 7–13. Build games, learn logic, and see ideas
+              Fun, block-based coding for K-5. Build games, learn logic, and see ideas
               come alive on the canvas.
             </p>
             <div className="mt-6 flex flex-wrap gap-3" aria-label="Social links">
