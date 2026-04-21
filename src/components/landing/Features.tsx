@@ -4,23 +4,26 @@ const ITEMS = [
   {
     title: "Learn to Code",
     body: "Snap blocks together like puzzle pieces. No typing stress — just ideas and logic.",
-    icon: "/images/code_blocks.png",
-    iconWidth: 260,
-    iconHeight: 268,
+    icon: "/images/features-learn-code.png",
+    iconWidth: 256,
+    iconHeight: 256,
+    iconImageClassName: "translate-y-2 sm:translate-y-2.5",
   },
   {
     title: "Build Games",
     body: "Make characters move, add sounds, and see your game on the canvas in seconds.",
-    icon: "/images/games.png",
-    iconWidth: 267,
-    iconHeight: 272,
+    icon: "/images/features-build-games-v2.png",
+    iconWidth: 256,
+    iconHeight: 256,
+    /** Artwork goes edge-to-edge in the 256px file; scale so on-screen size matches the other cards. */
+    iconImageClassName: "origin-center scale-[0.78]",
   },
   {
     title: "Create Fun Projects",
     body: "Explore fun adventures and projects designed for curious young creators.",
-    icon: "/images/fun-projects.png",
+    icon: "/images/features-create-projects.png",
     iconWidth: 256,
-    iconHeight: 262,
+    iconHeight: 256,
   },
 ];
 

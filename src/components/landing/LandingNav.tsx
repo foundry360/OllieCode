@@ -35,18 +35,24 @@ export function LandingNav({ appearance = "default" }: LandingNavProps) {
           className="flex min-w-0 shrink flex-wrap items-center justify-end gap-3 text-sm font-semibold sm:gap-6"
           aria-label="Primary"
         >
-          <a
-            href="#features"
+          <Link
+            href="/#features"
             className={`hidden sm:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
           >
             What we do
-          </a>
-          <a
-            href="#stories"
+          </Link>
+          <Link
+            href="/#stories"
             className={`hidden md:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
           >
             Fun stuff
-          </a>
+          </Link>
+          <Link
+            href="/plans"
+            className={isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}
+          >
+            Plans
+          </Link>
           <Link
             href="/auth/login"
             className="rounded-full bg-[#84c126] px-5 py-2.5 text-white shadow-sm transition hover:bg-[#6fa020]"

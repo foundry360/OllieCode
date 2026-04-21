@@ -169,15 +169,6 @@ export function WhyOllieCode() {
           ].join(","),
         }}
       />
-      <div
-        className="pointer-events-none absolute inset-0 z-0 bg-repeat"
-        aria-hidden
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 50% 50%, rgb(100 116 139 / 0.22) 0.55px, transparent 0.65px)",
-          backgroundSize: "5px 5px",
-        }}
-      />
       <LandingSectionWave variant="top" colorClassName="text-[#d2e0ce]" />
       <div className="relative z-10 mx-auto max-w-6xl">
         <header className="mx-auto w-full max-w-6xl pb-2 pt-10 text-center sm:pb-2 sm:pt-12 lg:pb-2.5 lg:pt-14">

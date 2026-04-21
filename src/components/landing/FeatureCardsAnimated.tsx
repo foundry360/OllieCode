@@ -12,6 +12,8 @@ export type FeatureCardItem = {
   iconHeight?: number;
   /** Extra classes on the icon container (e.g. border to match another card’s artwork). */
   iconWrapperClassName?: string;
+  /** Extra classes on the icon image (e.g. scale when artwork reads larger at same box size). */
+  iconImageClassName?: string;
 };
 
 type FeatureCardsAnimatedProps = {
@@ -88,7 +90,10 @@ export function FeatureCardsAnimated({ items }: FeatureCardsAnimatedProps) {
                 width={item.iconWidth ?? 80}
                 height={item.iconHeight ?? 80}
                 sizes="(max-width: 640px) 96px, 112px"
-                className="max-h-full max-w-full object-contain object-center"
+                className={[
+                  "max-h-full max-w-full object-contain object-center",
+                  item.iconImageClassName ?? "",
+                ].join(" ")}
               />
             </div>
             <h3 className="font-section text-lg font-bold text-[#111827] sm:text-xl">

@@ -11,27 +11,27 @@ type HeroHighlight = {
 
 const HERO_HIGHLIGHTS: HeroHighlight[] = [
   {
-    imageSrc: "/images/hero-drag-drop-blocks.png",
-    imageAlt: "Connected coding blocks illustration",
-    title: "Drag-and-drop blocks",
+    imageSrc: "/images/hero-card-icon-no-syntax.png",
+    imageAlt: "Friendly blue robot icon representing coding without syntax barriers",
+    title: "Drag-And-Drop Blocks",
     description: "Snap together real code ideas without typing syntax first.",
   },
   {
-    imageSrc: "/images/hero-canvas-blocks.png",
-    imageAlt: "Computer screen with colorful block code",
-    title: "See it on the canvas",
+    imageSrc: "/images/hero-card-icon-visual-logic.png",
+    imageAlt: "Friendly teal robot icon representing visual logic on the canvas",
+    title: "See It On The Canvas",
     description: "Run your program and watch sprites and motion come alive.",
   },
   {
-    imageSrc: "/images/hero-robot-adventures.png",
-    imageAlt: "Friendly toy robot",
-    title: "Adventures that teach",
+    imageSrc: "/images/hero-card-icon-safe-experiment.png",
+    imageAlt: "Friendly orange robot icon representing safe experimentation",
+    title: "Adventures That Teach",
     description: "Step through lessons built for kids, clear goals and quick wins.",
   },
   {
-    imageSrc: "/images/hero-learn-with-friends.png",
-    imageAlt: "Two friendly robots learning together",
-    title: "Learn with friends",
+    imageSrc: "/images/hero-card-icon-confidence.png",
+    imageAlt: "Friendly purple robot icon with stars representing confidence",
+    title: "Learn With Friends",
     description: "Share projects, celebrate progress, and grow skills.",
   },
 ];
@@ -74,7 +74,7 @@ export function Hero() {
               key={title}
               className="relative rounded-2xl border-2 border-white/12 bg-[#1a3750] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[#c8dcc8] hover:bg-[#152d42]"
             >
-              <span className="absolute left-5 top-5 flex size-10 items-center justify-center overflow-hidden rounded-full bg-white/20 text-white sm:size-11">
+              <span className="absolute left-5 top-5 flex size-10 items-center justify-center overflow-hidden rounded-xl bg-white/20 text-white sm:size-11">
                 <HeroHighlightMedia highlight={item} />
               </span>
               <h3 className="mt-14 font-section text-base font-bold leading-snug text-white sm:mt-16">
