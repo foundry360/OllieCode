@@ -20,7 +20,12 @@ const LEGAL_LINKS = [
   { href: "/legal/privacy", label: "Privacy Policy" },
 ];
 
-export function Footer() {
+type FooterProps = {
+  /** When false, hides the floating “Have a question?” contact control (e.g. admin portal). */
+  showContactLauncher?: boolean;
+};
+
+export function Footer({ showContactLauncher = true }: FooterProps) {
   return (
     <footer className="relative z-10 w-full overflow-x-clip bg-[#111727] text-white">
       <div className="relative z-10 mx-auto max-w-6xl px-4 pb-14 pt-16 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
@@ -182,7 +187,7 @@ export function Footer() {
           Ollie Code. All rights reserved.
         </p>
       </div>
-      <ContactChatLauncher />
+      {showContactLauncher ? <ContactChatLauncher /> : null}
     </footer>
   );
 }

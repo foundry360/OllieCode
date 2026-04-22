@@ -1,8 +1,9 @@
 "use client";
 
-import { MessageCircle, X } from "lucide-react";
+import { Bot, X } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { OLLIE_OPEN_CONTACT_EVENT } from "@/lib/contact-dialog-event";
 
 const SUPPORT_EMAIL =
   typeof process.env.NEXT_PUBLIC_SUPPORT_EMAIL === "string"
@@ -47,12 +48,19 @@ export function ContactChatLauncher() {
     return () => el.removeEventListener("close", onClose);
   }, [reset, portalReady]);
 
-  const open = () => {
+  const open = useCallback(() => {
     setStatus("idle");
     setErrorText(null);
     setMailtoTarget(null);
     dialogRef.current?.showModal();
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!portalReady) return;
+    const onExternalOpen = () => open();
+    window.addEventListener(OLLIE_OPEN_CONTACT_EVENT, onExternalOpen);
+    return () => window.removeEventListener(OLLIE_OPEN_CONTACT_EVENT, onExternalOpen);
+  }, [open, portalReady]);
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -243,10 +251,11 @@ export function ContactChatLauncher() {
         type="button"
         onClick={open}
         aria-haspopup="dialog"
-        className="fixed bottom-6 left-6 z-50 flex max-w-[calc(100vw-5rem)] items-center gap-2.5 whitespace-nowrap rounded-full border-2 border-[var(--ollie-primary)] bg-[var(--ollie-primary)] px-4 py-3 text-sm font-bold text-white shadow-sm transition-colors hover:border-[#6fa020] hover:bg-[#6fa020] hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] sm:px-5 sm:text-base"
+        aria-label="Have a question? Open the contact form."
+        className="fixed right-0 top-1/2 z-50 flex -translate-y-1/2 items-center justify-center rounded-l-2xl border-2 border-r-0 border-[var(--ollie-primary)] bg-[var(--ollie-primary)] py-3.5 pl-3.5 text-white shadow-md transition-colors hover:border-[#6fa020] hover:bg-[#6fa020] hover:shadow-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#84c126] sm:py-4 sm:pl-4"
+        style={{ paddingRight: "max(0.75rem, env(safe-area-inset-right, 0px))" }}
       >
-        <MessageCircle className="h-5 w-5 shrink-0 sm:h-6 sm:w-6 text-current" strokeWidth={2} aria-hidden />
-        <span>Have a question?</span>
+        <Bot className="h-7 w-7 shrink-0 stroke-[2.25] sm:h-8 sm:w-8" aria-hidden />
       </button>
       {dialog}
     </>

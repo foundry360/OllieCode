@@ -4,6 +4,7 @@ import { Hero } from "@/components/landing/Hero";
 import { Features } from "@/components/landing/Features";
 import { WhyBlockCoding } from "@/components/landing/WhyBlockCoding";
 import { WhyOllieCode } from "@/components/landing/WhyOllieCode";
+import { OurMission } from "@/components/landing/OurMission";
 import { Testimonials } from "@/components/landing/Testimonials";
 import { FaqSection } from "@/components/landing/FaqSection";
 import { PreFooterCtaSection } from "@/components/landing/PreFooterCtaSection";
@@ -18,6 +19,7 @@ export default function Home() {
         <Features />
         <WhyBlockCoding />
         <WhyOllieCode />
+        <OurMission />
         <Testimonials />
         <FaqSection />
         <PreFooterCtaSection />

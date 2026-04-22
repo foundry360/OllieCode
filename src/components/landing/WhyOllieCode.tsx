@@ -277,7 +277,7 @@ export function WhyOllieCode() {
           })}
         </ul>
       </div>
-      <LandingSectionWave variant="bottom" colorClassName="text-[#3a6288]" className="!z-20" />
+      <LandingSectionWave variant="bottom" colorClassName="text-white" className="!z-20" />
     </section>
   );
 }

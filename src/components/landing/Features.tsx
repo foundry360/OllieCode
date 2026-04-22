@@ -24,6 +24,7 @@ const ITEMS = [
     icon: "/images/features-create-projects.png",
     iconWidth: 256,
     iconHeight: 256,
+    iconImageClassName: "translate-y-1.5 sm:translate-y-2",
   },
 ];
 
