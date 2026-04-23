@@ -23,7 +23,13 @@ const WORKSPACE_NEXT = "/workspace";
 const loginWorkspaceHref = `/auth/login?next=${encodeURIComponent(WORKSPACE_NEXT)}`;
 const signupWorkspaceHref = `/auth/signup?next=${encodeURIComponent(WORKSPACE_NEXT)}`;
 
-type CheckoutUiMode = "redirect" | "embedded";
+type CheckoutUiMode = "redirect" | "embedded" | "elements";
+
+export type PlanInlineCheckoutPayload = {
+  clientSecret: string;
+  plan: PaidPlanId;
+  billing: BillingInterval;
+};
 
 type PlanPaidCheckoutCtasProps = {
   planId: PaidPlanId;
@@ -40,10 +46,10 @@ type PlanPaidCheckoutCtasProps = {
   checkoutButtonLabel?: string;
   /** Hide the “New here? Create an account” link (e.g. Starter card on `/plans`). */
   hideNewHereSignupLink?: boolean;
-  /** Hosted redirect (default) vs Stripe Embedded Checkout in-page. */
+  /** Hosted redirect (default) vs Stripe embedded page vs Elements (custom layout + Payment Element). */
   checkoutUi?: CheckoutUiMode;
-  /** When `checkoutUi` is `embedded`, receives session `clientSecret` to mount Stripe.js. */
-  onEmbeddedClientSecret?: (clientSecret: string) => void;
+  /** When `checkoutUi` is `embedded` or `elements`, receives Checkout Session `clientSecret` for Stripe.js. */
+  onEmbeddedClientSecret?: (payload: PlanInlineCheckoutPayload) => void;
 };
 
 export function PlanPaidCheckoutCtas({
@@ -84,19 +90,22 @@ export function PlanPaidCheckoutCtas({
           return;
         }
 
-        const useEmbedded = checkoutUi === "embedded";
-        if (useEmbedded && !process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
+        const useInlineStripe = checkoutUi === "embedded" || checkoutUi === "elements";
+        if (useInlineStripe && !process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim()) {
           setError("Stripe publishable key is not configured (NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY).");
           return;
         }
 
         const res = await fetch("/api/checkout", {
           method: "POST",
+          cache: "no-store",
+          credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             plan: planId,
             billing: billingChoice,
-            ...(useEmbedded ? { embedded: true } : {}),
+            ...(checkoutUi === "embedded" ? { embedded: true } : {}),
+            ...(checkoutUi === "elements" ? { elements: true } : {}),
           }),
         });
         const data: { url?: string; clientSecret?: string; error?: string; code?: string } =
@@ -109,8 +118,12 @@ export function PlanPaidCheckoutCtas({
           setError(data.error || "Something went wrong. Please try again.");
           return;
         }
-        if (useEmbedded && data.clientSecret && onEmbeddedClientSecret) {
-          onEmbeddedClientSecret(data.clientSecret);
+        if (useInlineStripe && data.clientSecret && onEmbeddedClientSecret) {
+          onEmbeddedClientSecret({
+            clientSecret: data.clientSecret,
+            plan: planId,
+            billing: billingChoice,
+          });
           return;
         }
         if (data.url) {
@@ -126,6 +139,8 @@ export function PlanPaidCheckoutCtas({
     },
     [checkoutUi, onEmbeddedClientSecret, planId, router],
   );
+
+  const pendingLabel = checkoutUi === "elements" ? "Loading…" : "Redirecting…";
 
   const startCheckout = useCallback(async () => {
     await startCheckoutWithBilling(billing);
@@ -190,7 +205,7 @@ export function PlanPaidCheckoutCtas({
             disabled={pending}
             onClick={() => void startCheckoutWithBilling(fallbackBilling)}
           >
-            {pending ? "Redirecting…" : checkoutButtonLabel}
+            {pending ? pendingLabel : checkoutButtonLabel}
           </button>
         ) : null}
         {!hideAccountAuthLinks ? (
@@ -215,7 +230,7 @@ export function PlanPaidCheckoutCtas({
         disabled={pending}
         onClick={() => void startCheckout()}
       >
-        {pending ? "Redirecting…" : checkoutButtonLabel}
+        {pending ? pendingLabel : checkoutButtonLabel}
       </button>
       {!hideAccountAuthLinks ? (
         <>

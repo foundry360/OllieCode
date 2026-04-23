@@ -89,7 +89,7 @@ export const PLAN_CARDS: readonly PlanCardDefinition[] = [
     id: "educators",
     name: "Educators",
     positioning: "Schools, Studios & Programs",
-    audience: "For schools, districts, and programs",
+    audience: "For schools and programs",
     pricingByBilling: null,
     pricingStatic: "Custom Plan",
     features: [

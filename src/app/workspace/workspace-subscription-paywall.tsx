@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { PlansPricingSection } from "@/components/plans/PlansPricingSection";
-import { WorkspaceEmbeddedCheckout } from "@/components/plans/workspace-embedded-checkout";
+import { WorkspacePlanCheckoutForm } from "@/components/plans/workspace-plan-checkout-form";
+import type { PlanInlineCheckoutPayload } from "@/components/plans/PlanPaidCheckoutCtas";
 import { subscriptionAllowsWorkspace } from "@/lib/billing/profileSubscription";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PlanCheckoutAvailability } from "@/lib/stripe/prices";
@@ -29,7 +30,7 @@ export function WorkspaceSubscriptionPaywall({
 }: WorkspaceSubscriptionPaywallProps) {
   const router = useRouter();
   const [state, setState] = useState<GateState>("loading");
-  const [embeddedClientSecret, setEmbeddedClientSecret] = useState<string | null>(null);
+  const [inlineCheckout, setInlineCheckout] = useState<PlanInlineCheckoutPayload | null>(null);
 
   const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? "";
 
@@ -46,7 +47,7 @@ export function WorkspaceSubscriptionPaywall({
       return;
     }
 
-    const { data: profile, error } = await supabase
+    let { data: profile, error } = await supabase
       .from("profiles")
       .select("subscription_status,is_admin")
       .eq("id", user.id)
@@ -59,6 +60,26 @@ export function WorkspaceSubscriptionPaywall({
     }
 
     if (!profile) {
+      try {
+        const ensureRes = await fetch("/api/profile/ensure", { method: "POST" });
+        if (ensureRes.ok) {
+          const retry = await supabase
+            .from("profiles")
+            .select("subscription_status,is_admin")
+            .eq("id", user.id)
+            .maybeSingle();
+          profile = retry.data;
+          error = retry.error;
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
+    if (error || !profile) {
+      if (!profile) {
+        console.error("[workspace paywall] profile: missing row after ensure");
+      }
       setState("paywall");
       return;
     }
@@ -68,12 +89,60 @@ export function WorkspaceSubscriptionPaywall({
       return;
     }
 
+    // Reconcile with Stripe when DB is behind (missed webhook, confirm-session failure, etc.).
+    try {
+      const syncRes = await fetch("/api/billing/sync-from-stripe", { method: "POST" });
+      if (syncRes.ok) {
+        const syncBody = (await syncRes.json().catch(() => ({}))) as { updated?: boolean };
+        if (syncBody.updated) {
+          const { data: again, error: againErr } = await supabase
+            .from("profiles")
+            .select("subscription_status,is_admin")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (!againErr && again) {
+            if (again.is_admin === true || subscriptionAllowsWorkspace(again.subscription_status)) {
+              setState("entitled");
+              return;
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
+
     setState("paywall");
   }, [router]);
 
   useEffect(() => {
-    void loadAccess();
-  }, [loadAccess]);
+    void (async () => {
+      let syncedFromWelcome = false;
+      if (typeof window !== "undefined") {
+        const sid = sessionStorage.getItem("ollie_post_checkout_session");
+        if (sid?.startsWith("cs_")) {
+          try {
+            const res = await fetch("/api/billing/confirm-session", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ session_id: sid }),
+            });
+            if (res.ok) {
+              sessionStorage.removeItem("ollie_post_checkout_session");
+              syncedFromWelcome = true;
+            }
+          } catch {
+            // Best-effort; webhooks may still update profile.
+          }
+        }
+      }
+      await loadAccess();
+      if (syncedFromWelcome) {
+        router.refresh();
+      }
+    })();
+  }, [loadAccess, router]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -95,7 +164,7 @@ export function WorkspaceSubscriptionPaywall({
     if (sessionStorage.getItem(dedupeKey)) return;
     sessionStorage.setItem(dedupeKey, "1");
 
-    setEmbeddedClientSecret(null);
+    setInlineCheckout(null);
 
     void (async () => {
       try {
@@ -107,7 +176,7 @@ export function WorkspaceSubscriptionPaywall({
       } catch {
         // confirm-session is best-effort; webhooks may still update profile
       } finally {
-        router.replace("/workspace");
+        router.replace(`/workspace/welcome?session_id=${encodeURIComponent(sessionId)}`);
         await loadAccess();
       }
     })();
@@ -120,6 +189,8 @@ export function WorkspaceSubscriptionPaywall({
     router.refresh();
   }, [router]);
 
+  const showingStripeCheckout = Boolean(inlineCheckout && stripePublishableKey);
+
   if (state === "entitled") {
     return <>{children}</>;
   }
@@ -127,12 +198,12 @@ export function WorkspaceSubscriptionPaywall({
   if (state === "loading") {
     return (
       <div
-        className="fixed inset-0 z-[100] flex items-center justify-center bg-[#111827]/80 px-6 text-center text-white"
+        className="fixed inset-0 z-[110000] flex items-center justify-center bg-[#111827]/80 px-6 text-center text-white"
         role="alertdialog"
         aria-busy="true"
-        aria-label="Checking subscription"
+        aria-label="Hang tight"
       >
-        <p className="text-base font-medium">Checking your plan…</p>
+        <p className="text-base font-medium">Hang tight…</p>
       </div>
     );
   }
@@ -145,30 +216,39 @@ export function WorkspaceSubscriptionPaywall({
       >
         {children}
       </div>
-      <div className="fixed inset-0 z-[100] flex items-center justify-center overflow-hidden bg-[#0f172a]/45 p-2 backdrop-blur-[1px] sm:p-4">
+      <div className="fixed inset-0 z-[110000] flex items-center justify-center overflow-hidden bg-[#0f172a]/45 p-4 backdrop-blur-[1px] sm:p-6">
         <div
-          className="pointer-events-auto flex max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-[#e5e7eb]/90 bg-white/95 shadow-2xl backdrop-blur-sm"
+          className={`pointer-events-auto flex w-full flex-col overflow-hidden rounded-2xl border bg-white/95 shadow-2xl backdrop-blur-sm ${showingStripeCheckout ? "max-h-[min(92dvh,900px)] max-w-[min(98vw,72rem)] border-[#cfe8b8] shadow-[0_25px_50px_-12px_rgba(132,193,38,0.18)]" : "max-h-[min(76dvh,680px)] max-w-[min(96vw,52rem)] border-[#e5e7eb]/90"}`}
           role="dialog"
           aria-modal="true"
           aria-labelledby="paywall-title"
         >
-          <div className="shrink-0 border-b border-[#e5e7eb]/80 px-3 pb-3 pt-4 sm:px-5 sm:pb-4 sm:pt-5">
+          <div
+            className={`shrink-0 border-b ${showingStripeCheckout ? "px-4 pb-4 pt-4 sm:px-7 sm:pb-5 sm:pt-5" : "px-4 pb-3 pt-3.5 sm:px-6 sm:pb-4 sm:pt-4"} ${showingStripeCheckout ? "border-[#e5e7eb]/80 bg-[linear-gradient(180deg,#f7fcf2_0%,#ffffff_100%)]" : "border-[#e5e7eb]/80"}`}
+          >
             <h1
               id="paywall-title"
-              className="font-section text-center text-lg font-extrabold tracking-tight text-[#111827] sm:text-xl"
+              className="font-section text-center text-base font-extrabold tracking-tight text-[#111827] sm:text-lg"
             >
-              Which Plan Best Meets Your Needs?
+              {showingStripeCheckout ? "You're One Step Away" : "Which Plan Best Meets Your Needs?"}
             </h1>
-            <p className="mx-auto mt-1.5 max-w-2xl text-center text-xs leading-snug text-[#6b7280] sm:text-sm">
-              Pick a plan to unlock your workspace and start creating.
+            <p className="mx-auto mt-1 max-w-2xl text-center text-[11px] leading-snug text-[#6b7280] sm:text-xs">
+              {showingStripeCheckout
+                ? "Add your payment details to complete setup. Secure processing and you can update or cancel anytime."
+                : "Pick a plan to unlock your workspace and start creating."}
             </p>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overflow-x-hidden px-3 pb-3 pt-3 sm:px-5 sm:pb-4 sm:pt-4">
-            {embeddedClientSecret && stripePublishableKey ? (
-              <WorkspaceEmbeddedCheckout
+          <div
+            className={`flex min-h-0 flex-1 flex-col ${showingStripeCheckout ? "px-4 pb-5 pt-3 sm:px-7 sm:pb-6 sm:pt-5" : "px-4 pb-3 pt-3 sm:px-6 sm:pb-4 sm:pt-4"} ${showingStripeCheckout ? "overflow-hidden" : "overflow-y-auto overflow-x-hidden"}`}
+          >
+            {showingStripeCheckout && inlineCheckout ? (
+              <WorkspacePlanCheckoutForm
+                key={inlineCheckout.clientSecret}
                 publishableKey={stripePublishableKey}
-                clientSecret={embeddedClientSecret}
-                onClose={() => setEmbeddedClientSecret(null)}
+                clientSecret={inlineCheckout.clientSecret}
+                plan={inlineCheckout.plan}
+                billing={inlineCheckout.billing}
+                onClose={() => setInlineCheckout(null)}
               />
             ) : (
               <>
@@ -178,8 +258,8 @@ export function WorkspaceSubscriptionPaywall({
                     checkoutIntentBasePath="/workspace"
                     hideAccountAuthLinks
                     compact
-                    checkoutUi="embedded"
-                    onEmbeddedCheckoutClientSecret={setEmbeddedClientSecret}
+                    checkoutUi="elements"
+                    onEmbeddedCheckoutClientSecret={setInlineCheckout}
                   />
                 </Suspense>
                 <p className="mx-auto mt-3 max-w-2xl shrink-0 px-1 pb-0.5 text-center text-[10px] leading-snug text-[#6b7280] sm:mt-4 sm:text-xs">
@@ -188,20 +268,22 @@ export function WorkspaceSubscriptionPaywall({
               </>
             )}
           </div>
-          <div className="shrink-0 border-t border-[#e5e7eb] px-3 py-3 sm:px-5 sm:py-4">
-            <div className="flex flex-col items-center gap-1">
-              <button
-                type="button"
-                onClick={() => void backToHome()}
-                className="text-xs font-semibold text-[#4b5563] underline underline-offset-2 hover:text-[#111827] sm:text-sm"
-              >
-                Back to home
-              </button>
-              <p className="max-w-md text-center text-[10px] leading-tight text-[#9ca3af] sm:text-xs">
-                Signs you out and returns to the home page.
-              </p>
+          {showingStripeCheckout ? null : (
+            <div className="shrink-0 border-t border-[#e5e7eb] px-4 py-4 sm:px-6 sm:py-5">
+              <div className="flex flex-col items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void backToHome()}
+                  className="text-xs font-semibold text-[#4b5563] underline underline-offset-2 hover:text-[#111827] sm:text-sm"
+                >
+                  Back to home
+                </button>
+                <p className="max-w-md text-center text-[10px] leading-tight text-[#9ca3af] sm:text-xs">
+                  Signs you out and returns to the home page.
+                </p>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
     </>

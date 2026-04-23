@@ -1,7 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { absoluteUrl } from "@/lib/stripe/absoluteUrl";
+import {
+  getOrCreateStripeCustomerId,
+  isMislinkedKidAuthToParentStripeWallet,
+} from "@/lib/stripe/customer";
 import { getStripe } from "@/lib/stripe/server";
 import {
   getStripePriceId,
@@ -26,7 +30,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { plan?: unknown; billing?: unknown; embedded?: unknown };
+  let body: { plan?: unknown; billing?: unknown; embedded?: unknown; elements?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -49,10 +53,17 @@ export async function POST(request: NextRequest) {
   }
 
   const embedded = body.embedded === true;
+  const elements = body.elements === true;
+  if (embedded && elements) {
+    return NextResponse.json(
+      { error: "Choose one checkout presentation (embedded or elements)." },
+      { status: 400 },
+    );
+  }
 
   const successUrl = `${absoluteUrl(request, "/checkout/success")}?session_id={CHECKOUT_SESSION_ID}`;
   const cancelUrl = absoluteUrl(request, "/workspace");
-  const workspaceReturnUrl = `${absoluteUrl(request, "/workspace")}?stripe_checkout_return=1&session_id={CHECKOUT_SESSION_ID}`;
+  const workspaceReturnUrl = `${absoluteUrl(request, "/workspace/welcome")}?session_id={CHECKOUT_SESSION_ID}`;
 
   const supabase = await createSupabaseServerClient();
   if (!supabase) {
@@ -71,13 +82,59 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const customerEmail = user.email?.trim();
+  let stripeCustomerId: string;
+  try {
+    const { data: profileRow } = await supabase
+      .from("profiles")
+      .select("stripe_customer_id")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    const fromProfile = profileRow?.stripe_customer_id?.trim();
+    let trustedProfileCustomer: string | null = null;
+    if (fromProfile) {
+      try {
+        const existing = await stripe.customers.retrieve(fromProfile);
+        if (
+          typeof existing !== "string" &&
+          !existing.deleted &&
+          existing.metadata?.supabase_user_id === user.id &&
+          !isMislinkedKidAuthToParentStripeWallet(user.email, existing)
+        ) {
+          trustedProfileCustomer = existing.id;
+        }
+      } catch {
+        /* ignore — fall through to getOrCreate */
+      }
+    }
+
+    stripeCustomerId =
+      trustedProfileCustomer ??
+      (await getOrCreateStripeCustomerId(stripe, {
+        id: user.id,
+        email: user.email,
+      }));
+  } catch (err) {
+    console.error("[checkout] customer:", err);
+    return NextResponse.json(
+      { error: "Could not prepare your billing profile. Please try again." },
+      { status: 502 },
+    );
+  }
+
+  /**
+   * With Dashboard “dynamic payment methods”, use `excluded_payment_method_types` so Stripe
+   * removes specific APMs from the session. (`payment_method_types` is mutually exclusive and
+   * was not reliably hiding Cash App / Amazon / Klarna for Elements checkout.)
+   */
+  const excludedPaymentMethodTypes = ["cashapp", "amazon_pay", "klarna"] as const;
 
   const commonSessionFields = {
     mode: "subscription" as const,
     line_items: [{ price: priceId, quantity: 1 }],
+    excluded_payment_method_types: [...excludedPaymentMethodTypes],
     allow_promotion_codes: true,
-    ...(customerEmail ? { customer_email: customerEmail } : {}),
+    customer: stripeCustomerId,
     client_reference_id: user.id,
     metadata: {
       plan: body.plan,
@@ -93,6 +150,21 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    if (elements) {
+      const session = await stripe.checkout.sessions.create({
+        ...commonSessionFields,
+        ui_mode: "elements",
+        return_url: workspaceReturnUrl,
+      });
+      if (!session.client_secret) {
+        return NextResponse.json(
+          { error: "Checkout session did not return a client secret." },
+          { status: 502 },
+        );
+      }
+      return NextResponse.json({ clientSecret: session.client_secret }, { status: 200 });
+    }
+
     if (embedded) {
       const sessionParams: Stripe.Checkout.SessionCreateParams = {
         ...commonSessionFields,
@@ -114,6 +186,7 @@ export async function POST(request: NextRequest) {
 
     const session = await stripe.checkout.sessions.create({
       ...commonSessionFields,
+      branding_settings: { display_name: "Ollie Code" },
       success_url: successUrl,
       cancel_url: cancelUrl,
     });
@@ -128,8 +201,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ url: session.url }, { status: 200 });
   } catch (err) {
     console.error("[checkout]", err);
+    const stripeMsg =
+      err instanceof Stripe.errors.StripeError
+        ? err.message
+        : err instanceof Error
+          ? err.message
+          : null;
     return NextResponse.json(
-      { error: "Could not start checkout. Please try again." },
+      {
+        error: stripeMsg || "Could not start checkout. Please try again.",
+      },
       { status: 502 },
     );
   }

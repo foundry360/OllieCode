@@ -14,18 +14,23 @@ export async function updateProfileFromStripeSubscription(
     subscriptionStatus: string;
   },
 ): Promise<{ ok: boolean; error?: string }> {
-  const { error } = await admin
+  const { data, error } = await admin
     .from("profiles")
     .update({
       stripe_customer_id: input.stripeCustomerId,
       stripe_subscription_id: input.stripeSubscriptionId,
       subscription_status: input.subscriptionStatus,
     })
-    .eq("id", userId);
+    .eq("id", userId)
+    .select("id");
 
   if (error) {
     console.error("[billing] profile update:", error.message);
     return { ok: false, error: error.message };
+  }
+  if (!data?.length) {
+    console.error("[billing] profile update: no matching profile row for user", userId);
+    return { ok: false, error: "Profile not found." };
   }
   return { ok: true };
 }

@@ -115,7 +115,7 @@ export const LESSONS: LessonCatalogEntry[] = [
     objective: "Get started",
     levelName: "Beginner",
     roleLabel: "Learner",
-    cardImageUrl: "/images/sprites/welcomebot.png",
+    cardImageUrl: "/images/lesson-getting-started-welcomebot.png",
     modules: [
       {
         id: "getstarted-m1",

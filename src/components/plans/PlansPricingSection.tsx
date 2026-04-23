@@ -4,7 +4,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { PlanPaidCheckoutCtas } from "@/components/plans/PlanPaidCheckoutCtas";
+import {
+  PlanPaidCheckoutCtas,
+  type PlanInlineCheckoutPayload,
+} from "@/components/plans/PlanPaidCheckoutCtas";
 import { normalizePlansCheckoutBasePath, parsePlansCheckoutIntent } from "@/lib/plans/checkoutIntent";
 import { PLAN_CARDS, type PlanCardDefinition, type PlanCardId } from "@/lib/plans/planCards";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -56,10 +59,10 @@ type PlansPricingSectionProps = {
   compact?: boolean;
   /** Paid-plan primary CTA when Stripe checkout is available (default “Subscribe”). */
   paidCheckoutButtonLabel?: string;
-  /** Workspace paywall: embedded Stripe Checkout in the modal instead of redirect. */
-  checkoutUi?: "redirect" | "embedded";
-  /** When `checkoutUi` is `embedded`, called with Checkout Session `clientSecret`. */
-  onEmbeddedCheckoutClientSecret?: (clientSecret: string) => void;
+  /** Workspace paywall: Stripe in-modal (`elements` = styled form, `embedded` = full embedded page). */
+  checkoutUi?: "redirect" | "embedded" | "elements";
+  /** When `checkoutUi` is `embedded` or `elements`, called with Checkout Session `clientSecret`. */
+  onEmbeddedCheckoutClientSecret?: (payload: PlanInlineCheckoutPayload) => void;
 };
 
 export function PlansPricingSection({
@@ -127,20 +130,27 @@ export function PlansPricingSection({
 
       checkoutResumeKeyRef.current = resumeKey;
 
-      const useEmbedded = checkoutUi === "embedded";
+      const useInline = checkoutUi === "embedded" || checkoutUi === "elements";
       const res = await fetch("/api/checkout", {
         method: "POST",
+        cache: "no-store",
+        credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           plan: planId,
           billing: billingIntent,
-          ...(useEmbedded ? { embedded: true } : {}),
+          ...(checkoutUi === "embedded" ? { embedded: true } : {}),
+          ...(checkoutUi === "elements" ? { elements: true } : {}),
         }),
       });
       const data: { url?: string; clientSecret?: string } = await res.json().catch(() => ({}));
       if (cancelled) return;
-      if (res.ok && useEmbedded && data.clientSecret && onEmbeddedCheckoutClientSecret) {
-        onEmbeddedCheckoutClientSecret(data.clientSecret);
+      if (res.ok && useInline && data.clientSecret && onEmbeddedCheckoutClientSecret) {
+        onEmbeddedCheckoutClientSecret({
+          clientSecret: data.clientSecret,
+          plan: planId,
+          billing: billingIntent,
+        });
         return;
       }
       if (res.ok && data.url) {
