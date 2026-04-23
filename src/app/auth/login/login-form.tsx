@@ -3,7 +3,9 @@
 import { OllieLogoLink } from "@/components/auth/OllieLogoLink";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { resolvePostLoginPath } from "@/lib/auth/postLoginRedirect";
+import { safeNextPath } from "@/lib/auth/safeNextPath";
 import { usernameToAuthEmail } from "@/lib/auth/authEmailDomain";
 import {
   normalizeUsername,
@@ -18,10 +20,8 @@ function usernameToSignInEmail(raw: string): string {
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const next =
-    searchParams.get("next")?.startsWith("/") === true
-      ? searchParams.get("next")!
-      : "/workspace";
+  const nextParam = searchParams.get("next");
+  const next = useMemo(() => safeNextPath(nextParam), [nextParam]);
 
   const [codename, setCodename] = useState("");
   const [password, setPassword] = useState("");
@@ -37,9 +37,17 @@ export function LoginForm() {
   useEffect(() => {
     const supabase = getSupabaseBrowserClient();
     if (!supabase) return;
-    void supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) router.replace(next);
-    });
+    void (async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("subscription_status,is_admin")
+        .eq("id", user.id)
+        .maybeSingle();
+      router.replace(resolvePostLoginPath(next, profile));
+      router.refresh();
+    })();
   }, [router, next]);
 
   function validateCodenameField(raw: string): string | null {
@@ -72,7 +80,18 @@ export function LoginForm() {
         setMsg(error.message);
         return;
       }
-      router.replace(next);
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.replace(next);
+        router.refresh();
+        return;
+      }
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("subscription_status,is_admin")
+        .eq("id", user.id)
+        .maybeSingle();
+      router.replace(resolvePostLoginPath(next, profile));
       router.refresh();
     } finally {
       setLoading(false);
@@ -181,7 +200,10 @@ export function LoginForm() {
 
       <p className="mt-8 text-center text-sm">
         New here?{" "}
-        <Link href="/auth/signup" className="font-semibold text-[#84c126] hover:underline">
+        <Link
+          href={`/auth/signup?next=${encodeURIComponent(next)}`}
+          className="font-semibold text-[#84c126] hover:underline"
+        >
           Create an account
         </Link>
       </p>

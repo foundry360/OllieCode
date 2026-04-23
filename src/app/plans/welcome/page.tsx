@@ -17,12 +17,12 @@ function PlansPricingFallback() {
 }
 
 export const metadata: Metadata = {
-  title: "Plan Options — Ollie Code",
+  title: "Welcome — Choose a plan | Ollie Code",
   description:
-    "Starter and Family plans for home learners, plus Educators pricing—pick what fits your household or classroom.",
+    "Welcome to Ollie Code. Pick a Starter or Family plan to unlock the workspace and full lessons.",
 };
 
-export default function PlansPage() {
+export default function PlansWelcomePage() {
   const checkoutAvailability = getPlanCheckoutAvailability();
 
   return (
@@ -31,24 +31,27 @@ export default function PlansPage() {
       <main className="min-w-0 w-full max-w-full flex-1">
         <section
           className="relative scroll-mt-20 overflow-x-clip bg-[#ffffff] px-4 pb-24 pt-16 sm:pb-28 sm:pt-20 lg:pb-32 lg:pt-24"
-          aria-labelledby="plans-heading"
+          aria-labelledby="plans-welcome-heading"
         >
           <LandingSectionWave variant="bottom" colorClassName="text-[#d9eeff]" />
           <div className="relative z-10 mx-auto max-w-6xl">
             <h1
-              id="plans-heading"
+              id="plans-welcome-heading"
               className="font-section text-center text-3xl font-extrabold tracking-tight text-[#111827] sm:text-4xl"
             >
-              Plan Options
+              Welcome to Ollie Code!
             </h1>
+            <p className="mx-auto mt-4 max-w-3xl text-center text-base font-semibold leading-relaxed text-[#374151] sm:text-xl">
+              Let&apos;s get started with a new plan!
+            </p>
             <p className="mx-auto mt-4 max-w-3xl text-center text-base leading-relaxed text-[#6b7280] sm:text-lg">
-              Pick the plan that fits your learning journey. Start with easy, family-friendly pricing at
-              home, or explore powerful, scalable options built for classrooms, schools, and education
-              programs.
+              Choose monthly or yearly billing, then pick the plan that fits your home. You&apos;ll
+              unlock the full workspace and lessons as soon as your subscription is active.
             </p>
             <Suspense fallback={<PlansPricingFallback />}>
               <PlansPricingSection
                 checkoutAvailability={checkoutAvailability}
+                checkoutIntentBasePath="/plans/welcome"
                 paidCheckoutButtonLabel="Get Started"
               />
             </Suspense>

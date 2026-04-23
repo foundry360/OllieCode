@@ -2,8 +2,9 @@
 
 import { OllieLogoLink } from "@/components/auth/OllieLogoLink";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Fragment, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useMemo, useState } from "react";
+import { safeNextPath } from "@/lib/auth/safeNextPath";
 import { BirthDateDigits } from "@/components/auth/BirthDateDigits";
 import {
   isoDateFromDigits,
@@ -81,6 +82,10 @@ function SignupStepStatus({ step }: { step: Step }) {
 
 export function SignupWizard() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next") ?? "";
+  const afterAuthPath = useMemo(() => safeNextPath(nextParam), [nextParam]);
+
   const [step, setStep] = useState<Step>(1);
   const [done, setDone] = useState(false);
   const [codename, setCodename] = useState("");
@@ -372,7 +377,7 @@ export function SignupWizard() {
             </p>
           )}
           <Link
-            href="/auth/login?next=/workspace"
+            href={`/auth/login?next=${encodeURIComponent(afterAuthPath)}`}
             className="mt-4 inline-block font-bold text-[#3f6212] underline"
           >
             Back to sign in
@@ -382,7 +387,10 @@ export function SignupWizard() {
 
       <p className="mt-8 text-center text-sm">
         Already have an account?{" "}
-        <Link href="/auth/login?next=/workspace" className="font-semibold text-[#84c126] hover:underline">
+        <Link
+          href={`/auth/login?next=${encodeURIComponent(afterAuthPath)}`}
+          className="font-semibold text-[#84c126] hover:underline"
+        >
           Sign in
         </Link>
       </p>

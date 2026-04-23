@@ -54,10 +54,16 @@ export function LandingNav({ appearance = "default" }: LandingNavProps) {
             Plans
           </Link>
           <Link
-            href="/auth/login"
+            href="/auth/signup"
+            className={isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}
+          >
+            Sign Up
+          </Link>
+          <Link
+            href="/auth/login?next=%2Fworkspace"
             className="rounded-full bg-[#84c126] px-5 py-2.5 text-white shadow-sm transition hover:bg-[#6fa020]"
           >
-            Start Coding
+            Log In
           </Link>
         </nav>
       </div>
