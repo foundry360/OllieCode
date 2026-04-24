@@ -113,6 +113,11 @@ import {
   type StageActor,
 } from "@/types/ollie";
 import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLinks";
+import {
+  parseAccountSettingsTab,
+  type AccountSettingsTabId,
+} from "@/components/settings/AccountSettingsPanel";
+import { WorkspaceSettingsModal } from "@/components/settings/WorkspaceSettingsModal";
 import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
 import {
@@ -201,8 +206,11 @@ const DEFAULT_STAGE_ACTORS: StageActor[] = makeDefaultStageActors(undefined);
 export function OllieWorkspace() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
   const missionIdParam = searchParams.get("mission");
   const rawLessonId = searchParams.get("lesson")?.trim() ?? "";
+  const settingsTabParam = parseAccountSettingsTab(searchParams.get("settings"));
+  const activeSettingsTab = settingsTabParam ?? "plan-billing";
   /**
    * Getting Started modules (“Run the Welcome Bot”, …) only when `lesson=lvl1-get-started`
    * (or default for non-custom workspaces). Custom adventures (`mission=custom-…`) never
@@ -394,6 +402,38 @@ export function OllieWorkspace() {
   const [savedMissionEntries, setSavedMissionEntries] = useState<
     SavedMissionProgressEntry[]
   >([]);
+
+  const setWorkspaceSettingsTab = useCallback(
+    (tab: AccountSettingsTabId | null) => {
+      const next = new URLSearchParams(searchParamsString);
+      if (tab) next.set("settings", tab);
+      else next.delete("settings");
+      const query = next.toString();
+      router.replace(query ? `/workspace?${query}` : "/workspace", { scroll: false });
+    },
+    [router, searchParamsString],
+  );
+
+  const openSettingsModal = useCallback(() => {
+    setWorkspaceSettingsTab("plan-billing");
+  }, [setWorkspaceSettingsTab]);
+
+  const closeSettingsModal = useCallback(() => {
+    setWorkspaceSettingsTab(null);
+  }, [setWorkspaceSettingsTab]);
+
+  const handleSettingsTabChange = useCallback(
+    (tab: AccountSettingsTabId) => {
+      setWorkspaceSettingsTab(tab);
+    },
+    [setWorkspaceSettingsTab],
+  );
+
+  const settingsPortalReturnPath = useMemo(() => {
+    const next = new URLSearchParams(searchParamsString);
+    next.set("settings", activeSettingsTab);
+    return `/workspace?${next.toString()}`;
+  }, [activeSettingsTab, searchParamsString]);
 
   /** In-app `ask` / prompt overlay (replaces `window.prompt` on the stage). */
   const [askOverlay, setAskOverlay] = useState<{
@@ -1578,17 +1618,18 @@ export function OllieWorkspace() {
   }, []);
 
   const saveAvatar = useCallback(async (id: OllieAvatarId) => {
-    const sb = getSupabaseBrowserClient();
-    if (!sb) return;
-    const {
-      data: { user },
-    } = await sb.auth.getUser();
-    if (!user) return;
-    const { error } = await sb
-      .from("profiles")
-      .update({ avatar_slug: id })
-      .eq("id", user.id);
-    if (!error) setAvatarSlug(id);
+    try {
+      const response = await fetch("/api/profile/avatar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarSlug: id }),
+      });
+      if (response.ok) {
+        setAvatarSlug(id);
+      }
+    } catch {
+      /* ignore */
+    }
   }, []);
 
   const applyProjectPayload = useCallback((payload: ProjectPayload) => {
@@ -2156,9 +2197,12 @@ export function OllieWorkspace() {
           {isClient && getSupabaseBrowserClient() ? (
             <div className="flex items-center gap-2 border-l border-[#e5e7eb] pl-2 sm:gap-3 sm:pl-3">
               <WorkspaceHeaderTooltip text="Settings">
-                <Link
-                  href="/settings"
+                <button
+                  type="button"
+                  onClick={openSettingsModal}
                   aria-label="Settings"
+                  aria-haspopup="dialog"
+                  aria-expanded={settingsTabParam ? "true" : "false"}
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#e5e7eb] bg-white text-[#374151] shadow-sm transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
                 >
                   <Settings
@@ -2166,7 +2210,7 @@ export function OllieWorkspace() {
                     strokeWidth={ICON_STROKE}
                     aria-hidden
                   />
-                </Link>
+                </button>
               </WorkspaceHeaderTooltip>
               <WorkspaceHeaderTooltip
                 text={isFullscreen ? "Exit" : "Fullscreen"}
@@ -2925,6 +2969,14 @@ export function OllieWorkspace() {
           </div>
         </>
       ) : null}
+      <WorkspaceSettingsModal
+        open={Boolean(settingsTabParam)}
+        activeTab={activeSettingsTab}
+        onTabChange={handleSettingsTabChange}
+        onClose={closeSettingsModal}
+        portalReturnPath={settingsPortalReturnPath}
+        onAvatarSaved={setAvatarSlug}
+      />
       <AvatarPickerModal
         open={avatarPickerOpen}
         onClose={() => setAvatarPickerOpen(false)}

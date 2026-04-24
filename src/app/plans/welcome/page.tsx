@@ -5,7 +5,7 @@ import { LandingNav } from "@/components/landing/LandingNav";
 import { PreFooterCtaSection } from "@/components/landing/PreFooterCtaSection";
 import { Footer } from "@/components/landing/Footer";
 import { LandingSectionWave } from "@/components/landing/sectionWaves";
-import { PlansPricingSection } from "@/components/plans/PlansPricingSection";
+import { PlansPricingWithInlineCheckout } from "@/components/plans/PlansPricingWithInlineCheckout";
 import { getPlanCheckoutAvailability } from "@/lib/stripe/prices";
 
 function PlansPricingFallback() {
@@ -49,7 +49,7 @@ export default function PlansWelcomePage() {
               unlock the full workspace and lessons as soon as your subscription is active.
             </p>
             <Suspense fallback={<PlansPricingFallback />}>
-              <PlansPricingSection
+              <PlansPricingWithInlineCheckout
                 checkoutAvailability={checkoutAvailability}
                 checkoutIntentBasePath="/plans/welcome"
                 paidCheckoutButtonLabel="Get Started"

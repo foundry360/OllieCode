@@ -129,11 +129,46 @@ html::-webkit-scrollbar-thumb:hover {
     animation: ollie-testimonials-marquee 50s linear infinite;
     will-change: transform;
   }
+
+  @keyframes ollie-hang-tight-dot {
+    0%,
+    80%,
+    100% {
+      opacity: 0.28;
+      transform: scale(0.82);
+    }
+    40% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .ollie-hang-tight-dot {
+    animation: ollie-hang-tight-dot 1.15s ease-in-out infinite;
+  }
+
+  .ollie-hang-tight-dot-1 {
+    animation-delay: 0s;
+  }
+
+  .ollie-hang-tight-dot-2 {
+    animation-delay: 0.18s;
+  }
+
+  .ollie-hang-tight-dot-3 {
+    animation-delay: 0.36s;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .ollie-testimonials-marquee-track {
     animation: none;
+    transform: none;
+  }
+
+  .ollie-hang-tight-dot {
+    animation: none;
+    opacity: 1;
     transform: none;
   }
 }

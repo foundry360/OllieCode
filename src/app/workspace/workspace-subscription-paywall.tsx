@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState, type ReactNode } from "react";
 import { PlansPricingSection } from "@/components/plans/PlansPricingSection";
@@ -198,12 +199,29 @@ export function WorkspaceSubscriptionPaywall({
   if (state === "loading") {
     return (
       <div
-        className="fixed inset-0 z-[110000] flex items-center justify-center bg-[#111827]/80 px-6 text-center text-white"
+        className="fixed inset-0 z-[110000] flex items-center justify-center bg-gradient-to-br from-[#e8f1e5] via-[#d2e0ce] to-[#b8ccaf] px-6 text-center text-[#1a2e1c]"
         role="alertdialog"
         aria-busy="true"
-        aria-label="Hang tight"
+        aria-label="Hang tight, loading"
       >
-        <p className="text-base font-medium">Hang tight…</p>
+        <div className="flex max-w-sm flex-col items-center gap-5">
+          <Image
+            src="/images/robot-hang-tight-waiting.png"
+            alt=""
+            width={220}
+            height={220}
+            className="h-36 w-auto object-contain sm:h-44"
+            priority
+          />
+          <p className="font-display flex flex-wrap items-center justify-center gap-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">
+            <span>Hang tight</span>
+            <span className="inline-flex translate-y-1 items-center gap-1.5 pl-0.5" aria-hidden>
+              <span className="ollie-hang-tight-dot ollie-hang-tight-dot-1 inline-block h-2 w-2 rounded-full bg-[#2d4a32] sm:h-2.5 sm:w-2.5" />
+              <span className="ollie-hang-tight-dot ollie-hang-tight-dot-2 inline-block h-2 w-2 rounded-full bg-[#2d4a32] sm:h-2.5 sm:w-2.5" />
+              <span className="ollie-hang-tight-dot ollie-hang-tight-dot-3 inline-block h-2 w-2 rounded-full bg-[#2d4a32] sm:h-2.5 sm:w-2.5" />
+            </span>
+          </p>
+        </div>
       </div>
     );
   }

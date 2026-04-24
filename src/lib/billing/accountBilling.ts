@@ -1,0 +1,246 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type Stripe from "stripe";
+import { isMislinkedKidAuthToParentStripeWallet } from "@/lib/stripe/customer";
+import { getStripePriceId, type BillingInterval, type PaidPlanId } from "@/lib/stripe/prices";
+
+type AppUser = {
+  id: string;
+  email: string | null | undefined;
+};
+
+export type BillingCardSummary = {
+  brand: string;
+  last4: string;
+  expMonth: number;
+  expYear: number;
+};
+
+export type AccountBillingSummary = {
+  customerId: string | null;
+  subscriptionId: string | null;
+  subscriptionStatus: string | null;
+  plan: PaidPlanId | null;
+  billing: BillingInterval | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  portalAvailable: boolean;
+  paymentMethod: BillingCardSummary | null;
+};
+
+function isPaidPlanId(value: unknown): value is PaidPlanId {
+  return value === "starter" || value === "family";
+}
+
+function isBillingInterval(value: unknown): value is BillingInterval {
+  return value === "month" || value === "year";
+}
+
+function inferPlanAndBillingFromPriceId(priceId: string | null | undefined): {
+  plan: PaidPlanId | null;
+  billing: BillingInterval | null;
+} {
+  const t = priceId?.trim() ?? "";
+  if (!t) return { plan: null, billing: null };
+
+  const knownPlans: PaidPlanId[] = ["starter", "family"];
+  const knownBilling: BillingInterval[] = ["month", "year"];
+  for (const plan of knownPlans) {
+    for (const billing of knownBilling) {
+      if (getStripePriceId(plan, billing) === t) {
+        return { plan, billing };
+      }
+    }
+  }
+
+  return { plan: null, billing: null };
+}
+
+function pickBestSubscription(subscriptions: Stripe.Subscription[]): Stripe.Subscription | null {
+  if (!subscriptions.length) return null;
+
+  const preferred = subscriptions
+    .filter((sub) => sub.status === "active" || sub.status === "trialing")
+    .sort((a, b) => b.created - a.created)[0];
+
+  if (preferred) return preferred;
+
+  return [...subscriptions].sort((a, b) => b.created - a.created)[0] ?? null;
+}
+
+function getPaymentMethodId(
+  value:
+    | string
+    | Stripe.PaymentMethod
+    | Stripe.DeletedPaymentMethod
+    | null
+    | undefined,
+): string | null {
+  if (!value) return null;
+  if (typeof value === "string") return value;
+  if ("deleted" in value && value.deleted) return null;
+  return value.id;
+}
+
+async function retrieveCardPaymentMethod(
+  stripe: Stripe,
+  paymentMethodId: string | null,
+): Promise<BillingCardSummary | null> {
+  if (!paymentMethodId) return null;
+
+  try {
+    const paymentMethod = await stripe.paymentMethods.retrieve(paymentMethodId);
+    if ("deleted" in paymentMethod && paymentMethod.deleted) return null;
+    if (paymentMethod.type !== "card" || !paymentMethod.card) return null;
+
+    return {
+      brand: paymentMethod.card.brand,
+      last4: paymentMethod.card.last4,
+      expMonth: paymentMethod.card.exp_month,
+      expYear: paymentMethod.card.exp_year,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function parsePlanAndBilling(subscription: Stripe.Subscription | null): {
+  plan: PaidPlanId | null;
+  billing: BillingInterval | null;
+} {
+  if (!subscription) {
+    return { plan: null, billing: null };
+  }
+
+  const metaPlan = subscription.metadata?.plan;
+  const metaBilling = subscription.metadata?.billing;
+  if (isPaidPlanId(metaPlan) && isBillingInterval(metaBilling)) {
+    return { plan: metaPlan, billing: metaBilling };
+  }
+
+  const firstItem = subscription.items.data[0];
+  return inferPlanAndBillingFromPriceId(firstItem?.price?.id);
+}
+
+function getSubscriptionPeriodEndIso(subscription: Stripe.Subscription | null): string | null {
+  if (!subscription) return null;
+
+  const topLevelPeriodEnd = (subscription as unknown as { current_period_end?: unknown })
+    .current_period_end;
+  if (typeof topLevelPeriodEnd === "number") {
+    return new Date(topLevelPeriodEnd * 1000).toISOString();
+  }
+
+  const firstItem = subscription.items.data[0] as
+    | (Stripe.SubscriptionItem & { current_period_end?: number | null })
+    | undefined;
+  if (typeof firstItem?.current_period_end === "number") {
+    return new Date(firstItem.current_period_end * 1000).toISOString();
+  }
+
+  return null;
+}
+
+export async function resolveStripeCustomerIdForUser(
+  stripe: Stripe,
+  supabase: SupabaseClient,
+  user: AppUser,
+): Promise<string | null> {
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("stripe_customer_id")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  const fromProfile = profile?.stripe_customer_id?.trim();
+  if (fromProfile) {
+    try {
+      const existing = await stripe.customers.retrieve(fromProfile);
+      if (
+        typeof existing !== "string" &&
+        !existing.deleted &&
+        existing.metadata?.supabase_user_id === user.id &&
+        !isMislinkedKidAuthToParentStripeWallet(user.email, existing)
+      ) {
+        return existing.id;
+      }
+    } catch {
+      /* ignore and fall through to metadata search */
+    }
+  }
+
+  try {
+    const found = await stripe.customers.search({
+      query: `metadata['supabase_user_id']:'${user.id.replace(/'/g, "\\'")}'`,
+      limit: 1,
+    });
+    const existing = found.data[0];
+    if (
+      existing &&
+      !isMislinkedKidAuthToParentStripeWallet(user.email, existing)
+    ) {
+      return existing.id;
+    }
+  } catch {
+    /* ignore */
+  }
+
+  return null;
+}
+
+export async function loadAccountBillingSummary(
+  stripe: Stripe,
+  supabase: SupabaseClient,
+  user: AppUser,
+): Promise<AccountBillingSummary> {
+  const customerId = await resolveStripeCustomerIdForUser(stripe, supabase, user);
+  if (!customerId) {
+    return {
+      customerId: null,
+      subscriptionId: null,
+      subscriptionStatus: null,
+      plan: null,
+      billing: null,
+      currentPeriodEnd: null,
+      cancelAtPeriodEnd: false,
+      portalAvailable: false,
+      paymentMethod: null,
+    };
+  }
+
+  let customer:
+    | Stripe.Customer
+    | Stripe.DeletedCustomer
+    | null = null;
+  try {
+    customer = await stripe.customers.retrieve(customerId);
+  } catch {
+    customer = null;
+  }
+
+  const subscriptions = await stripe.subscriptions.list({
+    customer: customerId,
+    status: "all",
+    limit: 30,
+  });
+
+  const winning = pickBestSubscription(subscriptions.data);
+  const { plan, billing } = parsePlanAndBilling(winning);
+
+  const paymentMethodId =
+    getPaymentMethodId(winning?.default_payment_method) ||
+    (customer && typeof customer !== "string" && !customer.deleted
+      ? getPaymentMethodId(customer.invoice_settings.default_payment_method)
+      : null);
+
+  return {
+    customerId,
+    subscriptionId: winning?.id ?? null,
+    subscriptionStatus: winning?.status ?? null,
+    plan,
+    billing,
+    currentPeriodEnd: getSubscriptionPeriodEndIso(winning),
+    cancelAtPeriodEnd: winning?.cancel_at_period_end === true,
+    portalAvailable: true,
+    paymentMethod: await retrieveCardPaymentMethod(stripe, paymentMethodId),
+  };
+}

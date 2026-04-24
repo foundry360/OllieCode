@@ -5,7 +5,7 @@ import { LandingNav } from "@/components/landing/LandingNav";
 import { PreFooterCtaSection } from "@/components/landing/PreFooterCtaSection";
 import { Footer } from "@/components/landing/Footer";
 import { LandingSectionWave } from "@/components/landing/sectionWaves";
-import { PlansPricingSection } from "@/components/plans/PlansPricingSection";
+import { PlansPricingWithInlineCheckout } from "@/components/plans/PlansPricingWithInlineCheckout";
 import { getPlanCheckoutAvailability } from "@/lib/stripe/prices";
 
 function PlansPricingFallback() {
@@ -47,7 +47,7 @@ export default function PlansPage() {
               programs.
             </p>
             <Suspense fallback={<PlansPricingFallback />}>
-              <PlansPricingSection
+              <PlansPricingWithInlineCheckout
                 checkoutAvailability={checkoutAvailability}
                 paidCheckoutButtonLabel="Get Started"
               />

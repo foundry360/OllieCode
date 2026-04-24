@@ -21,7 +21,6 @@ const SECONDARY_LINK_COMPACT_CLASS =
 
 const WORKSPACE_NEXT = "/workspace";
 const loginWorkspaceHref = `/auth/login?next=${encodeURIComponent(WORKSPACE_NEXT)}`;
-const signupWorkspaceHref = `/auth/signup?next=${encodeURIComponent(WORKSPACE_NEXT)}`;
 
 type CheckoutUiMode = "redirect" | "embedded" | "elements";
 
@@ -73,6 +72,7 @@ export function PlanPaidCheckoutCtas({
 
   const plansIntentPath = buildPlansCheckoutIntentPath(planId, billing, checkoutIntentBasePath);
   const signupHref = `/auth/signup?next=${encodeURIComponent(plansIntentPath)}`;
+  const loginPlansHref = `/auth/login?next=${encodeURIComponent(plansIntentPath)}`;
 
   const startCheckoutWithBilling = useCallback(
     async (billingChoice: BillingInterval) => {
@@ -81,12 +81,14 @@ export function PlanPaidCheckoutCtas({
       try {
         const supabase = getSupabaseBrowserClient();
         if (!supabase) {
-          router.push(loginWorkspaceHref);
+          router.push(hideAccountAuthLinks ? loginWorkspaceHref : signupHref);
           return;
         }
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) {
-          router.push(loginWorkspaceHref);
+          // Public plans: sign up first, then return to this page with ?plan=&billing= to open checkout.
+          // Workspace paywall: already gated to signed-in users; fall back to workspace login.
+          router.push(hideAccountAuthLinks ? loginWorkspaceHref : signupHref);
           return;
         }
 
@@ -111,7 +113,7 @@ export function PlanPaidCheckoutCtas({
         const data: { url?: string; clientSecret?: string; error?: string; code?: string } =
           await res.json().catch(() => ({}));
         if (res.status === 401 || data.code === "sign_in_required") {
-          router.push(loginWorkspaceHref);
+          router.push(hideAccountAuthLinks ? loginWorkspaceHref : signupHref);
           return;
         }
         if (!res.ok) {
@@ -137,7 +139,7 @@ export function PlanPaidCheckoutCtas({
         setPending(false);
       }
     },
-    [checkoutUi, onEmbeddedClientSecret, planId, router],
+    [checkoutUi, hideAccountAuthLinks, onEmbeddedClientSecret, planId, router, signupHref],
   );
 
   const pendingLabel = checkoutUi === "elements" ? "Loading…" : "Redirecting…";
@@ -169,7 +171,7 @@ export function PlanPaidCheckoutCtas({
             <Link href={signupHref} className={ctaClass}>
               {primarySignupLinkLabel}
             </Link>
-            <Link href={loginWorkspaceHref} className={secondaryClass}>
+            <Link href={loginPlansHref} className={secondaryClass}>
               Already have an account? Sign in
             </Link>
           </>
@@ -213,7 +215,7 @@ export function PlanPaidCheckoutCtas({
             <Link href={signupHref} className={`${ctaClass} ${compact ? "mt-2" : "mt-4"}`}>
               {primarySignupLinkLabel}
             </Link>
-            <Link href={loginWorkspaceHref} className={secondaryClass}>
+            <Link href={loginPlansHref} className={secondaryClass}>
               Already have an account? Sign in
             </Link>
           </>
@@ -234,11 +236,11 @@ export function PlanPaidCheckoutCtas({
       </button>
       {!hideAccountAuthLinks ? (
         <>
-          <Link href={loginWorkspaceHref} className={secondaryClass}>
+          <Link href={loginPlansHref} className={secondaryClass}>
             Already have an account? Sign in
           </Link>
           {!hideNewHereSignupLink ? (
-            <Link href={signupWorkspaceHref} className={`${secondaryClass} mt-1`}>
+            <Link href={signupHref} className={`${secondaryClass} mt-1`}>
               New here? Create an account
             </Link>
           ) : null}
