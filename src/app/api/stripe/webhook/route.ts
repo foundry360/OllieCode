@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import Stripe from "stripe";
+import { syncFamilyGroupFromStripeSubscription } from "@/lib/billing/familyGroupDb";
 import { updateProfileFromStripeSubscription } from "@/lib/billing/profileSubscription";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getStripe } from "@/lib/stripe/server";
@@ -21,11 +22,13 @@ async function syncSubscriptionFromStripeObject(admin: SupabaseClient, subscript
       console.warn("[stripe webhook] subscription without user mapping:", subscription.id);
       return;
     }
-    await updateProfileFromStripeSubscription(admin, row.id as string, {
+    const uid = row.id as string;
+    await updateProfileFromStripeSubscription(admin, uid, {
       stripeCustomerId: customerId,
       stripeSubscriptionId: subscription.id,
       subscriptionStatus: subscription.status,
     });
+    await syncFamilyGroupFromStripeSubscription(admin, uid, subscription);
     return;
   }
 
@@ -37,6 +40,7 @@ async function syncSubscriptionFromStripeObject(admin: SupabaseClient, subscript
     stripeSubscriptionId: subscription.id,
     subscriptionStatus: subscription.status,
   });
+  await syncFamilyGroupFromStripeSubscription(admin, userId, subscription);
 }
 
 export async function POST(request: NextRequest) {
@@ -88,6 +92,7 @@ export async function POST(request: NextRequest) {
           stripeSubscriptionId: subscription.id,
           subscriptionStatus: subscription.status,
         });
+        await syncFamilyGroupFromStripeSubscription(admin, userId, subscription);
         break;
       }
       case "customer.subscription.updated":

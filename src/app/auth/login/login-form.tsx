@@ -17,6 +17,23 @@ function usernameToSignInEmail(raw: string): string {
   return usernameToAuthEmail(normalizeUsername(raw));
 }
 
+async function mergeWorkspaceEntitlement(
+  profile: { subscription_status: string | null; is_admin: boolean | null } | null,
+): Promise<{ subscription_status: string | null; is_admin: boolean | null } | null> {
+  if (!profile) return profile;
+  try {
+    const entRes = await fetch("/api/profile/workspace-entitlement", { cache: "no-store" });
+    if (!entRes.ok) return profile;
+    const ent = (await entRes.json()) as { entitled?: boolean; subscription_status?: string | null };
+    if (ent.entitled && typeof ent.subscription_status === "string") {
+      return { ...profile, subscription_status: ent.subscription_status };
+    }
+  } catch {
+    /* ignore */
+  }
+  return profile;
+}
+
 export function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -45,7 +62,7 @@ export function LoginForm() {
         .select("subscription_status,is_admin")
         .eq("id", user.id)
         .maybeSingle();
-      router.replace(resolvePostLoginPath(next, profile));
+      router.replace(resolvePostLoginPath(next, await mergeWorkspaceEntitlement(profile)));
       router.refresh();
     })();
   }, [router, next]);
@@ -91,7 +108,7 @@ export function LoginForm() {
         .select("subscription_status,is_admin")
         .eq("id", user.id)
         .maybeSingle();
-      router.replace(resolvePostLoginPath(next, profile));
+      router.replace(resolvePostLoginPath(next, await mergeWorkspaceEntitlement(profile)));
       router.refresh();
     } finally {
       setLoading(false);

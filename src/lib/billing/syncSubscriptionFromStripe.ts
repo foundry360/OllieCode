@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
+import { syncFamilyGroupFromStripeSubscription } from "@/lib/billing/familyGroupDb";
 import { updateProfileFromStripeSubscription } from "@/lib/billing/profileSubscription";
 
 async function findStripeCustomerId(
@@ -85,6 +86,8 @@ export async function syncProfileSubscriptionFromStripe(
   if (!result.ok) {
     return { ok: false, error: result.error ?? "Update failed." };
   }
+
+  await syncFamilyGroupFromStripeSubscription(admin, userId, winning);
 
   return { ok: true, updated: true };
 }

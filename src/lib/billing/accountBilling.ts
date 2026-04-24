@@ -2,11 +2,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type Stripe from "stripe";
 import { isMislinkedKidAuthToParentStripeWallet } from "@/lib/stripe/customer";
 import { getStripePriceId, type BillingInterval, type PaidPlanId } from "@/lib/stripe/prices";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
-type AppUser = {
+export type BillingAppUser = {
   id: string;
   email: string | null | undefined;
 };
+
+type AppUser = BillingAppUser;
 
 export type BillingCardSummary = {
   brand: string;
@@ -25,6 +28,13 @@ export type AccountBillingSummary = {
   cancelAtPeriodEnd: boolean;
   portalAvailable: boolean;
   paymentMethod: BillingCardSummary | null;
+  /** Stripe/billing customer this summary was loaded for (master when on a Family seat). */
+  billingSubjectUserId: string | null;
+  /** True when this user is the Family master (owns Stripe subscription for the household). */
+  isFamilyBillingMaster: boolean;
+  /** Seats in use when `plan` is family (master + siblings); null otherwise. */
+  familySeatsUsed: number | null;
+  familySeatsCap: number | null;
 };
 
 function isPaidPlanId(value: unknown): value is PaidPlanId {
@@ -103,7 +113,15 @@ async function retrieveCardPaymentMethod(
   }
 }
 
-function parsePlanAndBilling(subscription: Stripe.Subscription | null): {
+function priceIdFromSubscriptionItem(
+  price: Stripe.SubscriptionItem["price"] | null | undefined,
+): string | null {
+  if (!price) return null;
+  if (typeof price === "string") return price;
+  return price.id ?? null;
+}
+
+export function parseSubscriptionPlanAndBilling(subscription: Stripe.Subscription | null): {
   plan: PaidPlanId | null;
   billing: BillingInterval | null;
 } {
@@ -118,7 +136,7 @@ function parsePlanAndBilling(subscription: Stripe.Subscription | null): {
   }
 
   const firstItem = subscription.items.data[0];
-  return inferPlanAndBillingFromPriceId(firstItem?.price?.id);
+  return inferPlanAndBillingFromPriceId(priceIdFromSubscriptionItem(firstItem?.price));
 }
 
 function getSubscriptionPeriodEndIso(subscription: Stripe.Subscription | null): string | null {
@@ -144,8 +162,10 @@ export async function resolveStripeCustomerIdForUser(
   stripe: Stripe,
   supabase: SupabaseClient,
   user: AppUser,
+  profileClient?: SupabaseClient,
 ): Promise<string | null> {
-  const { data: profile } = await supabase
+  const client = profileClient ?? supabase;
+  const { data: profile } = await client
     .from("profiles")
     .select("stripe_customer_id")
     .eq("id", user.id)
@@ -155,13 +175,17 @@ export async function resolveStripeCustomerIdForUser(
   if (fromProfile) {
     try {
       const existing = await stripe.customers.retrieve(fromProfile);
-      if (
-        typeof existing !== "string" &&
-        !existing.deleted &&
-        existing.metadata?.supabase_user_id === user.id &&
-        !isMislinkedKidAuthToParentStripeWallet(user.email, existing)
-      ) {
-        return existing.id;
+      if (typeof existing === "string" || existing.deleted) {
+        /* fall through */
+      } else if (isMislinkedKidAuthToParentStripeWallet(user.email, existing)) {
+        /* fall through */
+      } else {
+        const metaUid = existing.metadata?.supabase_user_id?.trim() || null;
+        // Trust the profile link when metadata is missing (e.g. Dashboard-created customers) or
+        // matches; reject only when metadata clearly points at a different Supabase user.
+        if (!metaUid || metaUid === user.id) {
+          return existing.id;
+        }
       }
     } catch {
       /* ignore and fall through to metadata search */
@@ -187,24 +211,88 @@ export async function resolveStripeCustomerIdForUser(
   return null;
 }
 
+const FAMILY_SEAT_CAP = 3;
+
+/**
+ * Stripe customer + subscriptions are stored on the Family master profile.
+ * Siblings reference the master via `profiles.billing_master_user_id`.
+ */
+export async function getBillingSubjectAppUser(
+  supabase: SupabaseClient,
+  authUser: { id: string; email?: string | null },
+): Promise<BillingAppUser> {
+  const admin = getSupabaseAdmin();
+  const profileClient = admin ?? supabase;
+  const { data: myProfile } = await profileClient
+    .from("profiles")
+    .select("billing_master_user_id")
+    .eq("id", authUser.id)
+    .maybeSingle();
+
+  const billingMasterId =
+    typeof myProfile?.billing_master_user_id === "string"
+      ? myProfile.billing_master_user_id.trim() || null
+      : null;
+  const subjectId = billingMasterId ?? authUser.id;
+
+  let subjectEmail = authUser.email;
+  if (subjectId !== authUser.id && admin) {
+    try {
+      const { data: authData } = await admin.auth.admin.getUserById(subjectId);
+      subjectEmail = authData.user?.email ?? null;
+    } catch {
+      subjectEmail = null;
+    }
+  }
+
+  return { id: subjectId, email: subjectEmail };
+}
+
 export async function loadAccountBillingSummary(
   stripe: Stripe,
   supabase: SupabaseClient,
   user: AppUser,
 ): Promise<AccountBillingSummary> {
-  const customerId = await resolveStripeCustomerIdForUser(stripe, supabase, user);
+  const admin = getSupabaseAdmin();
+  const profileClient = admin ?? supabase;
+
+  const empty: AccountBillingSummary = {
+    customerId: null,
+    subscriptionId: null,
+    subscriptionStatus: null,
+    plan: null,
+    billing: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    portalAvailable: false,
+    paymentMethod: null,
+    billingSubjectUserId: null,
+    isFamilyBillingMaster: false,
+    familySeatsUsed: null,
+    familySeatsCap: null,
+  };
+
+  const billingSubject = await getBillingSubjectAppUser(supabase, user);
+  const billingSubjectId = billingSubject.id;
+
+  const { data: myProfile } = await profileClient
+    .from("profiles")
+    .select("billing_master_user_id")
+    .eq("id", user.id)
+    .maybeSingle();
+  const billingMasterId =
+    typeof myProfile?.billing_master_user_id === "string"
+      ? myProfile.billing_master_user_id.trim() || null
+      : null;
+
+  const customerId = await resolveStripeCustomerIdForUser(
+    stripe,
+    supabase,
+    billingSubject,
+    profileClient,
+  );
   if (!customerId) {
-    return {
-      customerId: null,
-      subscriptionId: null,
-      subscriptionStatus: null,
-      plan: null,
-      billing: null,
-      currentPeriodEnd: null,
-      cancelAtPeriodEnd: false,
-      portalAvailable: false,
-      paymentMethod: null,
-    };
+    return { ...empty, billingSubjectUserId: billingSubjectId };
   }
 
   let customer:
@@ -224,13 +312,27 @@ export async function loadAccountBillingSummary(
   });
 
   const winning = pickBestSubscription(subscriptions.data);
-  const { plan, billing } = parsePlanAndBilling(winning);
+  const { plan, billing } = parseSubscriptionPlanAndBilling(winning);
 
   const paymentMethodId =
     getPaymentMethodId(winning?.default_payment_method) ||
     (customer && typeof customer !== "string" && !customer.deleted
       ? getPaymentMethodId(customer.invoice_settings.default_payment_method)
       : null);
+
+  let familySeatsUsed: number | null = null;
+  let familySeatsCap: number | null = null;
+  if (plan === "family" && admin) {
+    const { count } = await admin
+      .from("family_group_members")
+      .select("member_user_id", { count: "exact", head: true })
+      .eq("master_user_id", billingSubjectId);
+    familySeatsUsed = count ?? 0;
+    familySeatsCap = FAMILY_SEAT_CAP;
+  }
+
+  const isFamilyBillingMaster =
+    plan === "family" && billingMasterId === null && billingSubjectId === user.id;
 
   return {
     customerId,
@@ -242,5 +344,9 @@ export async function loadAccountBillingSummary(
     cancelAtPeriodEnd: winning?.cancel_at_period_end === true,
     portalAvailable: true,
     paymentMethod: await retrieveCardPaymentMethod(stripe, paymentMethodId),
+    billingSubjectUserId: billingSubjectId,
+    isFamilyBillingMaster,
+    familySeatsUsed,
+    familySeatsCap,
   };
 }

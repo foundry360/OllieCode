@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { resolveStripeCustomerIdForUser } from "@/lib/billing/accountBilling";
+import { getBillingSubjectAppUser, resolveStripeCustomerIdForUser } from "@/lib/billing/accountBilling";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { safeNextPath } from "@/lib/auth/safeNextPath";
 import { absoluteUrl } from "@/lib/stripe/absoluteUrl";
 import { getStripe } from "@/lib/stripe/server";
@@ -30,10 +31,14 @@ export async function POST(request: NextRequest) {
     /* optional body */
   }
 
-  const customerId = await resolveStripeCustomerIdForUser(stripe, supabase, {
-    id: user.id,
-    email: user.email,
-  });
+  const billingSubject = await getBillingSubjectAppUser(supabase, user);
+  const admin = getSupabaseAdmin();
+  const customerId = await resolveStripeCustomerIdForUser(
+    stripe,
+    supabase,
+    billingSubject,
+    admin ?? undefined,
+  );
   if (!customerId) {
     return NextResponse.json(
       { error: "No billing profile was found for this account yet." },

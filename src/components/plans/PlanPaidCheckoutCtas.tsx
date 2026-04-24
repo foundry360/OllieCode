@@ -154,18 +154,36 @@ export function PlanPaidCheckoutCtas({
   const primarySignupLinkLabel = checkoutButtonLabel === "Subscribe" ? "Sign Up" : checkoutButtonLabel;
 
   if (!hasAnyCheckout) {
+    const planTitle = planId === "family" ? "Family" : "Starter";
+    const devHint =
+      planId === "family"
+        ? "Set STRIPE_PRICE_FAMILY_MONTHLY and STRIPE_PRICE_FAMILY_YEARLY (Stripe price IDs) in the server environment."
+        : "Set STRIPE_PRICE_STARTER_MONTHLY and STRIPE_PRICE_STARTER_YEARLY in the server environment.";
     return (
       <div className="flex w-full flex-col items-center">
         {hideAccountAuthLinks ? (
-          <button
-            type="button"
-            className={ctaClass}
-            disabled
-            aria-disabled="true"
-            title="Checkout for this plan is not configured yet."
-          >
-            {checkoutButtonLabel}
-          </button>
+          <>
+            <p
+              className={
+                compact
+                  ? "mb-2 max-w-full px-0.5 text-center text-[10px] leading-tight text-[#6b7280] sm:text-xs"
+                  : "mb-2 max-w-xs text-center text-xs leading-snug text-[#6b7280] sm:text-sm"
+              }
+            >
+              {process.env.NODE_ENV === "development"
+                ? `${planTitle} checkout is off: ${devHint}`
+                : `${planTitle} plan signup is not available on this deployment.`}
+            </p>
+            <button
+              type="button"
+              className={ctaClass}
+              disabled
+              aria-disabled="true"
+              title="Checkout for this plan is not configured yet."
+            >
+              {checkoutButtonLabel}
+            </button>
+          </>
         ) : (
           <>
             <Link href={signupHref} className={ctaClass}>

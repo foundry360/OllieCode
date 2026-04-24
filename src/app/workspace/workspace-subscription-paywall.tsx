@@ -10,6 +10,18 @@ import { subscriptionAllowsWorkspace } from "@/lib/billing/profileSubscription";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import type { PlanCheckoutAvailability } from "@/lib/stripe/prices";
 
+function isPlanCheckoutAvailability(value: unknown): value is PlanCheckoutAvailability {
+  if (!value || typeof value !== "object") return false;
+  const v = value as Record<string, unknown>;
+  for (const id of ["starter", "family"] as const) {
+    const p = v[id];
+    if (!p || typeof p !== "object") return false;
+    const o = p as Record<string, unknown>;
+    if (typeof o.month !== "boolean" || typeof o.year !== "boolean") return false;
+  }
+  return true;
+}
+
 type GateState = "loading" | "entitled" | "paywall";
 
 function PlansPricingFallback() {
@@ -32,8 +44,35 @@ export function WorkspaceSubscriptionPaywall({
   const router = useRouter();
   const [state, setState] = useState<GateState>("loading");
   const [inlineCheckout, setInlineCheckout] = useState<PlanInlineCheckoutPayload | null>(null);
+  const [planCheckoutAvailability, setPlanCheckoutAvailability] =
+    useState<PlanCheckoutAvailability>(checkoutAvailability);
 
   const stripePublishableKey = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY?.trim() ?? "";
+
+  useEffect(() => {
+    setPlanCheckoutAvailability(checkoutAvailability);
+  }, [checkoutAvailability]);
+
+  useEffect(() => {
+    if (state !== "paywall") return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/billing/plan-checkout-availability", {
+          cache: "no-store",
+        });
+        if (!res.ok || cancelled) return;
+        const data: unknown = await res.json();
+        if (cancelled || !isPlanCheckoutAvailability(data)) return;
+        setPlanCheckoutAvailability(data);
+      } catch {
+        /* keep SSR / prop defaults */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [state]);
 
   const loadAccess = useCallback(async () => {
     const supabase = getSupabaseBrowserClient();
@@ -45,6 +84,22 @@ export function WorkspaceSubscriptionPaywall({
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
       router.replace(`/auth/login?next=${encodeURIComponent("/workspace")}`);
+      return;
+    }
+
+    const readEntitled = async (): Promise<boolean> => {
+      try {
+        const res = await fetch("/api/profile/workspace-entitlement", { cache: "no-store" });
+        if (!res.ok) return false;
+        const body = (await res.json().catch(() => ({}))) as { entitled?: boolean };
+        return body.entitled === true;
+      } catch {
+        return false;
+      }
+    };
+
+    if (await readEntitled()) {
+      setState("entitled");
       return;
     }
 
@@ -95,23 +150,18 @@ export function WorkspaceSubscriptionPaywall({
       const syncRes = await fetch("/api/billing/sync-from-stripe", { method: "POST" });
       if (syncRes.ok) {
         const syncBody = (await syncRes.json().catch(() => ({}))) as { updated?: boolean };
-        if (syncBody.updated) {
-          const { data: again, error: againErr } = await supabase
-            .from("profiles")
-            .select("subscription_status,is_admin")
-            .eq("id", user.id)
-            .maybeSingle();
-
-          if (!againErr && again) {
-            if (again.is_admin === true || subscriptionAllowsWorkspace(again.subscription_status)) {
-              setState("entitled");
-              return;
-            }
-          }
+        if (syncBody.updated && (await readEntitled())) {
+          setState("entitled");
+          return;
         }
       }
     } catch {
       /* ignore */
+    }
+
+    if (await readEntitled()) {
+      setState("entitled");
+      return;
     }
 
     setState("paywall");
@@ -272,7 +322,7 @@ export function WorkspaceSubscriptionPaywall({
               <>
                 <Suspense fallback={<PlansPricingFallback />}>
                   <PlansPricingSection
-                    checkoutAvailability={checkoutAvailability}
+                    checkoutAvailability={planCheckoutAvailability}
                     checkoutIntentBasePath="/workspace"
                     hideAccountAuthLinks
                     compact

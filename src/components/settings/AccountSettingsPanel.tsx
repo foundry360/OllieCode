@@ -172,6 +172,16 @@ export function AccountSettingsPanel({
   const [portalLoading, setPortalLoading] = useState(false);
   const [portalMessage, setPortalMessage] = useState<string | null>(null);
 
+  type FamilyRosterMember = { userId: string; username: string | null; isMaster: boolean };
+  const [familyRoster, setFamilyRoster] = useState<FamilyRosterMember[]>([]);
+  const [familyRosterLoading, setFamilyRosterLoading] = useState(false);
+  const [familyRosterError, setFamilyRosterError] = useState<string | null>(null);
+  const [siblingUsername, setSiblingUsername] = useState("");
+  const [siblingPassword, setSiblingPassword] = useState("");
+  const [siblingBirthDate, setSiblingBirthDate] = useState("");
+  const [addSiblingLoading, setAddSiblingLoading] = useState(false);
+  const [addSiblingMessage, setAddSiblingMessage] = useState<string | null>(null);
+
   const refreshAccount = useCallback(async () => {
     setAccountLoading(true);
     setBillingLoading(true);
@@ -254,6 +264,68 @@ export function AccountSettingsPanel({
       cancelled = true;
     };
   }, [refreshAccount]);
+
+  useEffect(() => {
+    if (activeTab !== "family" || accountLoading) return;
+    let cancelled = false;
+    void (async () => {
+      setFamilyRosterLoading(true);
+      setFamilyRosterError(null);
+      try {
+        const res = await fetch("/api/family/roster", { cache: "no-store" });
+        const body = (await res.json()) as { members?: FamilyRosterMember[]; error?: string };
+        if (!res.ok) {
+          if (!cancelled) {
+            setFamilyRosterError(body.error ?? "Could not load family roster.");
+          }
+          return;
+        }
+        if (!cancelled) setFamilyRoster(body.members ?? []);
+      } catch {
+        if (!cancelled) setFamilyRosterError("Could not load family roster.");
+      } finally {
+        if (!cancelled) setFamilyRosterLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [activeTab, accountLoading]);
+
+  const submitAddSibling = useCallback(async () => {
+    setAddSiblingLoading(true);
+    setAddSiblingMessage(null);
+    try {
+      const res = await fetch("/api/family/add-sibling", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: siblingUsername.trim(),
+          password: siblingPassword,
+          birth_date: siblingBirthDate.trim() || undefined,
+        }),
+      });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; ok?: boolean };
+      if (!res.ok) {
+        setAddSiblingMessage(body.error ?? "Could not add sibling.");
+        return;
+      }
+      setSiblingUsername("");
+      setSiblingPassword("");
+      setSiblingBirthDate("");
+      setAddSiblingMessage("Sibling account created. They can sign in with their new codename.");
+      await refreshAccount();
+      const rosterRes = await fetch("/api/family/roster", { cache: "no-store" });
+      if (rosterRes.ok) {
+        const rosterBody = (await rosterRes.json()) as { members?: FamilyRosterMember[] };
+        setFamilyRoster(rosterBody.members ?? []);
+      }
+    } catch {
+      setAddSiblingMessage("Something went wrong. Try again.");
+    } finally {
+      setAddSiblingLoading(false);
+    }
+  }, [refreshAccount, siblingBirthDate, siblingPassword, siblingUsername]);
 
   const saveAvatar = useCallback(
     async (avatarId: OllieAvatarId) => {
@@ -348,11 +420,18 @@ export function AccountSettingsPanel({
   const profileStatus = profile?.subscriptionStatus ?? billing?.subscriptionStatus ?? null;
   const familySummary = useMemo(() => {
     if (billing?.plan === "family") {
+      const cap = billing.familySeatsCap ?? 3;
+      const used = billing.familySeatsUsed;
+      const licenseCountLabel =
+        typeof used === "number" ? `${used} of ${cap} licenses used` : `Up to ${cap} licenses`;
+      const body = billing.isFamilyBillingMaster
+        ? ""
+        : "You are on a sibling seat under your household’s Family plan. Each sibling has their own sign-in and workspace; billing is shared with the master account.";
       return {
         title: "Family plan",
-        body: "This subscription includes up to 3 learner licenses for child accounts in one household.",
+        body,
         actionLabel: "Manage billing",
-        licenseCountLabel: "Up to 3 licenses",
+        licenseCountLabel,
       };
     }
     if (billing?.plan === "starter") {
@@ -369,7 +448,7 @@ export function AccountSettingsPanel({
       actionLabel: "View plans",
       licenseCountLabel: "No active licenses",
     };
-  }, [billing?.plan]);
+  }, [billing?.plan, billing?.familySeatsCap, billing?.familySeatsUsed, billing?.isFamilyBillingMaster]);
 
   const renewalLabel =
     billing?.cancelAtPeriodEnd === true ? "Access ends on" : "Renews on";
@@ -525,39 +604,139 @@ export function AccountSettingsPanel({
           {!accountLoading && !accountError && activeTab === "family" ? (
             <div className="space-y-4">
               <PanelCard title={familySummary.title}>
-                <p className="text-sm leading-relaxed text-[#4b5563]">{familySummary.body}</p>
-                <p className="mt-3 text-sm font-semibold text-[#111827]">
+                {familySummary.body.trim() ? (
+                  <p className="text-sm leading-relaxed text-[#4b5563]">{familySummary.body}</p>
+                ) : null}
+                <p
+                  className={
+                    familySummary.body.trim()
+                      ? "mt-3 text-sm font-semibold text-[#111827]"
+                      : "text-sm font-semibold text-[#111827]"
+                  }
+                >
                   {familySummary.licenseCountLabel}
                 </p>
                 {billing?.plan === "family" ? (
-                  <div className="mt-4 flex flex-wrap gap-3">
-                    <button
-                      type="button"
-                      onClick={() => void openBillingPortal()}
-                      disabled={portalLoading || !billing?.portalAvailable}
-                      className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#84c126] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {portalLoading ? "Opening billing…" : familySummary.actionLabel}
-                    </button>
+                  <div className="mt-4 rounded-xl border border-[#e5e7eb] bg-[#f9fafb] px-4 py-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-[#6b7280]">
+                          Household payment method
+                        </p>
+                        {billing.paymentMethod ? (
+                          <>
+                            <p className="mt-1 font-display text-base font-bold text-[#111827]">
+                              Card ending in {billing.paymentMethod.last4}
+                            </p>
+                            <p className="mt-1 text-sm text-[#6b7280]">
+                              Expires {billing.paymentMethod.expMonth}/{billing.paymentMethod.expYear}
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-1 text-sm text-[#6b7280]">
+                            Saved payment details will appear here after checkout or when you add a
+                            card in billing.
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void openBillingPortal()}
+                        disabled={portalLoading || !billing?.portalAvailable}
+                        className="inline-flex min-h-11 w-full shrink-0 items-center justify-center rounded-xl bg-[#84c126] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020] disabled:cursor-not-allowed disabled:opacity-60 sm:ml-auto sm:w-auto sm:justify-center"
+                      >
+                        {portalLoading ? "Opening billing…" : familySummary.actionLabel}
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </PanelCard>
               <PanelCard title="Learner licenses">
                 {billing?.plan === "family" ? (
                   <>
-                    <p className="text-sm leading-relaxed text-[#4b5563]">
-                      Your Family plan supports up to 3 child accounts under this subscription.
-                      This account is currently using one of those licenses for{" "}
-                      <span className="font-semibold text-[#111827]">
-                        {profile?.codename ?? "this learner"}
-                      </span>
-                      .
-                    </p>
-                    <p className="mt-3 text-sm leading-relaxed text-[#4b5563]">
-                      Additional child-account management is not wired up yet, but this is where
-                      families will eventually add and review the other learner licenses on the
-                      subscription.
-                    </p>
+                    {familyRosterLoading ? (
+                      <p className="mt-3 text-sm text-[#6b7280]">Loading roster…</p>
+                    ) : familyRosterError ? (
+                      <p className="mt-3 text-sm text-red-600">{familyRosterError}</p>
+                    ) : familyRoster.length > 0 ? (
+                      <ul className="mt-3 space-y-2">
+                        {familyRoster.map((m) => (
+                          <li
+                            key={m.userId}
+                            className="flex items-center justify-between rounded-lg border border-[#e5e7eb] bg-white px-3 py-2 text-sm"
+                          >
+                            <span className="font-semibold text-[#111827]">
+                              {m.username?.trim() || `Learner ${m.userId.slice(0, 8)}`}
+                            </span>
+                            {m.isMaster ? (
+                              <span className="text-xs font-semibold text-[#365314]">Master</span>
+                            ) : (
+                              <span className="text-xs text-[#6b7280]">Sibling</span>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : null}
+                    {billing.isFamilyBillingMaster &&
+                    typeof billing.familySeatsUsed === "number" &&
+                    typeof billing.familySeatsCap === "number" &&
+                    billing.familySeatsUsed < billing.familySeatsCap ? (
+                      <div className="mt-5 border-t border-[#e5e7eb] pt-5">
+                        <p className="text-sm font-semibold text-[#111827]">Add a sibling account</p>
+                        <p className="mt-1 text-sm text-[#6b7280]">
+                          Creates a new codename and password. They sign in separately and get their
+                          own workspace.
+                        </p>
+                        <div className="mt-3 flex max-w-full flex-col gap-3 sm:max-w-2xl">
+                          <div className="grid grid-cols-2 gap-3 sm:gap-4">
+                            <label className="min-w-0 text-xs font-semibold text-[#6b7280]">
+                              Codename
+                              <input
+                                value={siblingUsername}
+                                onChange={(e) => setSiblingUsername(e.target.value)}
+                                autoComplete="off"
+                                className="mt-1 w-full rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#84c126] focus:ring-2 focus:ring-[#84c126]/25"
+                                placeholder="sibling_codename"
+                              />
+                            </label>
+                            <label className="min-w-0 text-xs font-semibold text-[#6b7280]">
+                              Password (min 8 characters)
+                              <input
+                                type="password"
+                                value={siblingPassword}
+                                onChange={(e) => setSiblingPassword(e.target.value)}
+                                autoComplete="new-password"
+                                className="mt-1 w-full rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#84c126] focus:ring-2 focus:ring-[#84c126]/25"
+                              />
+                            </label>
+                          </div>
+                          <label className="text-xs font-semibold text-[#6b7280]">
+                            Birth date (optional)
+                            <input
+                              type="date"
+                              value={siblingBirthDate}
+                              onChange={(e) => setSiblingBirthDate(e.target.value)}
+                              className="mt-1 w-full rounded-xl border border-[#d1d5db] bg-white px-3 py-2 text-sm text-[#111827] outline-none focus:border-[#84c126] focus:ring-2 focus:ring-[#84c126]/25"
+                            />
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => void submitAddSibling()}
+                            disabled={addSiblingLoading}
+                            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#84c126] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020] disabled:opacity-60"
+                          >
+                            {addSiblingLoading ? "Creating…" : "Create sibling account"}
+                          </button>
+                          {addSiblingMessage ? (
+                            <p
+                              className={`text-sm ${addSiblingMessage.includes("wrong") || addSiblingMessage.includes("Could not") || addSiblingMessage.includes("taken") ? "text-red-600" : "text-[#365314]"}`}
+                            >
+                              {addSiblingMessage}
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
                   </>
                 ) : billing?.plan === "starter" ? (
                   <>

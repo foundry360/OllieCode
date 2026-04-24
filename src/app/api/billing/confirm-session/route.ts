@@ -1,4 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import type Stripe from "stripe";
+import { syncFamilyGroupFromStripeSubscription } from "@/lib/billing/familyGroupDb";
 import { updateProfileFromStripeSubscription } from "@/lib/billing/profileSubscription";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -73,8 +75,8 @@ export async function POST(request: NextRequest) {
     }
 
     const sub =
-      subRaw && typeof subRaw === "object" && "status" in subRaw
-        ? (subRaw as { status: string })
+      subRaw && typeof subRaw === "object" && "items" in subRaw
+        ? (subRaw as Stripe.Subscription)
         : await stripe.subscriptions.retrieve(subscriptionId);
 
     const stripeStatus = sub.status;
@@ -87,6 +89,8 @@ export async function POST(request: NextRequest) {
     if (!result.ok) {
       return NextResponse.json({ error: "Could not save subscription." }, { status: 502 });
     }
+
+    await syncFamilyGroupFromStripeSubscription(admin, user.id, sub);
 
     return NextResponse.json({ ok: true, subscription_status: stripeStatus }, { status: 200 });
   } catch (err) {
