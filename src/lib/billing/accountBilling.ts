@@ -71,7 +71,7 @@ function getPaymentMethodId(
   value:
     | string
     | Stripe.PaymentMethod
-    | Stripe.DeletedPaymentMethod
+    | { id: string; deleted?: boolean }
     | null
     | undefined,
 ): string | null {
