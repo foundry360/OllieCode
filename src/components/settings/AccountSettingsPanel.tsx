@@ -229,12 +229,12 @@ export function AccountSettingsPanel({
         | AccountBillingSummary
         | { error?: string };
       if (!billingRes.ok) {
-        setBilling(null);
-        setBillingError(
-          typeof billingBody === "object" && typeof billingBody.error === "string"
+        const billingErrorMessage =
+          "error" in billingBody && typeof billingBody.error === "string"
             ? billingBody.error
-            : "Could not load billing details.",
-        );
+            : "Could not load billing details.";
+        setBilling(null);
+        setBillingError(billingErrorMessage);
       } else {
         setBilling(billingBody as AccountBillingSummary);
       }
