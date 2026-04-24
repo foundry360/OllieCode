@@ -13,6 +13,7 @@ export function AdminAppHeader() {
 
   const adminActive = useMemo((): AdminHeaderSection => {
     if (segments[0] === "lessons") return "lessons";
+    if (segments[0] === "learners") return "learners";
     return "dashboard";
   }, [segments]);
 

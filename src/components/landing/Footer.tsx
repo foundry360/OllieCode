@@ -13,7 +13,7 @@ const START_LINKS = [
   { href: "/auth/login?next=/workspace", label: "Open workspace" },
 ];
 
-const STAFF_LINKS = [{ href: "/staff/login", label: "Staff login" }];
+const STAFF_LINKS = [{ href: "/staff/login", label: "Ollie Login" }];
 
 const LEGAL_LINKS = [
   { href: "/legal/terms", label: "Terms of Use" },
@@ -173,9 +173,6 @@ export function Footer({ showContactLauncher = true }: FooterProps) {
                 </li>
               ))}
             </ul>
-            <p className="mt-6 max-w-xs text-xs leading-relaxed text-white/75">
-              Teachers and program leads use staff tools to manage lessons and learners.
-            </p>
           </nav>
         </div>
       </div>

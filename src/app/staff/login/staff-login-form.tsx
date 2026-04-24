@@ -4,10 +4,7 @@ import { OllieLogoLink } from "@/components/auth/OllieLogoLink";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import {
-  getAuthEmailDomain,
-  usernameToAuthEmail,
-} from "@/lib/auth/authEmailDomain";
+import { usernameToAuthEmail } from "@/lib/auth/authEmailDomain";
 import {
   normalizeUsername,
   validateUsernameNormalized,
@@ -172,15 +169,6 @@ export function StaffLoginForm() {
       <h1 className="mt-2 font-display text-2xl font-bold text-[#111827]">
         Team sign in
       </h1>
-      <p className="mt-2 text-sm text-[#6b7280]">
-        Use your Ollie codename (we sign in as{" "}
-        <span className="whitespace-nowrap font-mono text-[#374151]">
-          codename@{getAuthEmailDomain()}
-        </span>
-        ) or the <strong className="font-semibold text-[#374151]">exact email</strong>{" "}
-        shown for this user in Supabase → Authentication (for example a work
-        address). This page is separate from learner sign-in.
-      </p>
 
       {adminDenied ? (
         <div

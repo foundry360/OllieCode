@@ -6,7 +6,7 @@ import { SignOutButton } from "@/components/app/SignOutButton";
 
 export type SignedInNavId = "learn" | "workspace" | "profile" | "settings";
 
-export type AdminHeaderSection = "dashboard" | "lessons";
+export type AdminHeaderSection = "dashboard" | "learners" | "lessons";
 
 type SignedInAppHeaderProps = {
   active?: SignedInNavId;
@@ -71,6 +71,17 @@ export function SignedInAppHeader({
                 aria-current={admin.active === "dashboard" ? "page" : undefined}
               >
                 Dashboard
+              </Link>
+              <Link
+                href="/admin/learners"
+                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                  admin.active === "learners"
+                    ? "bg-[#84c126] text-white shadow-sm"
+                    : inactiveNav
+                }`}
+                aria-current={admin.active === "learners" ? "page" : undefined}
+              >
+                Learners
               </Link>
               <Link
                 href="/admin/lessons"

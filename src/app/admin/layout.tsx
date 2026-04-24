@@ -38,7 +38,7 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-slate-900">
       <AdminAppHeader />
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 sm:px-6">
+      <main className="mx-auto w-full max-w-[96rem] flex-1 px-4 py-8 sm:px-6 lg:px-10">
         {children}
       </main>
       <Footer showContactLauncher={false} />
