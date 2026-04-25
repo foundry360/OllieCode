@@ -10,7 +10,11 @@ import {
   fetchCanceledProfileUpdatesSince,
   formatChurnVsPriorPeriod,
 } from "@/lib/admin/churnStats";
-import { computeStripeMrrDashboard, computeStripeTotalRevenueTrailingYear } from "@/lib/admin/mrr";
+import {
+  computeStripeMrrDashboard,
+  computeStripeTotalRevenueTrailingYear,
+  countStripeSubscriptions,
+} from "@/lib/admin/mrr";
 import {
   countsByUtcDay,
   dailySeriesForKeys,
@@ -192,15 +196,19 @@ export default async function AdminDashboardPage() {
   let revenueCurrency = "usd";
   let revenueChargeCount: number | null = null;
   let revenueSkippedNonPrimaryCurrency = false;
+  /** When Stripe is available, matches Billing subscription counts (active + trialing). */
+  let stripeSubscriptionCount: number | null = null;
   const stripe = getStripe();
   if (!stripe) {
     mrrUnavailable = "Add STRIPE_SECRET_KEY to load MRR from Stripe.";
   } else {
     try {
-      const [snap, revenue] = await Promise.all([
+      const [snap, revenue, subscriptionCount] = await Promise.all([
         computeStripeMrrDashboard(stripe, admin),
         computeStripeTotalRevenueTrailingYear(stripe),
+        countStripeSubscriptions(stripe, ["active", "trialing"]),
       ]);
+      stripeSubscriptionCount = subscriptionCount;
       mrrCents = snap.mrrCents;
       mrrCurrency = snap.currency;
       mrrSkippedNonPrimaryCurrency = snap.skippedNonPrimaryCurrency;
@@ -241,7 +249,9 @@ export default async function AdminDashboardPage() {
         />
         <StatCard
           label="Active Subscribers"
-          value={formatCount(activeSubscribersCountRes.count ?? 0)}
+          value={formatCount(
+            stripeSubscriptionCount ?? activeSubscribersCountRes.count ?? 0,
+          )}
           Icon={UserRoundCheck}
           cardClassName="border-emerald-200 bg-emerald-50/80"
           iconClassName="bg-emerald-100 text-emerald-700"

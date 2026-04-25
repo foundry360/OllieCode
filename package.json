@@ -10,7 +10,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "vercel:env:production": "node scripts/push-vercel-production-env.mjs"
+    "vercel:env:production": "node scripts/push-vercel-production-env.mjs",
+    "stripe:verify-catalog": "node --env-file=.env.local scripts/stripe-verify-plan-price-products.mjs"
   },
   "dependencies": {
     "@blockly/field-colour": "^6.0.11",

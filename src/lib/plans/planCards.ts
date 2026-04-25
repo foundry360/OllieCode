@@ -36,7 +36,7 @@ export const PLAN_CARDS: readonly PlanCardDefinition[] = [
     name: "Starter Plan",
     positioning: "Perfect For Getting Started",
     audience: "For one creator",
-    pricingByBilling: { month: "$7/month", year: "$49/year" },
+    pricingByBilling: { month: "$7/month", year: "$75/year" },
     pricingStatic: null,
     features: [
       "1 child account",
@@ -63,7 +63,7 @@ export const PLAN_CARDS: readonly PlanCardDefinition[] = [
     name: "Family Plan",
     positioning: "Siblings & Shared Learning",
     audience: "For growing creators",
-    pricingByBilling: { month: "$12/month", year: "$89/year" },
+    pricingByBilling: { month: "$12/month", year: "$130/year" },
     pricingStatic: null,
     features: [
       "Up to 3 child accounts",

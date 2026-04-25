@@ -23,6 +23,34 @@ function utcDateString(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+/**
+ * Count Stripe subscriptions in the given statuses (paginated). Matches Billing
+ * “active + trialing” style lists; use for admin KPIs instead of `profiles`
+ * when Stripe is configured, since profile rows can lag webhooks.
+ */
+export async function countStripeSubscriptions(
+  stripe: Stripe,
+  statuses: readonly Stripe.Subscription.Status[],
+): Promise<number> {
+  let total = 0;
+  for (const status of statuses) {
+    let startingAfter: string | undefined;
+    for (;;) {
+      const page = await stripe.subscriptions.list({
+        status,
+        limit: 100,
+        starting_after: startingAfter,
+      });
+      total += page.data.length;
+      if (!page.has_more) break;
+      const last = page.data[page.data.length - 1];
+      if (!last) break;
+      startingAfter = last.id;
+    }
+  }
+  return total;
+}
+
 function parseUnitAmountCents(price: Stripe.Price): number {
   if (typeof price.unit_amount === "number") return price.unit_amount;
   if (price.unit_amount_decimal) return Math.round(Number(price.unit_amount_decimal));

@@ -2,7 +2,10 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import type { User } from "@supabase/supabase-js";
 import { SignOutButton } from "@/components/app/SignOutButton";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 
 export type SignedInNavId = "learn" | "workspace" | "profile" | "settings";
 
@@ -20,6 +23,105 @@ const NAV: { id: SignedInNavId; href: string; label: string }[] = [
   { id: "profile", href: "/profile", label: "Profile" },
   { id: "settings", href: "/settings", label: "Settings" },
 ];
+
+type HeaderUser = {
+  email: string | null;
+  name: string | null;
+  avatarUrl: string | null;
+};
+
+function readHeaderUser(user: User): HeaderUser {
+  const meta = user.user_metadata as Record<string, unknown>;
+  const avatarUrl =
+    (typeof meta.avatar_url === "string" && meta.avatar_url.trim()) ||
+    (typeof meta.picture === "string" && meta.picture.trim()) ||
+    null;
+  const name =
+    (typeof meta.full_name === "string" && meta.full_name.trim()) ||
+    (typeof meta.name === "string" && meta.name.trim()) ||
+    null;
+  return { email: user.email ?? null, name, avatarUrl };
+}
+
+function initialsFromUser(email: string | null, name: string | null): string {
+  const n = name?.trim();
+  if (n) {
+    const parts = n.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      const a = parts[0]?.[0];
+      const b = parts[parts.length - 1]?.[0];
+      if (a && b) return `${a}${b}`.toUpperCase();
+    }
+    if (parts[0]?.length >= 2) return parts[0].slice(0, 2).toUpperCase();
+    if (parts[0]?.[0]) return parts[0][0]!.toUpperCase();
+  }
+  const e = email?.trim();
+  if (e && e.length >= 2) return e.slice(0, 2).toUpperCase();
+  if (e?.[0]) return e[0].toUpperCase();
+  return "?";
+}
+
+function AdminHeaderAvatar() {
+  const [user, setUser] = useState<HeaderUser | null>(null);
+
+  useEffect(() => {
+    const sb = getSupabaseBrowserClient();
+    if (!sb) return;
+
+    const apply = (u: User | null) => {
+      setUser(u ? readHeaderUser(u) : null);
+    };
+
+    void sb.auth.getSession().then(({ data: { session } }) => {
+      apply(session?.user ?? null);
+    });
+
+    const {
+      data: { subscription },
+    } = sb.auth.onAuthStateChange((_event, session) => {
+      apply(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (!user) {
+    return (
+      <span
+        className="size-9 shrink-0 rounded-full bg-white/10 ring-2 ring-white/15"
+        aria-hidden
+      />
+    );
+  }
+
+  const label = user.name?.trim() || user.email?.trim() || "Signed-in user";
+  const initials = initialsFromUser(user.email, user.name);
+
+  if (user.avatarUrl) {
+    return (
+      <img
+        src={user.avatarUrl}
+        alt={label}
+        width={36}
+        height={36}
+        className="size-9 shrink-0 rounded-full object-cover ring-2 ring-white/20"
+        referrerPolicy="no-referrer"
+        title={label}
+      />
+    );
+  }
+
+  return (
+    <span
+      role="img"
+      aria-label={label}
+      title={label}
+      className="flex size-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-xs font-bold uppercase tracking-wide text-white ring-2 ring-white/20"
+    >
+      {initials}
+    </span>
+  );
+}
 
 export function SignedInAppHeader({
   active,
@@ -77,9 +179,12 @@ export function SignedInAppHeader({
               </Link>
             );
           })}
-          <SignOutButton
-            tone={adminPortal ? "admin" : effectiveTone === "learn" ? "learn" : "default"}
-          />
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+            <SignOutButton
+              tone={adminPortal ? "admin" : effectiveTone === "learn" ? "learn" : "default"}
+            />
+            {adminPortal ? <AdminHeaderAvatar /> : null}
+          </div>
         </nav>
       </div>
     </header>

@@ -1,3 +1,9 @@
+/**
+ * Checkout uses **Stripe Price IDs** (`price_…`) only. Each paid plan should mirror Family:
+ * **one Product** in Stripe with **two recurring prices** (monthly + yearly), then set the four
+ * env vars below. Using two separate Products for Starter still works at checkout but breaks
+ * catalog parity; run `npm run stripe:verify-catalog` to confirm month/year share a product.
+ */
 export type PaidPlanId = "starter" | "family";
 export type BillingInterval = "month" | "year";
 
