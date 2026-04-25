@@ -76,6 +76,21 @@ html::-webkit-scrollbar-thumb:hover {
     sans-serif;
 }
 
+/*
+ * Admin portal (`/admin`): Open Sans everywhere, including card headings that use
+ * `font-display`. These rules stay unlayered so they win over the unlayered
+ * `.font-display` block above and over layered Tailwind utilities.
+ */
+.ollie-admin {
+  font-family: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+.ollie-admin .font-sans,
+.ollie-admin .font-display,
+.ollie-admin .font-section {
+  font-family: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
 /* Contact modal: dimmed backdrop (native dialog ::backdrop). */
 .ollie-contact-dialog::backdrop {
   background-color: rgb(0 0 0 / 0.62);

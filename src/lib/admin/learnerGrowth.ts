@@ -53,7 +53,7 @@ export function dailySeriesForKeys(map: Map<string, number>, keys: readonly stri
 export type GrowthChangeTone = "up" | "down" | "flat";
 
 export type GrowthPercentResult = {
-  /** e.g. "+12.5%", "−4% decline", "0% change" */
+  /** e.g. "+12.5%", "−4% decline", "0%" */
   label: string;
   tone: GrowthChangeTone;
 };
@@ -90,7 +90,7 @@ export async function fetchProfileCreatedAtSince(
 
 export function formatGrowthVsPriorPeriod(recentTotal: number, priorTotal: number): GrowthPercentResult {
   if (priorTotal === 0 && recentTotal === 0) {
-    return { label: "0% change", tone: "flat" };
+    return { label: "0%", tone: "flat" };
   }
   if (priorTotal === 0 && recentTotal > 0) {
     return { label: "+100%", tone: "up" };
@@ -98,7 +98,7 @@ export function formatGrowthVsPriorPeriod(recentTotal: number, priorTotal: numbe
   const pct = ((recentTotal - priorTotal) / priorTotal) * 100;
   const rounded = Math.round(pct * 10) / 10;
   if (rounded === 0) {
-    return { label: "0% change", tone: "flat" };
+    return { label: "0%", tone: "flat" };
   }
   if (pct > 0) {
     return { label: `+${rounded}%`, tone: "up" };

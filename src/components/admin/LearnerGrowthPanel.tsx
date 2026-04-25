@@ -25,7 +25,11 @@ function FilledSparkSvg({ values }: Readonly<{ values: readonly number[] }>) {
   const mint = "#84c126";
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-12 w-32 shrink-0" width={128} height={48} aria-hidden>
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="aspect-[8/3] h-auto w-full max-h-10 sm:max-h-11 lg:max-h-12"
+      aria-hidden
+    >
       <defs>
         <linearGradient id="learnerGrowthSparkFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={mint} stopOpacity={0.38} />
@@ -63,15 +67,23 @@ export function LearnerGrowthPanel({
   const formattedTotal = new Intl.NumberFormat().format(totalLearners);
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 shrink-0">
-        <p className="font-display text-3xl font-bold tabular-nums text-slate-900">{formattedTotal}</p>
-        <div className="mt-2 space-y-0.5">
-          <p className={`text-base font-bold tabular-nums ${toneClass}`}>{changeLabel}</p>
-          <p className="text-xs font-semibold text-slate-500">last 30 days</p>
-        </div>
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3 lg:gap-4">
+      <div className="min-w-0 flex-1 space-y-1 sm:space-y-1.5">
+        <p className="m-0 min-w-0 leading-none">
+          <span className="inline-flex max-w-full flex-nowrap items-baseline gap-x-1.5 sm:gap-x-2">
+            <span className="font-display text-xl font-bold tabular-nums text-slate-900 sm:text-2xl">
+              {formattedTotal}
+            </span>
+            <span
+              className={`font-sans shrink-0 text-xs font-bold tabular-nums leading-snug sm:text-sm ${toneClass}`}
+            >
+              {changeLabel}
+            </span>
+          </span>
+        </p>
+        <p className="text-[0.65rem] font-semibold leading-snug text-slate-500 sm:text-xs">last 30 days</p>
       </div>
-      <div className="flex items-end justify-end sm:pl-4">
+      <div className="flex w-full min-w-0 shrink-0 justify-center sm:w-24 sm:justify-end sm:pl-1 md:w-28 lg:w-32 lg:pl-2">
         <FilledSparkSvg values={dailyNewSignups} />
       </div>
     </div>

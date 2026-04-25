@@ -24,7 +24,11 @@ function ArrSparkSvg({ values }: Readonly<{ values: readonly number[] }>) {
   const mint = "#84c126";
 
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-12 w-32 shrink-0" width={128} height={48} aria-hidden>
+    <svg
+      viewBox={`0 0 ${w} ${h}`}
+      className="aspect-[8/3] h-auto w-full max-h-10 sm:max-h-11 lg:max-h-12"
+      aria-hidden
+    >
       <defs>
         <linearGradient id="arrSparkFill" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={mint} stopOpacity={0.38} />
@@ -69,7 +73,9 @@ export function ArrPanel({
   unavailableMessage?: string | null;
 }>) {
   if (unavailableMessage) {
-    return <p className="text-sm leading-relaxed text-slate-600">{unavailableMessage}</p>;
+    return (
+      <p className="text-xs leading-relaxed text-slate-600 sm:text-sm">{unavailableMessage}</p>
+    );
   }
 
   const arrCents = mrrCents !== null ? mrrCents * 12 : null;
@@ -87,22 +93,36 @@ export function ArrPanel({
   const showSpark = dailyArrCents !== null && dailyArrCents.length > 0;
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 shrink-0 space-y-2">
-        <p className="font-display text-3xl font-bold tabular-nums text-slate-900">{formatted}</p>
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3 lg:gap-4">
+      <div className="min-w-0 flex-1 space-y-1.5 sm:space-y-2">
         {mrrTrend ? (
-          <div className="space-y-0.5">
-            <p className={`text-base font-bold tabular-nums ${trendToneClass}`}>{mrrTrend.label}</p>
-            <p className="text-xs font-semibold text-slate-500">last 30 days</p>
+          <div className="space-y-1 sm:space-y-1.5">
+            <p className="m-0 min-w-0 leading-none">
+              <span className="inline-flex max-w-full flex-nowrap items-baseline gap-x-1.5 sm:gap-x-2">
+                <span className="font-display text-xl font-bold tabular-nums text-slate-900 sm:text-2xl">
+                  {formatted}
+                </span>
+                <span
+                  className={`font-sans text-xs font-bold tabular-nums leading-snug sm:text-sm ${trendToneClass}`}
+                >
+                  {mrrTrend.label}
+                </span>
+              </span>
+            </p>
+            <p className="text-[0.65rem] font-semibold leading-snug text-slate-500 sm:text-xs">last 30 days</p>
           </div>
-        ) : null}
+        ) : (
+          <p className="font-display text-xl font-bold leading-none tabular-nums text-slate-900 sm:text-2xl">
+            {formatted}
+          </p>
+        )}
         {skippedNonPrimaryCurrency ? (
-          <p className="text-xs text-amber-700">
+          <p className="text-[0.65rem] leading-snug text-amber-700 sm:text-xs">
             Some prices in other currencies were omitted; total is {currency.toUpperCase()} only.
           </p>
         ) : null}
         {(skippedNonRecurringItems ?? 0) > 0 || (skippedMeteredItems ?? 0) > 0 ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-[0.65rem] leading-snug text-slate-500 sm:text-xs">
             {(skippedNonRecurringItems ?? 0) > 0 ? (
               <span>
                 Skipped {(skippedNonRecurringItems ?? 0)} non-recurring line
@@ -119,7 +139,7 @@ export function ArrPanel({
         ) : null}
       </div>
       {showSpark ? (
-        <div className="flex items-end justify-end sm:pl-4">
+        <div className="flex w-full min-w-0 shrink-0 justify-center sm:w-24 sm:justify-end sm:pl-1 md:w-28 lg:w-32 lg:pl-2">
           <ArrSparkSvg values={dailyArrCents} />
         </div>
       ) : null}

@@ -69,7 +69,7 @@ export function computeChurnFromRows(
 
 export function formatChurnVsPriorPeriod(recentTotal: number, priorTotal: number): ChurnChangeResult {
   if (priorTotal === 0 && recentTotal === 0) {
-    return { label: "0% change", sentiment: "flat" };
+    return { label: "0%", sentiment: "flat" };
   }
   if (priorTotal === 0 && recentTotal > 0) {
     return { label: "+100%", sentiment: "worse" };
@@ -77,7 +77,7 @@ export function formatChurnVsPriorPeriod(recentTotal: number, priorTotal: number
   const pct = ((recentTotal - priorTotal) / priorTotal) * 100;
   const rounded = Math.round(pct * 10) / 10;
   if (rounded === 0) {
-    return { label: "0% change", sentiment: "flat" };
+    return { label: "0%", sentiment: "flat" };
   }
   if (pct > 0) {
     return { label: `+${rounded}%`, sentiment: "worse" };

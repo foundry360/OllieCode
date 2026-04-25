@@ -15,23 +15,25 @@ export function TotalRevenuePanel({
   unavailableMessage?: string | null;
 }>) {
   if (unavailableMessage) {
-    return <p className="text-sm leading-relaxed text-slate-600">{unavailableMessage}</p>;
+    return (
+      <p className="text-xs leading-relaxed text-slate-600 sm:text-sm">{unavailableMessage}</p>
+    );
   }
 
   const formatted = revenueCents !== null ? formatStripeCentsAsCurrency(revenueCents, currency) : "—";
 
   return (
-    <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 shrink-0 space-y-2">
-        <p className="font-display text-3xl font-bold tabular-nums text-slate-900">{formatted}</p>
+    <div className="flex w-full min-w-0 flex-col gap-3 sm:flex-row sm:items-end sm:justify-between sm:gap-3 lg:gap-4">
+      <div className="min-w-0 flex-1 space-y-1.5 sm:space-y-2">
+        <p className="font-display text-xl font-bold tabular-nums text-slate-900 sm:text-2xl">{formatted}</p>
         {chargeCount !== null && chargeCount > 0 ? (
-          <p className="text-xs text-slate-500">
+          <p className="text-[0.65rem] leading-snug text-slate-500 sm:text-xs">
             <span className="font-semibold text-slate-700">{chargeCount}</span> succeeded charge
             {chargeCount === 1 ? "" : "s"}
           </p>
         ) : null}
         {skippedNonPrimaryCurrency ? (
-          <p className="text-xs text-amber-700">
+          <p className="text-[0.65rem] leading-snug text-amber-700 sm:text-xs">
             Some charges in other currencies were omitted; total is {currency.toUpperCase()} only.
           </p>
         ) : null}

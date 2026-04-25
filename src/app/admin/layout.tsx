@@ -36,11 +36,13 @@ export default async function AdminLayout({
   }
 
   return (
-    <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-slate-900">
-      <AdminAppHeader />
-      <div className="flex min-h-0 w-full flex-1 flex-col md:flex-row">
+    <div className="ollie-admin flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#f8fafc] text-slate-900">
+      <div className="shrink-0">
+        <AdminAppHeader />
+      </div>
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
         <AdminSidebar />
-        <main className="min-h-0 min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10">
+        <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-8 sm:px-6 lg:px-10">
           {children}
         </main>
       </div>

@@ -73,12 +73,14 @@ function SectionCard({
   children,
 }: Readonly<{ title: string; subtitle?: string; children: React.ReactNode }>) {
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="font-display text-lg font-bold text-slate-900">{title}</h2>
       {subtitle ? (
-        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{subtitle}</p>
+        <p className="mt-1 text-[0.65rem] font-semibold uppercase leading-snug tracking-wide text-slate-500">
+          {subtitle}
+        </p>
       ) : null}
-      <div className={subtitle ? "mt-3" : "mt-4"}>{children}</div>
+      <div className={`min-w-0 ${subtitle ? "mt-3" : "mt-4"}`}>{children}</div>
     </section>
   );
 }
@@ -102,9 +104,9 @@ function StatCard({
         <span className={`inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${iconClassName}`}>
           <Icon className="size-4" strokeWidth={2} aria-hidden />
         </span>
-        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="text-[0.65rem] font-bold uppercase leading-snug tracking-wide text-slate-500">{label}</p>
       </div>
-      <p className="font-display mt-2 text-2xl font-bold text-slate-900">{value}</p>
+      <p className="font-display mt-2 text-xl font-bold text-slate-900 sm:text-2xl">{value}</p>
     </div>
   );
 }
@@ -229,7 +231,7 @@ export default async function AdminDashboardPage() {
         <h1 className="font-display text-3xl font-bold text-slate-900">Dashboard</h1>
       </div>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+      <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard
           label="Learner Profiles"
           value={formatCount(learnersCountRes.count ?? 0)}
@@ -267,8 +269,8 @@ export default async function AdminDashboardPage() {
         />
       </section>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        <SectionCard title="Learner Growth" subtitle="Signup change vs prior 30 days">
+      <section className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <SectionCard title="Learner Growth" subtitle="Signup growth">
           <LearnerGrowthPanel
             totalLearners={learnersCountRes.count ?? 0}
             dailyNewSignups={dailyNewSignups}
@@ -289,7 +291,7 @@ export default async function AdminDashboardPage() {
           />
         </SectionCard>
 
-        <SectionCard title="MRR" subtitle="Monthly Recurring Revenue">
+        <SectionCard title="MRR" subtitle="Monthly Recurring $">
           <MrrPanel
             mrrCents={mrrCents}
             currency={mrrCurrency}
