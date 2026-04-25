@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { AdminAppHeader } from "@/components/app/AdminAppHeader";
-import { Footer } from "@/components/landing/Footer";
+import { AdminSidebar } from "@/components/admin/AdminSidebar";
 import { isAdminUser } from "@/lib/admin/isAdminUser";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -38,10 +38,12 @@ export default async function AdminLayout({
   return (
     <div className="flex min-h-[100dvh] flex-col bg-[#f8fafc] text-slate-900">
       <AdminAppHeader />
-      <main className="mx-auto w-full max-w-[96rem] flex-1 px-4 py-8 sm:px-6 lg:px-10">
-        {children}
-      </main>
-      <Footer showContactLauncher={false} />
+      <div className="flex min-h-0 w-full flex-1 flex-col md:flex-row">
+        <AdminSidebar />
+        <main className="min-h-0 min-w-0 flex-1 px-4 py-8 sm:px-6 lg:px-10">
+          {children}
+        </main>
+      </div>
     </div>
   );
 }

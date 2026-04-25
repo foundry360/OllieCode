@@ -133,11 +133,21 @@ export async function POST(request: NextRequest) {
 
     newUserId = created.user.id;
 
+    let masterParentEmail: string | null = null;
+    try {
+      const { data: masterAuth } = await admin.auth.admin.getUserById(masterId);
+      const e = masterAuth.user?.email?.trim();
+      masterParentEmail = e || null;
+    } catch {
+      masterParentEmail = null;
+    }
+
     const { error: profileError } = await admin.from("profiles").upsert(
       {
         id: newUserId,
         username,
         ...(birthDate ? { birth_date: birthDate } : {}),
+        ...(masterParentEmail ? { parent_email: masterParentEmail } : {}),
       },
       { onConflict: "id" },
     );

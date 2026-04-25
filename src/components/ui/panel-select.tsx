@@ -40,12 +40,15 @@ const optionBase =
 
 export function PanelSelect({
   label,
+  hideLabel,
   value,
   onChange,
   options,
   triggerMinWidth,
 }: Readonly<{
+  /** Shown above the trigger unless `hideLabel` is set (still used for `aria-label` when hidden). */
   label: string;
+  hideLabel?: boolean;
   value: string;
   onChange: (next: string) => void;
   options: readonly PanelSelectOption[];
@@ -101,16 +104,19 @@ export function PanelSelect({
   const triggerId = `${instanceId}-trigger`;
 
   return (
-    <div ref={rootRef} className="relative flex min-w-0 flex-col gap-1">
-      <span id={`${instanceId}-label`} className="text-xs font-semibold text-slate-500">
-        {label}
-      </span>
+    <div ref={rootRef} className={`relative flex min-w-0 flex-col ${hideLabel ? "" : "gap-1"}`}>
+      {!hideLabel ? (
+        <span id={`${instanceId}-label`} className="text-xs font-semibold text-slate-500">
+          {label}
+        </span>
+      ) : null}
       <button
         type="button"
         id={triggerId}
         aria-haspopup="listbox"
         aria-expanded={open}
-        aria-labelledby={`${instanceId}-label`}
+        aria-labelledby={hideLabel ? undefined : `${instanceId}-label`}
+        aria-label={hideLabel ? label : undefined}
         data-open={open}
         onClick={toggle}
         className={`${triggerClass} ${triggerMinWidth ?? ""}`}
@@ -124,7 +130,8 @@ export function PanelSelect({
       {open ? (
         <ul
           role="listbox"
-          aria-labelledby={`${instanceId}-label`}
+          aria-labelledby={hideLabel ? undefined : `${instanceId}-label`}
+          aria-label={hideLabel ? label : undefined}
           className={listClass}
         >
           {options.map((opt) => {

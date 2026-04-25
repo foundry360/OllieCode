@@ -1,7 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import Image from "next/image";
+import { useEffect, useMemo, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { PanelSelect, PanelSelectGroup } from "@/components/ui/panel-select";
+import { getAvatarBySlug } from "@/lib/profiles/avatarAssets";
 
 export type LearnerTableRow = {
   id: string;
@@ -9,6 +12,11 @@ export type LearnerTableRow = {
   created_at: string;
   subscription_status: string;
   is_admin: boolean;
+  avatar_slug: string | null;
+  /** Parent/guardian email from signup approval or family master (when stored). */
+  parent_email: string | null;
+  /** From auth.users via admin view; null if unavailable or never signed in. */
+  last_sign_in_at: string | null;
 };
 
 const SUBSCRIPTION_FILTERS = [
@@ -30,7 +38,7 @@ const ADMIN_FILTERS = [
   { value: "admin", label: "Admins only" },
 ] as const;
 
-type SortKey = "display" | "id" | "subscription_status" | "is_admin" | "created_at";
+type SortKey = "display" | "id" | "subscription_status" | "is_admin" | "created_at" | "last_sign_in_at";
 type SortDir = "asc" | "desc";
 
 const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string }> = [
@@ -39,7 +47,17 @@ const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string }> = [
   { value: "subscription_status", label: "Subscription" },
   { value: "is_admin", label: "Admin" },
   { value: "created_at", label: "Joined" },
+  { value: "last_sign_in_at", label: "Last signed in" },
 ];
+
+const PAGE_SIZE_OPTIONS = [
+  { value: "25", label: "25" },
+  { value: "50", label: "50" },
+  { value: "75", label: "75" },
+  { value: "100", label: "100" },
+] as const;
+
+type PageSize = 25 | 50 | 75 | 100;
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
@@ -84,29 +102,53 @@ function compareDates(a: string, b: string, dir: SortDir): number {
   return dir === "asc" ? cmp : -cmp;
 }
 
+/** Null / invalid dates sort last in both directions. */
+function compareDatesNullable(a: string | null, b: string | null, dir: SortDir): number {
+  const ta = a && !Number.isNaN(new Date(a).getTime()) ? new Date(a).getTime() : null;
+  const tb = b && !Number.isNaN(new Date(b).getTime()) ? new Date(b).getTime() : null;
+  if (ta === null && tb === null) return 0;
+  if (ta === null) return 1;
+  if (tb === null) return -1;
+  const cmp = ta - tb;
+  return dir === "asc" ? cmp : -cmp;
+}
+
 export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [adminFilter, setAdminFilter] = useState<(typeof ADMIN_FILTERS)[number]["value"]>("all");
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [pageSize, setPageSize] = useState<PageSize>(25);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredSorted = useMemo(() => {
     const q = search.trim().toLowerCase();
     let list = rows.map((r) => ({
       ...r,
       is_admin: Boolean(r.is_admin),
+      avatar_slug: typeof r.avatar_slug === "string" ? r.avatar_slug : null,
+      parent_email:
+        typeof r.parent_email === "string" && r.parent_email.trim()
+          ? r.parent_email.trim()
+          : null,
+      last_sign_in_at:
+        typeof r.last_sign_in_at === "string" && r.last_sign_in_at.trim() && !Number.isNaN(Date.parse(r.last_sign_in_at))
+          ? new Date(r.last_sign_in_at).toISOString()
+          : null,
     }));
 
     if (q) {
       list = list.filter((r) => {
         const name = learnerName(r.username, r.id).toLowerCase();
         const sub = formatSubscriptionStatus(r.subscription_status).toLowerCase();
+        const parent = (r.parent_email ?? "").toLowerCase();
         return (
           name.includes(q) ||
           r.id.toLowerCase().includes(q) ||
           (r.username?.toLowerCase().includes(q) ?? false) ||
-          sub.includes(q)
+          sub.includes(q) ||
+          parent.includes(q)
         );
       });
     }
@@ -138,6 +180,8 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
           return compareBooleans(a.is_admin, b.is_admin, dir);
         case "created_at":
           return compareDates(a.created_at, b.created_at, dir);
+        case "last_sign_in_at":
+          return compareDatesNullable(a.last_sign_in_at, b.last_sign_in_at, dir);
         default:
           return 0;
       }
@@ -146,49 +190,62 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
     return list;
   }, [rows, search, statusFilter, adminFilter, sortKey, sortDir]);
 
+  const totalFiltered = filteredSorted.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+  const page = Math.min(Math.max(1, currentPage), totalPages);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter, adminFilter]);
+
+  useEffect(() => {
+    setCurrentPage((p) => Math.min(p, totalPages));
+  }, [totalPages]);
+
+  const pagedRows = useMemo(() => {
+    const start = (page - 1) * pageSize;
+    return filteredSorted.slice(start, start + pageSize);
+  }, [filteredSorted, page, pageSize]);
+
+  const rangeStart = totalFiltered === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = totalFiltered === 0 ? 0 : Math.min(page * pageSize, totalFiltered);
+
   if (rows.length === 0) {
-    return <p className="text-sm text-slate-600">No learner profiles yet.</p>;
+    return (
+      <div className="space-y-4">
+        <h1 className="font-display text-3xl font-bold text-slate-900">Learners</h1>
+        <p className="text-sm text-slate-600">No learner profiles yet.</p>
+      </div>
+    );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <p className="text-sm text-slate-600 lg:py-1">
-          Showing{" "}
-          <span className="font-semibold text-slate-900">{filteredSorted.length}</span>
-          {filteredSorted.length !== rows.length ? (
-            <>
-              {" "}
-              of <span className="font-semibold text-slate-900">{rows.length}</span> profiles
-            </>
-          ) : (
-            <> profiles</>
-          )}
-        </p>
-
-        <div className="flex w-full flex-col items-end gap-3 sm:ml-auto sm:w-auto sm:flex-row sm:flex-wrap sm:justify-end">
-          <div className="flex w-full max-w-sm flex-col gap-1 sm:w-auto sm:min-w-[12rem]">
-            <label htmlFor="learners-search" className="text-xs font-semibold text-slate-500">
-              Search
-            </label>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between lg:gap-6">
+        <h1 className="font-display shrink-0 text-3xl font-bold text-slate-900">Learners</h1>
+        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-end">
+          <div className="w-full max-w-sm sm:w-auto sm:min-w-[12rem]">
             <input
               id="learners-search"
               type="search"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Name, username, or id…"
+              aria-label="Search learners"
               className="min-h-11 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm outline-none placeholder:text-slate-400 focus:border-[#84c126] focus:ring-2 focus:ring-[#84c126]/30 sm:min-w-[12rem]"
             />
           </div>
           <PanelSelectGroup>
             <PanelSelect
               label="Subscription"
+              hideLabel
               value={statusFilter}
               onChange={setStatusFilter}
               options={SUBSCRIPTION_FILTERS}
             />
             <PanelSelect
               label="Role"
+              hideLabel
               value={adminFilter}
               onChange={(v) =>
                 setAdminFilter(v as (typeof ADMIN_FILTERS)[number]["value"])
@@ -197,12 +254,14 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
             />
             <PanelSelect
               label="Sort by"
+              hideLabel
               value={sortKey}
               onChange={(v) => setSortKey(v as SortKey)}
               options={SORT_OPTIONS}
             />
             <PanelSelect
               label="Order"
+              hideLabel
               value={sortDir}
               onChange={(v) => setSortDir(v as SortDir)}
               options={[
@@ -222,9 +281,21 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
               <tr className="border-b border-slate-200 bg-slate-50">
                 <th
                   scope="col"
+                  className="w-14 px-3 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"
+                >
+                  Avatar
+                </th>
+                <th
+                  scope="col"
                   className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"
                 >
                   Learner
+                </th>
+                <th
+                  scope="col"
+                  className="min-w-[10rem] px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"
+                >
+                  Parent email
                 </th>
                 <th
                   scope="col"
@@ -250,23 +321,62 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
                 >
                   Joined
                 </th>
+                <th
+                  scope="col"
+                  className="w-48 px-4 py-3 text-xs font-bold uppercase tracking-wide text-slate-500"
+                >
+                  Last signed in
+                </th>
               </tr>
             </thead>
             <tbody>
               {filteredSorted.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-sm text-slate-600">
+                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-slate-600">
                     No rows match your filters.
                   </td>
                 </tr>
               ) : (
-                filteredSorted.map((row) => (
+                pagedRows.map((row) => {
+                  const avatar = getAvatarBySlug(row.avatar_slug);
+                  const displayName = learnerName(row.username, row.id);
+                  return (
                   <tr
                     key={row.id}
                     className="border-b border-slate-100 last:border-0 odd:bg-white even:bg-slate-50/50"
                   >
-                    <td className="px-4 py-3 font-semibold text-slate-900">
-                      {learnerName(row.username, row.id)}
+                    <td className="w-14 px-3 py-2 align-middle">
+                      <div className="relative mx-auto h-10 w-10 overflow-hidden rounded-full bg-slate-100 ring-1 ring-slate-200">
+                        {avatar ? (
+                          <Image
+                            src={avatar.src}
+                            alt={`${displayName} avatar`}
+                            width={40}
+                            height={40}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <span
+                            className="flex h-full w-full items-center justify-center text-[10px] font-bold uppercase tracking-wide text-slate-400"
+                            aria-hidden
+                          >
+                            —
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 font-semibold text-slate-900">{displayName}</td>
+                    <td className="max-w-[14rem] truncate px-4 py-3 text-slate-700" title={row.parent_email ?? undefined}>
+                      {row.parent_email ? (
+                        <a
+                          href={`mailto:${row.parent_email}`}
+                          className="font-medium text-[#5a8f1d] underline-offset-2 hover:underline"
+                        >
+                          {row.parent_email}
+                        </a>
+                      ) : (
+                        <span className="text-slate-400">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs text-slate-600">{row.id}</td>
                     <td className="px-4 py-3 text-slate-700">
@@ -274,12 +384,67 @@ export function LearnersTable({ rows }: Readonly<{ rows: LearnerTableRow[] }>) {
                     </td>
                     <td className="px-4 py-3 text-slate-700">{row.is_admin ? "Yes" : "—"}</td>
                     <td className="px-4 py-3 text-slate-600">{formatDateTime(row.created_at)}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {row.last_sign_in_at ? formatDateTime(row.last_sign_in_at) : <span className="text-slate-400">—</span>}
+                    </td>
                   </tr>
-                ))
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
+        {filteredSorted.length > 0 ? (
+          <div className="flex flex-col gap-4 border-t border-slate-200 bg-slate-50/80 px-4 py-4 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+            <p className="text-sm text-slate-600">
+              Showing{" "}
+              <span className="font-semibold text-slate-900">{rangeStart}</span> to{" "}
+              <span className="font-semibold text-slate-900">{rangeEnd}</span> of{" "}
+              <span className="font-semibold text-slate-900">{totalFiltered}</span> results
+            </p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+              <div className="flex items-center gap-2">
+                <PanelSelect
+                  label="Rows per page"
+                  hideLabel
+                  value={String(pageSize)}
+                  onChange={(v) => {
+                    const n = Number(v);
+                    if (n === 25 || n === 50 || n === 75 || n === 100) {
+                      setPageSize(n);
+                      setCurrentPage(1);
+                    }
+                  }}
+                  options={[...PAGE_SIZE_OPTIONS]}
+                  triggerMinWidth="min-w-[4.5rem]"
+                />
+                <span className="text-xs font-semibold text-slate-500">per page</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(page - 1)}
+                  disabled={page <= 1}
+                  className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Previous page"
+                >
+                  <ChevronLeft className="size-4" strokeWidth={2} aria-hidden />
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage(page + 1)}
+                  disabled={page >= totalPages}
+                  className="inline-flex min-h-10 items-center justify-center gap-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40"
+                  aria-label="Next page"
+                >
+                  Next
+                  <ChevronRight className="size-4" strokeWidth={2} aria-hidden />
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

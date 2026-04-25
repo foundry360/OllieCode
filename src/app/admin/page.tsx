@@ -1,13 +1,27 @@
 import Link from "next/link";
+import { BookOpen, FolderKanban, UserRound, UserRoundCheck, UsersRound, type LucideIcon } from "lucide-react";
+import { ArrPanel } from "@/components/admin/ArrPanel";
+import { ChurnPanel } from "@/components/admin/ChurnPanel";
+import { LearnerGrowthPanel } from "@/components/admin/LearnerGrowthPanel";
+import { MrrPanel } from "@/components/admin/MrrPanel";
+import { TotalRevenuePanel } from "@/components/admin/TotalRevenuePanel";
 import {
-  BookOpen,
-  FolderKanban,
-  UserRound,
-  UserRoundCheck,
-  UsersRound,
-  type LucideIcon,
-} from "lucide-react";
+  computeChurnFromRows,
+  fetchCanceledProfileUpdatesSince,
+  formatChurnVsPriorPeriod,
+} from "@/lib/admin/churnStats";
+import { computeStripeMrrDashboard, computeStripeTotalRevenueTrailingYear } from "@/lib/admin/mrr";
+import {
+  countsByUtcDay,
+  dailySeriesForKeys,
+  fetchProfileCreatedAtSince,
+  formatGrowthVsPriorPeriod,
+  lastNDayKeysUtc,
+  sumCountsForKeys,
+  utcTodayMidnight,
+} from "@/lib/admin/learnerGrowth";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
+import { getStripe } from "@/lib/stripe/server";
 import { LESSONS } from "@/lib/lms/lessonsCatalog";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -55,12 +69,16 @@ function learnerName(username: string | null | undefined, userId: string): strin
 
 function SectionCard({
   title,
+  subtitle,
   children,
-}: Readonly<{ title: string; children: React.ReactNode }>) {
+}: Readonly<{ title: string; subtitle?: string; children: React.ReactNode }>) {
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="font-display text-lg font-bold text-slate-900">{title}</h2>
-      <div className="mt-4">{children}</div>
+      {subtitle ? (
+        <p className="mt-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{subtitle}</p>
+      ) : null}
+      <div className={subtitle ? "mt-3" : "mt-4"}>{children}</div>
     </section>
   );
 }
@@ -109,15 +127,18 @@ export default async function AdminDashboardPage() {
 
   const lessonTitleById = new Map(LESSONS.map((lesson) => [lesson.id, lesson.title]));
 
+  const growthFetchStart = utcTodayMidnight();
+  growthFetchStart.setUTCDate(growthFetchStart.getUTCDate() - 62);
+
   const [
     learnersCountRes,
     activeSubscribersCountRes,
     pendingApprovalsCountRes,
     liveLessonsCountRes,
     savedProjectsCountRes,
-    pastDueCountRes,
     canceledCountRes,
-    noSubscriptionCountRes,
+    growthRows,
+    churnRows,
     recentLessonsRes,
     recentLearnersRes,
   ] = await Promise.all([
@@ -132,9 +153,9 @@ export default async function AdminDashboardPage() {
       .gt("expires_at", new Date().toISOString()),
     admin.from("lms_lessons").select("*", { count: "exact", head: true }).eq("published", true),
     admin.from("saved_mission_progress").select("*", { count: "exact", head: true }),
-    admin.from("profiles").select("*", { count: "exact", head: true }).eq("subscription_status", "past_due"),
     admin.from("profiles").select("*", { count: "exact", head: true }).eq("subscription_status", "canceled"),
-    admin.from("profiles").select("*", { count: "exact", head: true }).eq("subscription_status", "none"),
+    fetchProfileCreatedAtSince(admin, growthFetchStart.toISOString()),
+    fetchCanceledProfileUpdatesSince(admin, growthFetchStart.toISOString()),
     admin
       .from("lms_lessons")
       .select("id,published,updated_at,payload")
@@ -146,6 +167,54 @@ export default async function AdminDashboardPage() {
       .order("created_at", { ascending: false })
       .limit(6),
   ]);
+  const byDay = countsByUtcDay(growthRows);
+  const keysRecent30 = lastNDayKeysUtc(30, 0);
+  const keysPrior30 = lastNDayKeysUtc(30, 30);
+  const dailyNewSignups = dailySeriesForKeys(byDay, keysRecent30);
+  const recentSignupSum = sumCountsForKeys(byDay, keysRecent30);
+  const priorSignupSum = sumCountsForKeys(byDay, keysPrior30);
+  const growthVsPrior = formatGrowthVsPriorPeriod(recentSignupSum, priorSignupSum);
+
+  const churnMetrics = computeChurnFromRows(churnRows, keysRecent30, keysPrior30);
+  const churnVsPrior = formatChurnVsPriorPeriod(churnMetrics.recent, churnMetrics.prior);
+
+  let mrrUnavailable: string | null = null;
+  let mrrCents: number | null = null;
+  let mrrCurrency = "usd";
+  let mrrSkippedNonPrimaryCurrency = false;
+  let mrrSkippedNonRecurring = 0;
+  let mrrSkippedMetered = 0;
+  let mrrDailyCents: readonly number[] | null = null;
+  let mrrTrend: { label: string; tone: "up" | "down" | "flat" } | null = null;
+  let revenueCents: number | null = null;
+  let revenueCurrency = "usd";
+  let revenueChargeCount: number | null = null;
+  let revenueSkippedNonPrimaryCurrency = false;
+  const stripe = getStripe();
+  if (!stripe) {
+    mrrUnavailable = "Add STRIPE_SECRET_KEY to load MRR from Stripe.";
+  } else {
+    try {
+      const [snap, revenue] = await Promise.all([
+        computeStripeMrrDashboard(stripe, admin),
+        computeStripeTotalRevenueTrailingYear(stripe),
+      ]);
+      mrrCents = snap.mrrCents;
+      mrrCurrency = snap.currency;
+      mrrSkippedNonPrimaryCurrency = snap.skippedNonPrimaryCurrency;
+      mrrSkippedNonRecurring = snap.skippedNonRecurringItems;
+      mrrSkippedMetered = snap.skippedMeteredItems;
+      mrrDailyCents = snap.dailyMrrCents;
+      mrrTrend = snap.mrrTrend;
+      revenueCents = revenue.revenueCents;
+      revenueCurrency = revenue.currency;
+      revenueChargeCount = revenue.chargeCount;
+      revenueSkippedNonPrimaryCurrency = revenue.skippedNonPrimaryCurrency;
+    } catch (err) {
+      mrrUnavailable = err instanceof Error ? err.message : "Unable to load Stripe MRR.";
+      console.error("[admin/dashboard] Stripe MRR:", err);
+    }
+  }
 
   const recentLessonsRaw = (recentLessonsRes.data ?? []) as RecentLessonRow[];
   const recentLessons = recentLessonsRaw.slice(0, 5);
@@ -156,24 +225,8 @@ export default async function AdminDashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <h1 className="font-display text-3xl font-bold text-slate-900">Dashboard</h1>
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <Link
-            href="/admin/lessons"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            Open lessons
-          </Link>
-          <Link
-            href="/admin/lessons/new"
-            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#84c126] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020]"
-          >
-            New lesson
-          </Link>
-        </div>
+      <div>
+        <h1 className="font-display text-3xl font-bold text-slate-900">Dashboard</h1>
       </div>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
@@ -214,59 +267,62 @@ export default async function AdminDashboardPage() {
         />
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title="Subscription Health">
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div className="rounded-xl bg-[#f8fafc] p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Active / Trialing</p>
-              <p className="font-display mt-1 text-2xl font-bold text-slate-900">
-                {formatCount(activeSubscribersCountRes.count ?? 0)}
-              </p>
-            </div>
-            <div className="rounded-xl bg-[#f8fafc] p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Past Due</p>
-              <p className="font-display mt-1 text-2xl font-bold text-slate-900">
-                {formatCount(pastDueCountRes.count ?? 0)}
-              </p>
-            </div>
-            <div className="rounded-xl bg-[#f8fafc] p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Canceled</p>
-              <p className="font-display mt-1 text-2xl font-bold text-slate-900">
-                {formatCount(canceledCountRes.count ?? 0)}
-              </p>
-            </div>
-            <div className="rounded-xl bg-[#f8fafc] p-4">
-              <p className="text-xs font-bold uppercase tracking-wide text-slate-500">No Subscription</p>
-              <p className="font-display mt-1 text-2xl font-bold text-slate-900">
-                {formatCount(noSubscriptionCountRes.count ?? 0)}
-              </p>
-            </div>
-          </div>
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <SectionCard title="Learner Growth" subtitle="Signup change vs prior 30 days">
+          <LearnerGrowthPanel
+            totalLearners={learnersCountRes.count ?? 0}
+            dailyNewSignups={dailyNewSignups}
+            changeLabel={growthVsPrior.label}
+            changeTone={growthVsPrior.tone}
+          />
         </SectionCard>
 
-        <SectionCard title="Quick Actions">
-          <div className="flex flex-col gap-3">
-            <Link
-              href="/admin/lessons/new"
-              className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#84c126] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-[#6fa020]"
-            >
-              Create a lesson
-            </Link>
-            <Link
-              href="/admin/lessons"
-              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Review lesson library
-            </Link>
-            <Link
-              href="/learn"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex min-h-11 items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-            >
-              Open Learning Hub
-            </Link>
-          </div>
+        <SectionCard
+          title="Churn Rate"
+          subtitle="Canceled Subscriptions"
+        >
+          <ChurnPanel
+            totalCanceled={canceledCountRes.count ?? 0}
+            dailyChurnByUpdateDay={churnMetrics.dailySeries}
+            changeLabel={churnVsPrior.label}
+            sentiment={churnVsPrior.sentiment}
+          />
+        </SectionCard>
+
+        <SectionCard title="MRR" subtitle="Monthly Recurring Revenue">
+          <MrrPanel
+            mrrCents={mrrCents}
+            currency={mrrCurrency}
+            dailyMrrCents={mrrDailyCents}
+            mrrTrend={mrrTrend}
+            skippedNonPrimaryCurrency={mrrSkippedNonPrimaryCurrency}
+            skippedNonRecurringItems={mrrSkippedNonRecurring}
+            skippedMeteredItems={mrrSkippedMetered}
+            unavailableMessage={mrrUnavailable}
+          />
+        </SectionCard>
+
+        <SectionCard title="ARR" subtitle="MRR × 12 · annual run rate">
+          <ArrPanel
+            mrrCents={mrrCents}
+            currency={mrrCurrency}
+            dailyMrrCents={mrrDailyCents}
+            mrrTrend={mrrTrend}
+            skippedNonPrimaryCurrency={mrrSkippedNonPrimaryCurrency}
+            skippedNonRecurringItems={mrrSkippedNonRecurring}
+            skippedMeteredItems={mrrSkippedMetered}
+            unavailableMessage={mrrUnavailable}
+          />
+        </SectionCard>
+
+        <SectionCard title="Total Revenue" subtitle="Trailing 12 months">
+          <TotalRevenuePanel
+            revenueCents={revenueCents}
+            currency={revenueCurrency}
+            chargeCount={revenueChargeCount}
+            skippedNonPrimaryCurrency={revenueSkippedNonPrimaryCurrency}
+            unavailableMessage={mrrUnavailable}
+          />
         </SectionCard>
       </section>
 

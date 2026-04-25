@@ -71,11 +71,14 @@ export async function GET(request: NextRequest) {
 
   const birthDate = pending.birth_date as string | null | undefined;
 
+  const parentEmail = String(pending.parent_email ?? "").trim() || null;
+
   const { error: profileError } = await admin.from("profiles").upsert(
     {
       id: userId,
       username,
       ...(birthDate ? { birth_date: birthDate } : {}),
+      ...(parentEmail ? { parent_email: parentEmail } : {}),
     },
     { onConflict: "id" },
   );

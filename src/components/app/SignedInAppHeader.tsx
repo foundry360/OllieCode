@@ -6,14 +6,12 @@ import { SignOutButton } from "@/components/app/SignOutButton";
 
 export type SignedInNavId = "learn" | "workspace" | "profile" | "settings";
 
-export type AdminHeaderSection = "dashboard" | "learners" | "lessons";
-
 type SignedInAppHeaderProps = {
   active?: SignedInNavId;
-  /** Learning Hub uses the lime header; other signed-in areas use a white header. Ignored when {@link admin} is set (admin always uses lime). */
+  /** Learning Hub uses the lime header; other signed-in areas use a white header. */
   tone?: "learn" | "default";
-  /** Admin portal: same shell as Learning Hub + Dashboard / Lessons before main nav */
-  admin?: { active: AdminHeaderSection };
+  /** Admin portal: #111727 header + blue logo; admin/product links in sidebar. */
+  adminPortal?: boolean;
 };
 
 const NAV: { id: SignedInNavId; href: string; label: string }[] = [
@@ -26,17 +24,20 @@ const NAV: { id: SignedInNavId; href: string; label: string }[] = [
 export function SignedInAppHeader({
   active,
   tone = "default",
-  admin,
+  adminPortal,
 }: SignedInAppHeaderProps) {
-  const effectiveTone = admin ? "learn" : tone;
-  const headerTone =
-    effectiveTone === "learn"
+  const effectiveTone = tone;
+  const headerTone = adminPortal
+    ? "border-b border-white/10 bg-[#111727] backdrop-blur"
+    : effectiveTone === "learn"
       ? "border-b border-[#d9f99d] bg-[#ecfccb]/95 backdrop-blur"
       : "border-b border-slate-200 bg-white/95 backdrop-blur";
   const inactiveNav =
     effectiveTone === "learn"
       ? "text-[#374151] hover:bg-white/70 hover:text-[#84c126]"
       : "text-[#374151] hover:bg-slate-100 hover:text-[#84c126]";
+
+  const navItems = adminPortal ? [] : NAV;
 
   return (
     <header className={`sticky top-0 z-40 ${headerTone}`}>
@@ -47,58 +48,20 @@ export function SignedInAppHeader({
           aria-label="Ollie Code home"
         >
           <Image
-            src="/images/logo.png"
+            src={adminPortal ? "/images/logo_blue.png" : "/images/logo.png"}
             alt=""
             width={434}
             height={91}
-            className="h-7 w-auto sm:h-8"
+            className={adminPortal ? "h-8 w-auto sm:h-9" : "h-7 w-auto sm:h-8"}
             priority
           />
         </Link>
         <nav
           className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:gap-2"
-          aria-label={admin ? "Admin and app navigation" : "Signed-in navigation"}
+          aria-label={adminPortal ? "Admin session" : "Signed-in navigation"}
         >
-          {admin ? (
-            <>
-              <Link
-                href="/admin"
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                  admin.active === "dashboard"
-                    ? "bg-[#84c126] text-white shadow-sm"
-                    : inactiveNav
-                }`}
-                aria-current={admin.active === "dashboard" ? "page" : undefined}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/admin/learners"
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                  admin.active === "learners"
-                    ? "bg-[#84c126] text-white shadow-sm"
-                    : inactiveNav
-                }`}
-                aria-current={admin.active === "learners" ? "page" : undefined}
-              >
-                Learners
-              </Link>
-              <Link
-                href="/admin/lessons"
-                className={`rounded-full px-3 py-1.5 text-sm font-semibold transition ${
-                  admin.active === "lessons"
-                    ? "bg-[#84c126] text-white shadow-sm"
-                    : inactiveNav
-                }`}
-                aria-current={admin.active === "lessons" ? "page" : undefined}
-              >
-                Lessons
-              </Link>
-            </>
-          ) : null}
-          {NAV.map((item) => {
+          {navItems.map((item) => {
             const isActive = active === item.id;
-            const learningHubFromAdmin = Boolean(admin && item.id === "learn");
             return (
               <Link
                 key={item.id}
@@ -109,19 +72,14 @@ export function SignedInAppHeader({
                     : inactiveNav
                 }`}
                 aria-current={isActive ? "page" : undefined}
-                {...(learningHubFromAdmin
-                  ? {
-                      target: "_blank",
-                      rel: "noopener noreferrer",
-                      title: "Open Learning Hub in a new tab",
-                    }
-                  : {})}
               >
                 {item.label}
               </Link>
             );
           })}
-          <SignOutButton tone={effectiveTone === "learn" ? "learn" : "default"} />
+          <SignOutButton
+            tone={adminPortal ? "admin" : effectiveTone === "learn" ? "learn" : "default"}
+          />
         </nav>
       </div>
     </header>
