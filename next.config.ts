@@ -24,7 +24,8 @@ const nextConfig: NextConfig = {
   turbopack: {
     // Required when another package-lock.json exists above this folder (e.g. home
     // directory). Without this, Next picks the wrong root and the app fails to load.
-    root: path.join(__dirname),
+    // Use cwd — `__dirname` is undefined when this file is evaluated as an ES module.
+    root: path.resolve(process.cwd()),
   },
   /** Browsers request `/favicon.ico` by default; asset lives at `public/images/favicon.ico`. */
   async rewrites() {

@@ -1,10 +1,12 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ContactChatLauncher } from "@/components/landing/ContactChatLauncher";
+import { LandingSectionWave } from "@/components/landing/sectionWaves";
 
 const EXPLORE_LINKS = [
   { href: "/#features", label: "What we do" },
   { href: "/#stories", label: "Fun stuff" },
+  { href: "/why-ollie-code", label: "Why Ollie Code" },
 ];
 
 const START_LINKS = [
@@ -23,12 +25,21 @@ const LEGAL_LINKS = [
 type FooterProps = {
   /** When false, hides the floating “Have a question?” contact control (e.g. admin portal). */
   showContactLauncher?: boolean;
+  /**
+   * `LandingSectionWave` top fill: Tailwind `text-*` matching the section directly above the footer
+   * (e.g. `text-white`, `text-[#d9eeff]` before the grass pre-footer on the home page).
+   */
+  waveTopFillClassName?: string;
 };
 
-export function Footer({ showContactLauncher = true }: FooterProps) {
+export function Footer({
+  showContactLauncher = true,
+  waveTopFillClassName = "text-white",
+}: FooterProps) {
   return (
-    <footer className="relative z-10 w-full overflow-x-clip bg-[#111727] text-white">
-      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-14 pt-16 sm:px-6 sm:pb-16 sm:pt-20 lg:px-8 lg:pb-16 lg:pt-24">
+    <footer className="relative isolate z-10 w-full overflow-x-clip bg-[#111727] text-white">
+      <LandingSectionWave variant="top" colorClassName={waveTopFillClassName} />
+      <div className="relative z-10 mx-auto max-w-6xl px-4 pb-14 pt-20 sm:px-6 sm:pb-16 sm:pt-24 lg:px-8 lg:pb-16 lg:pt-28">
         <div className="grid gap-12 sm:grid-cols-2 lg:grid-cols-12 lg:gap-10">
           <div className="sm:col-span-2 lg:col-span-4">
             <Link

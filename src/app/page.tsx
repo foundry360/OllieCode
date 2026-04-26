@@ -24,7 +24,7 @@ export default function Home() {
         <FaqSection />
         <PreFooterCtaSection />
       </main>
-      <Footer />
+      <Footer waveTopFillClassName="text-[#d9eeff]" />
       <BackToTop />
     </div>
   );

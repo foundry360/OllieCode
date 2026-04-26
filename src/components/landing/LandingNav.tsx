@@ -36,16 +36,10 @@ export function LandingNav({ appearance = "default" }: LandingNavProps) {
           aria-label="Primary"
         >
           <Link
-            href="/#features"
+            href="/why-ollie-code"
             className={`hidden sm:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
           >
-            What we do
-          </Link>
-          <Link
-            href="/#stories"
-            className={`hidden md:inline ${isMint ? "text-white/90 hover:text-[#c5e08a]" : "text-[#374151] hover:text-[#84c126]"}`}
-          >
-            Fun stuff
+            Why Ollie Code
           </Link>
           <Link
             href="/plans"
