@@ -35,6 +35,9 @@ export function Features() {
       className="relative scroll-mt-20 overflow-x-clip bg-white px-4 pb-12 pt-8 sm:pb-16 sm:pt-10 lg:pb-20 lg:pt-14"
     >
       <div className="relative z-10 mx-auto max-w-6xl pb-2 sm:pb-3 lg:pb-4">
+        <p className="mx-auto mb-3 max-w-4xl text-center font-section text-sm font-semibold uppercase tracking-[0.18em] text-[var(--ollie-primary)] sm:mb-4 sm:text-base">
+          The Workspace
+        </p>
         <h2 className="font-section text-center text-3xl font-extrabold leading-tight text-[#111827] sm:text-4xl">
           Turning Ideas Into Games and Creations
         </h2>

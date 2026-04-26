@@ -13,6 +13,10 @@ export const metadata: Metadata = {
 const HERO_GRADIENT =
   "bg-[linear-gradient(180deg,#111727_0%,#172a40_22%,#1a3350_48%,#1c3959_72%,#1f3d58_100%)]";
 
+/** Same fluid scale as “Our Commitment to Safety and Security” — all major titles on this page. */
+const WHY_MAIN_HEADING_TYPE =
+  "font-section text-[clamp(0.8125rem,0.35rem+2.4vw,3rem)] font-extrabold leading-[1.1] tracking-tight";
+
 const OUTCOMES_SHARED_LINE =
   "These are not separate skills. They build together as kids create, experiment, and explore.";
 
@@ -113,7 +117,7 @@ export default function WhyOllieCodePage() {
         <div className="relative z-10 mx-auto max-w-6xl text-center">
           <h1
             id="why-heading"
-            className="font-section text-balance text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl lg:text-[3.25rem]"
+            className={`text-balance text-white ${WHY_MAIN_HEADING_TYPE}`}
           >
             Why <span className="italic text-[var(--ollie-primary)]">Ollie Code</span>
           </h1>
@@ -147,15 +151,17 @@ export default function WhyOllieCodePage() {
           <p className="mx-auto mb-3 max-w-4xl text-center font-section text-sm font-semibold uppercase tracking-[0.18em] text-[var(--ollie-primary)] sm:mb-4 sm:text-base">
             The Learning Gap
           </p>
-          <h2
-            id="problem-heading"
-            className="mx-auto mb-10 max-w-4xl text-balance text-center font-display text-3xl font-bold tracking-tight text-[#111827] sm:mb-12 sm:text-4xl lg:mb-14 lg:text-5xl lg:leading-[1.1]"
-          >
-            Why Kids Lose Interest in Coding Early
-          </h2>
+          <div className="-mx-1 overflow-x-auto overflow-y-visible px-1 text-center [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:overflow-x-visible sm:px-0 [&::-webkit-scrollbar]:hidden">
+            <h2
+              id="problem-heading"
+              className={`mb-10 inline-block min-w-min whitespace-nowrap text-center text-[#111827] sm:mb-12 lg:mb-14 ${WHY_MAIN_HEADING_TYPE}`}
+            >
+              Why Kids Lose Interest in Coding Early
+            </h2>
+          </div>
           <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-x-12 xl:gap-x-16">
             <div className="min-w-0 lg:pr-2">
-              <h3 className="font-display text-xl font-bold tracking-tight text-[var(--ollie-primary)] sm:text-2xl">
+              <h3 className="font-section text-xl font-extrabold leading-snug tracking-tight text-[var(--ollie-primary)] sm:text-2xl">
                 Ollie Code Closes The Gap
               </h3>
               <div className="mt-4 space-y-4 text-base leading-relaxed text-[#374151] sm:text-lg">
@@ -202,7 +208,7 @@ export default function WhyOllieCodePage() {
           </p>
           <h2
             id="approach-heading"
-            className="mx-auto mb-10 max-w-4xl text-balance text-center font-display text-3xl font-bold tracking-tight text-[#111827] sm:mb-12 sm:text-4xl lg:mb-14 lg:text-5xl lg:leading-[1.1]"
+            className={`mx-auto mb-10 max-w-4xl text-balance text-center text-[#111827] sm:mb-12 lg:mb-14 ${WHY_MAIN_HEADING_TYPE}`}
           >
             Built for Curiosity. Not Complexity
           </h2>
@@ -263,9 +269,12 @@ export default function WhyOllieCodePage() {
         waveTopColor="text-white"
         contentMaxWidthClass="max-w-7xl"
       >
+        <p className="mx-auto mb-3 max-w-4xl text-center font-section text-sm font-semibold uppercase tracking-[0.18em] text-[var(--ollie-primary)] sm:mb-4 sm:text-base">
+          The Results
+        </p>
         <h2
           id="outcomes-heading"
-          className="mx-auto mb-10 max-w-4xl text-balance text-center font-display text-3xl font-bold tracking-tight text-[#111827] sm:mb-12 sm:text-4xl lg:mb-14 lg:text-5xl lg:leading-[1.1]"
+          className={`mx-auto mb-10 max-w-4xl text-balance text-center text-[#111827] sm:mb-12 lg:mb-14 ${WHY_MAIN_HEADING_TYPE}`}
         >
           Real Learning Outcomes
         </h2>
@@ -283,7 +292,7 @@ export default function WhyOllieCodePage() {
                     sizes="(max-width: 640px) 40vw, 88px"
                   />
                 </div>
-                <h3 className="mt-3 font-display text-lg font-bold leading-snug tracking-tight text-[#111827] sm:text-xl">
+                <h3 className="mt-3 font-section text-lg font-bold leading-snug tracking-tight text-[#111827] sm:text-xl">
                   {card.title}
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-[#4b5563] sm:text-base">{card.body}</p>
@@ -313,7 +322,7 @@ export default function WhyOllieCodePage() {
         <div className="-mx-1 overflow-x-auto overflow-y-visible px-1 text-center [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:overflow-x-visible sm:px-0 [&::-webkit-scrollbar]:hidden">
           <h2
             id="safety-heading"
-            className="mb-10 inline-block min-w-min whitespace-nowrap text-center font-display text-[clamp(0.8125rem,0.35rem+2.4vw,3rem)] font-bold leading-[1.1] tracking-tight text-[#111827] sm:mb-12 lg:mb-14"
+            className={`mb-10 inline-block min-w-min whitespace-nowrap text-center text-[#111827] sm:mb-12 lg:mb-14 ${WHY_MAIN_HEADING_TYPE}`}
           >
             Our Commitment to Safety and Security
           </h2>
@@ -347,7 +356,7 @@ export default function WhyOllieCodePage() {
                 <div className="min-w-0 flex-1">
                   <h3
                     id="safety-kid-first-heading"
-                    className="font-display text-2xl font-bold leading-tight tracking-tight text-[#111827] sm:text-3xl lg:text-[2rem] lg:leading-snug"
+                    className="font-section text-2xl font-extrabold leading-snug tracking-tight text-[#111827] sm:text-3xl sm:leading-tight lg:text-[1.75rem] xl:text-3xl"
                   >
                     Safe, kid first environment
                   </h3>
@@ -376,7 +385,7 @@ export default function WhyOllieCodePage() {
                 <div className="min-w-0 flex-1">
                   <h3
                     id="safety-no-ads-heading"
-                    className="font-display text-2xl font-bold leading-tight tracking-tight text-[#111827] sm:text-3xl lg:text-[2rem] lg:leading-snug"
+                    className="font-section text-2xl font-extrabold leading-snug tracking-tight text-[#111827] sm:text-3xl sm:leading-tight lg:text-[1.75rem] xl:text-3xl"
                   >
                     No ads or external distractions
                   </h3>
@@ -405,7 +414,7 @@ export default function WhyOllieCodePage() {
                 <div className="min-w-0 flex-1">
                   <h3
                     id="safety-payments-heading"
-                    className="font-display text-2xl font-bold leading-tight tracking-tight text-[#111827] sm:text-3xl lg:text-[2rem] lg:leading-snug"
+                    className="font-section text-2xl font-extrabold leading-snug tracking-tight text-[#111827] sm:text-3xl sm:leading-tight lg:text-[1.75rem] xl:text-3xl"
                   >
                     Secure payments &amp; account protection
                   </h3>
@@ -434,7 +443,7 @@ export default function WhyOllieCodePage() {
                 <div className="min-w-0 flex-1">
                   <h3
                     id="safety-privacy-heading"
-                    className="font-display text-2xl font-bold leading-tight tracking-tight text-[#111827] sm:text-3xl lg:text-[2rem] lg:leading-snug"
+                    className="font-section text-2xl font-extrabold leading-snug tracking-tight text-[#111827] sm:text-3xl sm:leading-tight lg:text-[1.75rem] xl:text-3xl"
                   >
                     Privacy conscious by design
                   </h3>
