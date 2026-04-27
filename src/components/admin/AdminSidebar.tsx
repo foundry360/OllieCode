@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
+import { OLLIE_ADMIN_INBOX_UNREAD_REFRESH } from "@/lib/admin/adminInboxUnreadEvent";
+import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
   BookMarked,
   BookOpen,
@@ -11,6 +13,7 @@ import {
   ExternalLink,
   LayoutDashboard,
   Library,
+  Mail,
   PanelsTopLeft,
   UsersRound,
 } from "lucide-react";
@@ -35,6 +38,7 @@ const SECTIONS: {
   { href: "/admin/learners", label: "Learners", icon: UsersRound },
   { href: "/admin/lessons", label: "Lessons", icon: BookOpen },
   { href: "/admin/guides", label: "Learning Guides", icon: BookMarked },
+  { href: "/admin/messages", label: "Messages", icon: Mail },
 ];
 
 function isActivePath(
@@ -56,13 +60,38 @@ function cn(...parts: (string | false | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export function AdminSidebar() {
+async function fetchUnreadInboxCount(): Promise<number> {
+  const supabase = getSupabaseBrowserClient();
+  if (!supabase) return 0;
+  const { count, error } = await supabase
+    .from("contact_inbox_messages")
+    .select("*", { count: "exact", head: true })
+    .is("read_at", null);
+  if (error || typeof count !== "number") return 0;
+  return count;
+}
+
+function UnreadBadge({ count }: { count: number }) {
+  if (count <= 0) return null;
+  const label = count > 99 ? "99+" : String(count);
+  return (
+    <span
+      className="inline-flex min-h-5 min-w-5 shrink-0 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-bold leading-none text-white ring-2 ring-white"
+      aria-label={`${count} unread message${count === 1 ? "" : "s"}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function AdminSidebar({ initialUnreadInboxCount = 0 }: { initialUnreadInboxCount?: number }) {
   const pathname = usePathname() || "";
   const navId = useId();
   const toggleId = `${navId}-toggle`;
 
   const [collapsed, setCollapsed] = useState(false);
   const [persistReady, setPersistReady] = useState(false);
+  const [unreadInboxCount, setUnreadInboxCount] = useState(initialUnreadInboxCount);
 
   useEffect(() => {
     try {
@@ -83,6 +112,28 @@ export function AdminSidebar() {
       /* ignore */
     }
   }, [collapsed, persistReady]);
+
+  useEffect(() => {
+    setUnreadInboxCount(initialUnreadInboxCount);
+  }, [initialUnreadInboxCount]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchUnreadInboxCount().then((n) => {
+      if (!cancelled) setUnreadInboxCount(n);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    const onRefresh = () => {
+      void fetchUnreadInboxCount().then(setUnreadInboxCount);
+    };
+    window.addEventListener(OLLIE_ADMIN_INBOX_UNREAD_REFRESH, onRefresh);
+    return () => window.removeEventListener(OLLIE_ADMIN_INBOX_UNREAD_REFRESH, onRefresh);
+  }, []);
 
   const toggle = useCallback(() => {
     setCollapsed((c) => !c);
@@ -130,6 +181,10 @@ export function AdminSidebar() {
         <p className={sectionHeadingClass}>Admin</p>
         {SECTIONS.map(({ href, label, icon: Icon, exact, excludePrefix }) => {
           const active = isActivePath(pathname, href, exact, excludePrefix);
+          const isMessages = href === "/admin/messages";
+          const showUnread = isMessages && unreadInboxCount > 0;
+          const badgeOnIcon = showUnread && collapsed;
+
           return (
             <Link
               key={href}
@@ -138,8 +193,18 @@ export function AdminSidebar() {
               aria-current={active ? "page" : undefined}
               title={collapsed ? label : undefined}
             >
-              <Icon className="size-4 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
-              <span className={cn(collapsed && "md:sr-only")}>{label}</span>
+              <span className="relative inline-flex shrink-0">
+                <Icon className="size-4 opacity-80" strokeWidth={2} aria-hidden />
+                {badgeOnIcon ? (
+                  <span className="pointer-events-none absolute -right-2 -top-1.5">
+                    <UnreadBadge count={unreadInboxCount} />
+                  </span>
+                ) : null}
+              </span>
+              <span className={cn("flex min-w-0 flex-1 items-center gap-2", collapsed && "md:sr-only")}>
+                <span>{label}</span>
+                {showUnread && !collapsed ? <UnreadBadge count={unreadInboxCount} /> : null}
+              </span>
             </Link>
           );
         })}

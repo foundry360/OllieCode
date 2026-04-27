@@ -25,7 +25,6 @@ export const OLLIE_TOOLBOX_CATEGORY_ICON_MAP = {
   lists: "list_blocks",
   color: "colour_blocks",
   variables: "variable_blocks",
-  "variables-dynamic": "variable_dynamic_blocks",
   functions: "procedure_blocks",
 } as const;
 

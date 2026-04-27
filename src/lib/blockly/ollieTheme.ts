@@ -46,7 +46,6 @@ export const scratchToolboxCategoryColor = {
   lists: S.list.colourPrimary,
   color: S.color.colourPrimary,
   variables: S.variables.colourPrimary,
-  variablesDynamic: S.variables.colourPrimary,
   functions: S.myBlocks.colourPrimary,
 } as const;
 

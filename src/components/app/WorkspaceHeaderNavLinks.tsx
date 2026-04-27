@@ -24,13 +24,6 @@ export function WorkspaceHeaderNavLinks() {
       >
         Learning Hub
       </Link>
-      <Link
-        href="/profile"
-        className={linkClass(path.startsWith("/profile"))}
-        aria-current={path.startsWith("/profile") ? "page" : undefined}
-      >
-        Profile
-      </Link>
     </nav>
   );
 }

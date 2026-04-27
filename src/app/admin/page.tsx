@@ -24,6 +24,7 @@ import {
   sumCountsForKeys,
   utcTodayMidnight,
 } from "@/lib/admin/learnerGrowth";
+import { isContactInboxMissing } from "@/lib/admin/contactInbox";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
 import { getStripe } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -40,6 +41,15 @@ type RecentLearnerRow = {
   username: string | null;
   created_at: string;
   subscription_status: string;
+};
+
+type RecentInboxDashRow = {
+  id: string;
+  created_at: string;
+  visitor_name: string;
+  visitor_email: string;
+  message: string;
+  read_at: string | null;
 };
 
 function formatCount(value: number): string {
@@ -68,6 +78,12 @@ function learnerName(username: string | null | undefined, userId: string): strin
   const value = username?.trim();
   if (value) return value;
   return `Learner ${userId.slice(0, 8)}`;
+}
+
+function previewInboxMessage(body: string, max = 72): string {
+  const oneLine = body.replace(/\s+/g, " ").trim();
+  if (oneLine.length <= max) return oneLine;
+  return `${oneLine.slice(0, max - 1)}…`;
 }
 
 function SectionCard({
@@ -144,6 +160,7 @@ export default async function AdminDashboardPage() {
     churnRows,
     recentLessonsRes,
     recentLearnersRes,
+    recentInboxRes,
   ] = await Promise.all([
     admin.from("profiles").select("*", { count: "exact", head: true }),
     admin
@@ -167,6 +184,11 @@ export default async function AdminDashboardPage() {
     admin
       .from("profiles")
       .select("id,username,created_at,subscription_status")
+      .order("created_at", { ascending: false })
+      .limit(6),
+    admin
+      .from("contact_inbox_messages")
+      .select("id, created_at, visitor_name, visitor_email, message, read_at")
       .order("created_at", { ascending: false })
       .limit(6),
   ]);
@@ -229,6 +251,17 @@ export default async function AdminDashboardPage() {
   const recentLearnersRaw = (recentLearnersRes.data ?? []) as RecentLearnerRow[];
   const recentLearners = recentLearnersRaw.slice(0, 5);
   const hasMoreRecentLearners = recentLearnersRaw.length > 5;
+
+  let recentInboxRaw: RecentInboxDashRow[] = [];
+  if (recentInboxRes.error) {
+    if (!isContactInboxMissing(recentInboxRes.error.message)) {
+      console.error("[admin/dashboard] contact_inbox_messages:", recentInboxRes.error);
+    }
+  } else {
+    recentInboxRaw = (recentInboxRes.data ?? []) as RecentInboxDashRow[];
+  }
+  const recentInbox = recentInboxRaw.slice(0, 5);
+  const hasMoreRecentInbox = recentInboxRaw.length > 5;
 
   return (
     <div className="space-y-8">
@@ -335,7 +368,7 @@ export default async function AdminDashboardPage() {
         </SectionCard>
       </section>
 
-      <section className="grid gap-4 xl:grid-cols-2">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         <SectionCard title="Recent Lesson Updates">
           {recentLessons.length === 0 ? (
             <p className="text-sm text-slate-600">No lesson updates yet.</p>
@@ -415,6 +448,51 @@ export default async function AdminDashboardPage() {
             <div className="mt-4 border-t border-slate-100 pt-4">
               <Link
                 href="/admin/learners"
+                className="text-sm font-semibold text-[#5a8f1d] hover:text-[#4a7518] hover:underline"
+              >
+                Show more
+              </Link>
+            </div>
+          ) : null}
+        </SectionCard>
+
+        <SectionCard title="Recent Messages">
+          {recentInbox.length === 0 ? (
+            <p className="text-sm text-slate-600">No messages yet.</p>
+          ) : (
+            <ul className="space-y-3">
+              {recentInbox.map((row) => (
+                <li key={`${row.id}:${row.created_at}`}>
+                  <Link
+                    href="/admin/messages"
+                    className="block rounded-xl border border-slate-200 bg-slate-50/70 px-4 py-3 text-left no-underline outline-none transition hover:border-[#84c126]/45 hover:bg-white hover:shadow-sm focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-900">{row.visitor_name}</p>
+                        <p className="mt-0.5 truncate text-xs text-slate-500">{row.visitor_email}</p>
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-1">
+                        {!row.read_at ? (
+                          <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-white">
+                            New
+                          </span>
+                        ) : null}
+                        <span className="text-xs text-slate-500">{formatDateTime(row.created_at)}</span>
+                      </div>
+                    </div>
+                    <p className="mt-2 line-clamp-2 text-sm leading-snug text-slate-600">
+                      {previewInboxMessage(row.message)}
+                    </p>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+          {hasMoreRecentInbox ? (
+            <div className="mt-4 border-t border-slate-100 pt-4">
+              <Link
+                href="/admin/messages"
                 className="text-sm font-semibold text-[#5a8f1d] hover:text-[#4a7518] hover:underline"
               >
                 Show more

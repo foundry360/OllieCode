@@ -1,9 +1,4 @@
-import {
-  PROCEDURE_CATEGORY_NAME,
-  VARIABLE_CATEGORY_NAME,
-  VARIABLE_DYNAMIC_CATEGORY_NAME,
-  utils,
-} from "blockly/core";
+import { PROCEDURE_CATEGORY_NAME, VARIABLE_CATEGORY_NAME, utils } from "blockly/core";
 import { scratchToolboxCategoryColor } from "@/lib/blockly/ollieTheme";
 import { ollieToolboxCategoryCssconfig } from "@/lib/blockly/toolboxCategoryIconCss";
 
@@ -220,13 +215,6 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColor.variables,
       cssconfig: ollieToolboxCategoryCssconfig("variables"),
       custom: VARIABLE_CATEGORY_NAME,
-    },
-    {
-      kind: "category",
-      name: "Variables (dynamic)",
-      colour: scratchToolboxCategoryColor.variablesDynamic,
-      cssconfig: ollieToolboxCategoryCssconfig("variables-dynamic"),
-      custom: VARIABLE_DYNAMIC_CATEGORY_NAME,
     },
     {
       kind: "category",

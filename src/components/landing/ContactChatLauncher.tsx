@@ -136,8 +136,10 @@ export function ContactChatLauncher() {
 
         {status === "sent" ? (
           <div className="px-5 py-8 text-center">
-            <p className="font-medium text-[#3f6212]">Thanks — your message is on its way.</p>
-            <p className="mt-2 text-sm text-[#6b7280]">We&apos;ll reply by email when we can.</p>
+            <p className="font-medium text-[#3f6212]">Thanks — we received your message.</p>
+            <p className="mt-2 text-sm text-[#6b7280]">
+              Our team reads every note and will follow up by email when we can.
+            </p>
             <button
               type="button"
               onClick={close}

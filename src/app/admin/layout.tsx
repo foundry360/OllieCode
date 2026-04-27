@@ -35,13 +35,22 @@ export default async function AdminLayout({
     redirect("/staff/login?admin_denied=1&next=/admin");
   }
 
+  let unreadInboxCount = 0;
+  const { count: inboxUnreadCount, error: inboxCountError } = await supabase
+    .from("contact_inbox_messages")
+    .select("*", { count: "exact", head: true })
+    .is("read_at", null);
+  if (!inboxCountError && typeof inboxUnreadCount === "number") {
+    unreadInboxCount = inboxUnreadCount;
+  }
+
   return (
     <div className="ollie-admin flex h-[100dvh] max-h-[100dvh] flex-col overflow-hidden bg-[#f8fafc] text-slate-900">
       <div className="shrink-0">
         <AdminAppHeader />
       </div>
       <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden md:flex-row">
-        <AdminSidebar />
+        <AdminSidebar initialUnreadInboxCount={unreadInboxCount} />
         <main className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-8 sm:px-6 lg:px-10">
           {children}
         </main>
