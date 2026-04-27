@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminGuidesSortableTable } from "@/app/admin/guides/AdminGuidesSortableTable";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -9,6 +10,7 @@ type Row = {
   sort_order: number;
   updated_at: string;
   section: string | null;
+  card_image_url: string | null;
 };
 
 function isLearningGuidesTableMissing(message: string | null | undefined): boolean {
@@ -40,7 +42,7 @@ export default async function AdminGuidesPage({
   if (admin) {
     const { data, error } = await admin
       .from("lms_learning_guides")
-      .select("id, title, published, sort_order, updated_at, section")
+      .select("id, title, published, sort_order, updated_at, section, card_image_url")
       .order("sort_order", { ascending: true })
       .order("title", { ascending: true });
     if (error) listError = error.message;
@@ -50,7 +52,7 @@ export default async function AdminGuidesPage({
     if (supabase) {
       const { data, error } = await supabase
         .from("lms_learning_guides")
-        .select("id, title, published, sort_order, updated_at, section")
+        .select("id, title, published, sort_order, updated_at, section, card_image_url")
         .order("sort_order", { ascending: true })
         .order("title", { ascending: true });
       if (error) listError = error.message;
@@ -61,13 +63,10 @@ export default async function AdminGuidesPage({
   const tableMissing = isLearningGuidesTableMissing(listError);
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="w-full min-w-0 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="font-display text-2xl font-bold text-slate-900">Learning Guides</h1>
-          <p className="mt-1 text-sm text-slate-600">
-            HTML guides shown on the Learning Hub under the &quot;Learning Guides&quot; tab.
-          </p>
+          <h1 className="font-display text-3xl font-bold text-slate-900">Learning Guides</h1>
         </div>
         <Link
           href="/admin/guides/new"
@@ -144,43 +143,7 @@ export default async function AdminGuidesPage({
           ) : null}
         </p>
       ) : !listError ? (
-        <div className="mt-8 overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50/80 text-xs font-semibold uppercase tracking-wide text-slate-600">
-              <tr>
-                <th className="px-4 py-3">Sort</th>
-                <th className="px-4 py-3">Title</th>
-                <th className="px-4 py-3">Section</th>
-                <th className="px-4 py-3">ID</th>
-                <th className="px-4 py-3">Published</th>
-                <th className="px-4 py-3">Updated</th>
-                <th className="px-4 py-3" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {rows.map((r) => (
-                <tr key={r.id} className="text-slate-800">
-                  <td className="px-4 py-3 tabular-nums text-slate-600">{r.sort_order}</td>
-                  <td className="px-4 py-3 font-medium">{r.title}</td>
-                  <td className="px-4 py-3 text-slate-600">{r.section?.trim() || "—"}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.id}</td>
-                  <td className="px-4 py-3">{r.published ? "Yes" : "No"}</td>
-                  <td className="px-4 py-3 text-slate-600">
-                    {new Date(r.updated_at).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/guides/${encodeURIComponent(r.id)}/edit`}
-                      className="font-semibold text-[#3f6212] underline hover:text-[#84c126]"
-                    >
-                      Edit
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <AdminGuidesSortableTable rows={rows} />
       ) : null}
     </div>
   );

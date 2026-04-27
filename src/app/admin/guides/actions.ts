@@ -139,6 +139,63 @@ export async function upsertLearningGuideAction(formData: FormData): Promise<Gui
   redirect(`/admin/guides/${encodeURIComponent(id)}/edit?saved=1`);
 }
 
+/**
+ * Reorders guides within one hub section by assigning sort_order = index * 10.
+ * Validates that every id exists and belongs to the given section (trimmed).
+ */
+export async function reorderLearningGuidesInSectionAction(
+  section: string,
+  orderedIds: string[],
+): Promise<GuideActionResult> {
+  const sectionNorm = section.trim() || "Ollie Code Basics";
+  if (orderedIds.length === 0) {
+    return { ok: true };
+  }
+
+  const r = await requireAdmin();
+  if (r.error || !r.supabase) {
+    return { ok: false, message: r.error ?? "Forbidden" };
+  }
+
+  const unique = new Set(orderedIds);
+  if (unique.size !== orderedIds.length) {
+    return { ok: false, message: "Duplicate guide ids in reorder list." };
+  }
+
+  const { data: found, error: fetchErr } = await r.supabase
+    .from("lms_learning_guides")
+    .select("id, section")
+    .in("id", orderedIds);
+
+  if (fetchErr) {
+    return { ok: false, message: fetchErr.message };
+  }
+  if (!found || found.length !== orderedIds.length) {
+    return { ok: false, message: "One or more guide ids were not found." };
+  }
+
+  for (const row of found) {
+    const rowSection = (row.section as string | null)?.trim() || "Ollie Code Basics";
+    if (rowSection !== sectionNorm) {
+      return { ok: false, message: "A guide does not belong to this section." };
+    }
+  }
+
+  for (let i = 0; i < orderedIds.length; i++) {
+    const { error: upErr } = await r.supabase
+      .from("lms_learning_guides")
+      .update({ sort_order: i * 10 })
+      .eq("id", orderedIds[i]);
+    if (upErr) {
+      return { ok: false, message: upErr.message };
+    }
+  }
+
+  revalidatePath("/learn");
+  revalidatePath("/admin/guides");
+  return { ok: true };
+}
+
 export async function deleteLearningGuideAction(formData: FormData): Promise<void> {
   const id = String(formData.get("id") ?? "").trim();
   if (!id) redirect("/admin/guides");
