@@ -3,6 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /** Hub section headings, in display order (always shown, even when empty). */
 export const LEARNING_GUIDE_SECTION_ORDER = [
   "Ollie Code Basics",
+  "Coding Blocks",
+  "Design Tools & Backdrops",
   "Safety & Security",
 ] as const;
 

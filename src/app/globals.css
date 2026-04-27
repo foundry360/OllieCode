@@ -506,3 +506,55 @@ html::-webkit-scrollbar-thumb:hover {
   font-weight: 500;
   color: #64748b;
 }
+
+/* Workspace blocks reference guide — readable tables + inline code */
+.guide-modal-body table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.65rem 0 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.guide-modal-body th,
+.guide-modal-body td {
+  border: 1px solid #e2e8f0;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  vertical-align: top;
+}
+.guide-modal-body th {
+  background: #f8fafc;
+  font-weight: 600;
+  color: #0f172a;
+}
+.guide-modal-body td code,
+.guide-modal-body p code,
+.guide-modal-body li code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.88em;
+  background: #f1f5f9;
+  padding: 0.08em 0.32em;
+  border-radius: 4px;
+  color: #0f172a;
+}
+.guide-modal-body em {
+  font-style: italic;
+  color: #475569;
+}
+
+/* Workspace blocks guide: give “Toolbox” a bit more room, “What it does” a bit less */
+.guide-modal-body table.ollie-toolbox-guide-table {
+  table-layout: fixed;
+}
+.guide-modal-body table.ollie-toolbox-guide-table th:nth-child(1),
+.guide-modal-body table.ollie-toolbox-guide-table td:nth-child(1) {
+  width: 36%;
+}
+.guide-modal-body table.ollie-toolbox-guide-table th:nth-child(2),
+.guide-modal-body table.ollie-toolbox-guide-table td:nth-child(2) {
+  width: 30%;
+}
+.guide-modal-body table.ollie-toolbox-guide-table th:nth-child(3),
+.guide-modal-body table.ollie-toolbox-guide-table td:nth-child(3) {
+  width: 34%;
+}

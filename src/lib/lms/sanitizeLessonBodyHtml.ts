@@ -28,6 +28,12 @@ const LESSON_HTML_OPTIONS: sanitizeHtml.IOptions = {
     blockquote: ["style", "class"],
     code: ["class"],
     pre: ["class"],
+    table: ["class"],
+    thead: ["class"],
+    tbody: ["class"],
+    tr: ["class"],
+    th: ["class"],
+    td: ["class"],
   },
   allowedStyles: {
     "*": {
