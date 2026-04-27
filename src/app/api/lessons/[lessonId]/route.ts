@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { getLessonByIdMerged } from "@/lib/lms/publishedLessons";
 
-/**
- * Merged lesson (static catalog + published `lms_lessons` overrides) for the workspace panel.
- */
+/** Published lesson from `lms_lessons` for the workspace panel. */
 export async function GET(
   _request: Request,
   context: { params: Promise<{ lessonId: string }> },

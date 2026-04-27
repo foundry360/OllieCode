@@ -1,7 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-/** Shipped with the app so the hub shows this guide even before `lms_learning_guides` migrations run. */
-export const HOW_TO_ACTIVATE_LESSON_GUIDE_ID = "how-to-activate-a-lesson" as const;
+/** Hub section headings, in display order (always shown, even when empty). */
+export const LEARNING_GUIDE_SECTION_ORDER = [
+  "Ollie Code Basics",
+  "Safety & Security",
+] as const;
 
 export type LearningGuideListItem = {
   id: string;
@@ -9,52 +12,8 @@ export type LearningGuideListItem = {
   summary: string;
   cardImageUrl: string | null;
   sortOrder: number;
+  section: string;
 };
-
-const HOW_TO_ACTIVATE_LESSON_BODY_HTML =
-  "<p>Use the <strong>Starter Lessons</strong> tab on the " +
-  '<a href="/learn" rel="noopener noreferrer">Learning Hub</a>. This guide walks through turning a lesson card ' +
-  "into an active build in the Workspace.</p>" +
-  "<h2>1. Open the lesson page</h2>" +
-  "<ol>" +
-  "<li>Stay on (or switch to) <strong>Starter Lessons</strong>.</li>" +
-  "<li>Scroll <strong>Popular lessons</strong> or use the list and filters below it.</li>" +
-  "<li>Tap a lesson's green <strong>title</strong> to open its overview page.</li>" +
-  "</ol>" +
-  "<h2>2. Activate the lesson</h2>" +
-  "<p>On the lesson page, look for the green <strong>Activate lesson</strong> button in the card on the left. " +
-  "Tap it to jump into the Workspace with that lesson loaded so you can follow the steps and build along.</p>" +
-  "<h2>3. If you see “Coming soon”</h2>" +
-  "<p>Some lessons can be read on the hub but are not ready in the Workspace yet. Those show " +
-  "<strong>Coming soon in the workspace</strong> instead of Activate lesson—you can still read the overview " +
-  "and check back later.</p>" +
-  "<h2>Tip</h2>" +
-  "<p>For more family-friendly context, open the <strong>Learning Guides</strong> tab and browse other short reads.</p>";
-
-const BUILTIN_PUBLISHED_LIST: LearningGuideListItem[] = [
-  {
-    id: HOW_TO_ACTIVATE_LESSON_GUIDE_ID,
-    title: "How to activate a lesson",
-    summary:
-      "Go from the Learning Hub to the lesson page, then open the Workspace in one tap.",
-    cardImageUrl: null,
-    sortOrder: 0,
-  },
-];
-
-function mergePublishedWithBuiltinDefaults(
-  fromDb: LearningGuideListItem[],
-): LearningGuideListItem[] {
-  const byId = new Map(fromDb.map((g) => [g.id, g]));
-  for (const b of BUILTIN_PUBLISHED_LIST) {
-    if (!byId.has(b.id)) {
-      byId.set(b.id, b);
-    }
-  }
-  return [...byId.values()].sort(
-    (a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title),
-  );
-}
 
 type GuideRow = {
   id: string;
@@ -62,6 +21,8 @@ type GuideRow = {
   summary: string;
   card_image_url: string | null;
   sort_order: number;
+  /** Present after `20260428160000_lms_learning_guides_section` migration. */
+  section?: string | null;
 };
 
 function mapListRow(row: GuideRow): LearningGuideListItem {
@@ -69,33 +30,64 @@ function mapListRow(row: GuideRow): LearningGuideListItem {
     id: row.id,
     title: row.title,
     summary: row.summary,
-    cardImageUrl: row.card_image_url,
+    cardImageUrl: row.card_image_url?.trim() || null,
     sortOrder: row.sort_order,
+    section: row.section?.trim() || "Ollie Code Basics",
   };
+}
+
+/** Group published guides for the hub: fixed section order, then any other sections A–Z. */
+export function groupLearningGuidesForHub(
+  guides: LearningGuideListItem[],
+): { section: string; guides: LearningGuideListItem[] }[] {
+  const bySection = new Map<string, LearningGuideListItem[]>();
+  for (const g of guides) {
+    const sec = g.section.trim() || "Ollie Code Basics";
+    const list = bySection.get(sec) ?? [];
+    list.push(g);
+    bySection.set(sec, list);
+  }
+  for (const list of bySection.values()) {
+    list.sort(
+      (a, b) => a.sortOrder - b.sortOrder || a.title.localeCompare(b.title),
+    );
+  }
+  const seen = new Set<string>();
+  const out: { section: string; guides: LearningGuideListItem[] }[] = [];
+  for (const label of LEARNING_GUIDE_SECTION_ORDER) {
+    seen.add(label);
+    out.push({ section: label, guides: bySection.get(label) ?? [] });
+  }
+  for (const label of [...bySection.keys()].sort((a, b) => a.localeCompare(b))) {
+    if (seen.has(label)) continue;
+    out.push({ section: label, guides: bySection.get(label) ?? [] });
+  }
+  return out;
 }
 
 export async function fetchPublishedLearningGuides(
   supabase: SupabaseClient | null,
 ): Promise<LearningGuideListItem[]> {
   if (!supabase) {
-    return mergePublishedWithBuiltinDefaults([]);
+    return [];
   }
   const { data, error } = await supabase
     .from("lms_learning_guides")
-    .select("id, title, summary, card_image_url, sort_order")
+    .select("id, title, summary, card_image_url, sort_order, section")
     .eq("published", true)
     .order("sort_order", { ascending: true })
     .order("title", { ascending: true });
   if (error || !data) {
-    return mergePublishedWithBuiltinDefaults([]);
+    return [];
   }
-  return mergePublishedWithBuiltinDefaults((data as GuideRow[]).map(mapListRow));
+  return (data as GuideRow[]).map(mapListRow);
 }
 
 export type LearningGuideDetailRow = {
   id: string;
   title: string;
   body_html: string;
+  updated_at: string;
 };
 
 export async function fetchLearningGuideByIdForViewer(
@@ -104,22 +96,10 @@ export async function fetchLearningGuideByIdForViewer(
 ): Promise<LearningGuideDetailRow | null> {
   const { data, error } = await supabase
     .from("lms_learning_guides")
-    .select("id, title, body_html")
+    .select("id, title, body_html, updated_at")
     .eq("id", id)
     .maybeSingle();
   if (error || !data) return null;
   const row = data as LearningGuideDetailRow;
   return row;
-}
-
-/** Fallback when the row is not in the database (e.g. migration not applied yet). */
-export function getBuiltinLearningGuideDetailForViewer(
-  id: string,
-): LearningGuideDetailRow | null {
-  if (id !== HOW_TO_ACTIVATE_LESSON_GUIDE_ID) return null;
-  return {
-    id: HOW_TO_ACTIVATE_LESSON_GUIDE_ID,
-    title: "How to activate a lesson",
-    body_html: HOW_TO_ACTIVATE_LESSON_BODY_HTML,
-  };
 }

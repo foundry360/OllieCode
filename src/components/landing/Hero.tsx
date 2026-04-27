@@ -70,18 +70,18 @@ export function Hero() {
           {HERO_HIGHLIGHTS.map((item) => {
             const { title, description } = item;
             return (
-            <li
-              key={title}
-              className="relative rounded-2xl border-2 border-white/12 bg-[#1a3750] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[var(--ollie-primary)] hover:bg-[#152d42]"
-            >
-              <span className="absolute left-5 top-5 flex size-10 items-center justify-center overflow-hidden rounded-xl bg-white/20 text-white sm:size-11">
-                <HeroHighlightMedia highlight={item} />
-              </span>
-              <h3 className="mt-14 font-section text-base font-bold leading-snug text-white sm:mt-16">
-                {title}
-              </h3>
-              <p className="mt-2 font-section text-sm leading-relaxed text-white/90">{description}</p>
-            </li>
+              <li
+                key={title}
+                className="relative rounded-2xl border-2 border-white/12 bg-[#1a3750] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[var(--ollie-primary)] hover:bg-[#152d42]"
+              >
+                <span className="absolute left-5 top-5 flex size-10 items-center justify-center overflow-hidden rounded-xl bg-white/20 text-white sm:size-11">
+                  <HeroHighlightMedia highlight={item} />
+                </span>
+                <h3 className="mt-14 font-section text-base font-bold leading-snug text-white sm:mt-16">
+                  {title}
+                </h3>
+                <p className="mt-2 font-section text-sm leading-relaxed text-white/90">{description}</p>
+              </li>
             );
           })}
         </ul>

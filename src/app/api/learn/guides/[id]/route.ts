@@ -1,15 +1,9 @@
 import { NextResponse } from "next/server";
-import {
-  fetchLearningGuideByIdForViewer,
-  getBuiltinLearningGuideDetailForViewer,
-} from "@/lib/lms/learningGuides";
+import { fetchLearningGuideByIdForViewer } from "@/lib/lms/learningGuides";
 import { sanitizeLessonBodyHtml } from "@/lib/lms/sanitizeLessonBodyHtml";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-/**
- * Single learning guide for the hub modal (RLS: published or platform admin).
- * Built-in guides are returned when the row is missing (e.g. migration not applied).
- */
+/** Single learning guide JSON (RLS: published for anon/auth; platform admins may see drafts). */
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
@@ -20,11 +14,11 @@ export async function GET(
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
 
-  const builtin = getBuiltinLearningGuideDetailForViewer(id);
   const supabase = await createSupabaseServerClient();
-  const fromDb =
-    supabase != null ? await fetchLearningGuideByIdForViewer(supabase, id) : null;
-  const row = fromDb ?? builtin;
+  if (!supabase) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
+  const row = await fetchLearningGuideByIdForViewer(supabase, id);
   if (!row) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
@@ -33,5 +27,6 @@ export async function GET(
     id: row.id,
     title: row.title,
     bodyHtml: sanitizeLessonBodyHtml(row.body_html),
+    updatedAt: row.updated_at,
   });
 }

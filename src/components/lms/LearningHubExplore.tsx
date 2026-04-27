@@ -20,10 +20,12 @@ import {
   MoreHorizontal,
   Search,
 } from "lucide-react";
-import { LearningGuideModal } from "@/components/lms/LearningGuideModal";
 import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
 import { LessonFavoriteStarButton } from "@/components/lms/LessonFavoriteStarButton";
-import type { LearningGuideListItem } from "@/lib/lms/learningGuides";
+import {
+  groupLearningGuidesForHub,
+  type LearningGuideListItem,
+} from "@/lib/lms/learningGuides";
 import {
   formatLessonDurationMinutes,
   lessonDetailHref,
@@ -113,7 +115,6 @@ export function LearningHubExplore({
   const searchParams = useSearchParams();
   const hubTab: HubTab =
     searchParams.get("tab") === "guides" ? "guides" : "lessons";
-  const [modalGuideId, setModalGuideId] = useState<string | null>(null);
 
   const setHubTabAndUrl = useCallback(
     (t: HubTab) => {
@@ -216,18 +217,21 @@ export function LearningHubExplore({
 
   const featured = useMemo(() => lessons.slice(0, 10), [lessons]);
 
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
-      <LearningGuideModal guideId={modalGuideId} onClose={() => setModalGuideId(null)} />
+  const guideSections = useMemo(
+    () => groupLearningGuidesForHub([...guides]),
+    [guides],
+  );
 
+  return (
+    <div className="mx-auto min-h-0 min-w-0 max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
       <header>
         <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
           Learning Hub
         </h1>
-        <p className="mt-2 max-w-full text-base leading-relaxed text-slate-600 sm:whitespace-normal sm:overflow-x-visible whitespace-nowrap overflow-x-auto [scrollbar-width:thin]">
+        <p className="mt-2 max-w-full text-pretty text-base leading-relaxed text-slate-600">
           {hubTab === "lessons"
             ? "Browse lessons published on Ollie Code. Filter by topic and level, then open a lesson in the workspace when it is available."
-            : "Short reads for families and learners—tips, getting started, and how to make the most of Ollie Code."}
+            : "Short reads for families and learners, tips, getting started, and how to make the most of Ollie Code."}
         </p>
       </header>
 
@@ -288,9 +292,9 @@ export function LearningHubExplore({
             <PopularLessonsCarousel lessons={featured} />
           </section>
 
-          <div className="mt-12 flex flex-col gap-10 lg:flex-row lg:items-start">
+          <div className="mt-12 flex min-w-0 max-w-full flex-col gap-10 lg:flex-row lg:items-start">
         <aside
-          className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.04] lg:w-60"
+          className="w-full min-w-0 shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.04] lg:w-60"
           aria-labelledby="filter-heading"
         >
           <h3
@@ -425,51 +429,46 @@ export function LearningHubExplore({
         </>
       ) : (
         <section
-          className="mt-8"
+          className="mt-8 space-y-8"
           id="hub-panel-guides"
           role="tabpanel"
           aria-labelledby="hub-tab-guides"
         >
-          <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Learning Guides</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            Open a card to read the full guide. Nothing to install—just ideas and clarity.
-          </p>
-          {guides.length === 0 ? (
-            <p className="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-12 text-center text-sm text-slate-600">
-              No Learning Guides are published yet. Check back soon.
-            </p>
-          ) : (
-            <ul className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-              {guides.map((g) => (
-                <li key={g.id}>
-                  <LearningGuideCard guide={g} onOpen={() => setModalGuideId(g.id)} />
-                </li>
-              ))}
-            </ul>
-          )}
+          {guideSections.map(({ section, guides: secGuides }) => (
+            <div key={section}>
+              <h2 className="font-section text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+                {section}
+              </h2>
+              {secGuides.length === 0 ? (
+                <p className="mt-2 text-sm text-slate-500">No guides here yet.</p>
+              ) : (
+                <ul className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+                  {secGuides.map((g) => (
+                    <li key={g.id}>
+                      <LearningGuideCard guide={g} />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
         </section>
       )}
     </div>
   );
 }
 
-function LearningGuideCard({
-  guide,
-  onOpen,
-}: {
-  guide: LearningGuideListItem;
-  onOpen: () => void;
-}) {
+function LearningGuideCard({ guide }: { guide: LearningGuideListItem }) {
   const hero = guide.cardImageUrl?.trim() || null;
+  const href = `/learn/guides/${encodeURIComponent(guide.id)}`;
   return (
-    <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow">
-      <button
-        type="button"
-        onClick={onOpen}
-        className="flex min-h-0 flex-1 flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+    <article className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow">
+      <Link
+        href={href}
+        className="flex min-h-0 w-full flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
       >
         <div
-          className="relative flex min-h-[160px] shrink-0 items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 sm:min-h-[180px]"
+          className="relative aspect-[16/9] w-full shrink-0 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200"
           aria-hidden
         >
           {hero ? (
@@ -478,29 +477,40 @@ function LearningGuideCard({
               alt=""
               fill
               className="object-cover"
-              sizes="(max-width: 639px) 92vw, (max-width: 1023px) 45vw, 30vw"
+              sizes="(max-width: 639px) 42vw, (max-width: 767px) 28vw, (max-width: 1023px) 22vw, 18vw"
             />
           ) : (
-            <ImageIcon
-              className="relative z-0 size-14 text-slate-300/90"
-              strokeWidth={1.25}
-              aria-hidden
-            />
+            <div className="flex h-full min-h-[52px] items-center justify-center">
+              <ImageIcon
+                className="relative z-0 size-8 text-slate-300/90"
+                strokeWidth={1.25}
+                aria-hidden
+              />
+            </div>
           )}
         </div>
-        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 p-4 sm:p-5">
-          <h3 className="font-display text-lg font-bold leading-snug text-[#84c126]">{guide.title}</h3>
-          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">{guide.summary}</p>
+        <div className="border-t border-slate-100 px-2.5 py-2 sm:px-3 sm:py-2.5">
+          <h3 className="font-section text-xs font-bold leading-snug text-[#84c126] sm:text-[13px]">
+            <span className="line-clamp-2">{guide.title}</span>
+          </h3>
         </div>
-      </button>
+      </Link>
     </article>
   );
 }
 
 const CAROUSEL_GAP_PX = 16;
 
-/** Three identical runs of slides so we can jump between copies without reversing scroll direction. */
-const LOOP_SEGMENTS = 3 as const;
+/** Max slides per viewport row (matches Tailwind sm/lg in {@link visibleColumnsForWidth}). */
+const CAROUSEL_MAX_COLUMNS = 5;
+
+/**
+ * When the catalog has this many lessons or fewer, repeating the strip for an infinite
+ * loop would show the same lesson in multiple columns at once — use a single run instead.
+ */
+function loopSegmentCount(lessonCount: number): number {
+  return lessonCount > CAROUSEL_MAX_COLUMNS ? 3 : 1;
+}
 
 /** How many equal-width slides fit in the viewport at this width (matches Tailwind sm/lg). */
 function visibleColumnsForWidth(width: number): number {
@@ -512,22 +522,23 @@ function visibleColumnsForWidth(width: number): number {
 function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [cardBasisPx, setCardBasisPx] = useState(0);
+  const loopSegments = loopSegmentCount(lessons.length);
 
   const loopSlides = useMemo(
     () =>
-      Array.from({ length: LOOP_SEGMENTS }, (_, copy) => copy).flatMap((copy) =>
+      Array.from({ length: loopSegments }, (_, copy) => copy).flatMap((copy) =>
         lessons.map((lesson) => ({
           lesson,
           loopKey: `${lesson.id}__${copy}`,
         })),
       ),
-    [lessons],
+    [lessons, loopSegments],
   );
 
   const normalizeLoopScroll = useCallback(() => {
     const el = viewportRef.current;
-    if (!el || lessons.length <= 1) return;
-    const seg = el.scrollWidth / LOOP_SEGMENTS;
+    if (!el || lessons.length <= 1 || loopSegments <= 1) return;
+    const seg = el.scrollWidth / loopSegments;
     if (seg <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
     const left = el.scrollLeft;
     // First copy (near track start): jump forward one segment into the middle copy.
@@ -539,15 +550,19 @@ function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) 
     if (left + 1e-3 >= 2 * seg) {
       el.scrollTo({ left: left - seg, behavior: "auto" });
     }
-  }, [lessons.length]);
+  }, [lessons.length, loopSegments]);
 
   const alignLoopToMiddleSegment = useCallback(() => {
     const el = viewportRef.current;
     if (!el || lessons.length <= 1) return;
-    const seg = el.scrollWidth / LOOP_SEGMENTS;
+    if (loopSegments <= 1) {
+      el.scrollTo({ left: 0, behavior: "auto" });
+      return;
+    }
+    const seg = el.scrollWidth / loopSegments;
     if (seg <= 0 || el.scrollWidth <= el.clientWidth + 1) return;
     el.scrollTo({ left: seg, behavior: "auto" });
-  }, [lessons.length]);
+  }, [lessons.length, loopSegments]);
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
@@ -604,7 +619,7 @@ function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) 
         };
 
   return (
-    <div className="group relative mt-5">
+    <div className="group relative mt-5 min-w-0 max-w-full">
       <button
         type="button"
         onClick={() => scrollByDir(-1)}
@@ -627,7 +642,7 @@ function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) 
       <div
         ref={viewportRef}
         onScroll={normalizeLoopScroll}
-        className="overflow-x-auto overflow-y-visible pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0"
+        className="max-w-full min-w-0 overflow-x-auto overflow-y-visible pb-3 [-ms-overflow-style:none] [scrollbar-width:none] [-webkit-overflow-scrolling:touch] [&::-webkit-scrollbar]:h-0 [&::-webkit-scrollbar]:w-0"
       >
         <ul
           role="list"

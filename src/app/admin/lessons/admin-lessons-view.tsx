@@ -15,9 +15,7 @@ import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
 export type LessonAdminRow = {
   id: string;
   title: string;
-  inDatabase: boolean;
-  published: boolean | null;
-  isDbOnly: boolean;
+  published: boolean;
   imageUrl: string | null;
   topic: string | null;
 };
@@ -28,9 +26,9 @@ const TOPIC_FILTER_STORAGE_KEY = "ollie-admin-lessons-filter-topic";
 
 type ViewMode = "table" | "cards";
 
-type StatusFilter = "all" | "live" | "draft" | "catalog_only";
+type StatusFilter = "all" | "live" | "draft";
 
-type TableSortKey = "id" | "title" | "inDatabase" | "published";
+type TableSortKey = "id" | "title" | "published";
 
 function SortableColumnHeader({
   label,
@@ -96,13 +94,10 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
       const v = localStorage.getItem(STORAGE_KEY);
       if (v === "cards" || v === "table") setView(v);
       const f = localStorage.getItem(FILTER_STORAGE_KEY);
-      if (
-        f === "all" ||
-        f === "live" ||
-        f === "draft" ||
-        f === "catalog_only"
-      ) {
+      if (f === "all" || f === "live" || f === "draft") {
         setStatusFilter(f);
+      } else if (f === "catalog_only") {
+        setStatusFilter("all");
       }
       const t = localStorage.getItem(TOPIC_FILTER_STORAGE_KEY);
       if (t !== null) setTopicFilter(t);
@@ -124,10 +119,6 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
       { value: "all", label: "All statuses" },
       { value: "live", label: "Live" },
       { value: "draft", label: "Draft" },
-      {
-        value: "catalog_only",
-        label: "Catalog only (not in DB)",
-      },
     ],
     [],
   );
@@ -144,13 +135,10 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
     let list = rows;
     switch (statusFilter) {
       case "live":
-        list = list.filter((r) => r.inDatabase && r.published === true);
+        list = list.filter((r) => r.published === true);
         break;
       case "draft":
-        list = list.filter((r) => r.inDatabase && r.published === false);
-        break;
-      case "catalog_only":
-        list = list.filter((r) => !r.inDatabase);
+        list = list.filter((r) => r.published === false);
         break;
       default:
         break;
@@ -164,8 +152,7 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
   const sortedRows = useMemo(() => {
     const list = [...filteredRows];
     const mult = tableSort.dir === "asc" ? 1 : -1;
-    const publishedRank = (p: boolean | null) =>
-      p === null ? 0 : p ? 2 : 1;
+    const publishedRank = (p: boolean) => (p ? 1 : 0);
 
     list.sort((a, b) => {
       switch (tableSort.key) {
@@ -179,11 +166,6 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
               sensitivity: "base",
             }) * mult
           );
-        case "inDatabase": {
-          const av = a.inDatabase ? 1 : 0;
-          const bv = b.inDatabase ? 1 : 0;
-          return (av - bv) * mult;
-        }
         case "published":
           return (
             (publishedRank(a.published) - publishedRank(b.published)) * mult
@@ -272,12 +254,7 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
             <LearningHubSelect
               value={statusFilter}
               onChange={(v) => {
-                if (
-                  v === "all" ||
-                  v === "live" ||
-                  v === "draft" ||
-                  v === "catalog_only"
-                ) {
+                if (v === "all" || v === "live" || v === "draft") {
                   setStatus(v);
                 }
               }}
@@ -352,12 +329,6 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                 onSort={cycleTableSort}
               />
               <SortableColumnHeader
-                label="Database"
-                sortKey="inDatabase"
-                sort={tableSort}
-                onSort={cycleTableSort}
-              />
-              <SortableColumnHeader
                 label="Published"
                 sortKey="published"
                 sort={tableSort}
@@ -368,37 +339,23 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
           </thead>
           <tbody className="divide-y divide-slate-100">
             {sortedRows.map((row) => (
-              <tr
-                key={row.id}
-                className={`group ${
-                  row.isDbOnly
-                    ? "bg-[#f8fafc] hover:bg-slate-100/80"
-                    : "hover:bg-slate-50/80"
-                }`}
-              >
+              <tr key={row.id} className="group hover:bg-slate-50/80">
                 <td className="px-4 py-3 font-mono text-xs text-slate-700">
                   {row.id}
                 </td>
                 <td className="px-4 py-3 font-medium capitalize text-slate-900">
                   {row.title}
                 </td>
-                <td className="px-4 py-3 text-slate-600">
-                  {row.inDatabase ? "Yes" : "—"}
-                </td>
                 <td className="px-4 py-3">
-                  {row.inDatabase && row.published !== null ? (
-                    <span
-                      className={
-                        row.published
-                          ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
-                          : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
-                      }
-                    >
-                      {row.published ? "Live" : "Draft"}
-                    </span>
-                  ) : (
-                    "—"
-                  )}
+                  <span
+                    className={
+                      row.published
+                        ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
+                        : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                    }
+                  >
+                    {row.published ? "Live" : "Draft"}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-right align-middle">
                   <Link
@@ -419,9 +376,7 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
             {visibleCardRows.map((row) => (
               <article
                 key={row.id}
-                className={`group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 shadow-sm ${
-                  row.isDbOnly ? "bg-[#f8fafc]" : "bg-white"
-                }`}
+                className="group relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
               >
                 <Link
                   href={`/admin/lessons/${encodeURIComponent(row.id)}/basics`}
@@ -461,19 +416,15 @@ export function AdminLessonsView({ rows }: { rows: LessonAdminRow[] }) {
                       <span className="font-semibold text-slate-500">
                         Published:
                       </span>{" "}
-                      {row.inDatabase && row.published !== null ? (
-                        <span
-                          className={
-                            row.published
-                              ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
-                              : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
-                          }
-                        >
-                          {row.published ? "Live" : "Draft"}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                      <span
+                        className={
+                          row.published
+                            ? "rounded-full bg-[#ecfccb] px-2 py-0.5 text-xs font-semibold text-[#365314]"
+                            : "rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600"
+                        }
+                      >
+                        {row.published ? "Live" : "Draft"}
+                      </span>
                     </div>
                   </div>
                 </div>

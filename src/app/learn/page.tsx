@@ -35,7 +35,7 @@ export default async function LearnPage() {
   return (
     <div className="flex min-h-[100dvh] flex-col bg-white text-[#111827]">
       <SignedInAppHeader active="learn" tone="learn" />
-      <div className="flex-1">
+      <main className="min-w-0 flex-1">
         <Suspense fallback={<HubLoadingFallback />}>
           <LearningHubExplore
             lessons={lessons}
@@ -43,7 +43,7 @@ export default async function LearnPage() {
             favoriteLessonIds={favoriteLessonIds}
           />
         </Suspense>
-      </div>
+      </main>
       <Footer />
     </div>
   );

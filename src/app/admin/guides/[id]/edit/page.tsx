@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { deleteLearningGuideAction } from "@/app/admin/guides/actions";
 import { GuideEditorForm } from "@/app/admin/guides/guide-editor-form";
+import { LEARNING_GUIDE_SECTION_ORDER } from "@/lib/lms/learningGuides";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -13,6 +14,7 @@ type Row = {
   card_image_url: string | null;
   published: boolean;
   sort_order: number;
+  section: string | null;
 };
 
 export default async function AdminEditGuidePage({
@@ -32,12 +34,16 @@ export default async function AdminEditGuidePage({
 
   const { data, error } = await supabase
     .from("lms_learning_guides")
-    .select("id, title, summary, body_html, card_image_url, published, sort_order")
+    .select("id, title, summary, body_html, card_image_url, published, sort_order, section")
     .eq("id", id)
     .maybeSingle();
 
   if (error || !data) notFound();
   const row = data as Row;
+  const sectionRaw = row.section?.trim() ?? "";
+  const section = (LEARNING_GUIDE_SECTION_ORDER as readonly string[]).includes(sectionRaw)
+    ? sectionRaw
+    : "Ollie Code Basics";
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -65,6 +71,7 @@ export default async function AdminEditGuidePage({
           card_image_url: row.card_image_url ?? "",
           published: row.published,
           sort_order: row.sort_order,
+          section,
         }}
       />
 

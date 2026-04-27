@@ -122,7 +122,6 @@ import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
 import {
   DEFAULT_WORKSPACE_LESSON_ID,
-  getLessonById,
   WORKSPACE_NO_LESSON_QUERY,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
@@ -227,13 +226,6 @@ export function OllieWorkspace() {
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
-  const staticLesson = useMemo(
-    () =>
-      lessonIdParam === WORKSPACE_NO_LESSON_QUERY
-        ? undefined
-        : getLessonById(lessonIdParam),
-    [lessonIdParam],
-  );
   const [mergedLesson, setMergedLesson] = useState<LessonCatalogEntry | null>(
     null,
   );
@@ -267,7 +259,7 @@ export function OllieWorkspace() {
       cancelled = true;
     };
   }, [lessonIdParam]);
-  const activeLesson = mergedLesson ?? staticLesson;
+  const activeLesson = mergedLesson ?? undefined;
   /** No hub lesson + collapsed lesson card: shrink lesson rail so the stage column can grow up. */
   const [lessonChromeCompact, setLessonChromeCompact] = useState(
     () => !activeLesson,

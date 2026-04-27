@@ -9,6 +9,7 @@ import {
   type GuideActionResult,
 } from "@/app/admin/guides/actions";
 import { RichTextField } from "@/components/admin/lesson-editor/RichTextField";
+import { LEARNING_GUIDE_SECTION_ORDER } from "@/lib/lms/learningGuides";
 
 const initial: GuideActionResult = { ok: true };
 
@@ -30,6 +31,7 @@ function GuideFormFields({
     card_image_url: string;
     published: boolean;
     sort_order: number;
+    section: string;
   };
   bodyHtml: string;
   onBodyHtmlChange: (html: string) => void;
@@ -73,6 +75,30 @@ function GuideFormFields({
           defaultValue={initialValues?.summary ?? ""}
           className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 shadow-sm outline-none ring-1 ring-slate-900/[0.04]"
         />
+      </label>
+      <label className="mt-4 block">
+        <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-[#3f6212]">
+          Hub section
+        </span>
+        <p className="mb-2 text-xs text-slate-500">
+          Which heading this guide appears under on the Learning Hub Guides tab.
+        </p>
+        <select
+          name="section"
+          defaultValue={
+            initialValues?.section &&
+            (LEARNING_GUIDE_SECTION_ORDER as readonly string[]).includes(initialValues.section)
+              ? initialValues.section
+              : "Ollie Code Basics"
+          }
+          className="w-full max-w-md rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm font-medium text-slate-800 shadow-sm outline-none ring-1 ring-slate-900/[0.04]"
+        >
+          {LEARNING_GUIDE_SECTION_ORDER.map((s) => (
+            <option key={s} value={s}>
+              {s}
+            </option>
+          ))}
+        </select>
       </label>
       <div className="mt-4">
         <p className="mb-2 text-xs text-slate-500">
@@ -146,6 +172,7 @@ export function GuideEditorForm({
     card_image_url: string;
     published: boolean;
     sort_order: number;
+    section: string;
   };
 }) {
   const [bodyHtml, setBodyHtml] = useState(initialValues?.body_html ?? "");

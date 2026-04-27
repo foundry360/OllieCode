@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { UploadLessonImageResult } from "@/app/admin/lessons/actions";
 import { isAdminUser } from "@/lib/admin/isAdminUser";
+import { LEARNING_GUIDE_SECTION_ORDER } from "@/lib/lms/learningGuides";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 async function requireAdmin() {
@@ -92,6 +93,10 @@ export async function upsertLearningGuideAction(formData: FormData): Promise<Gui
   const published = formData.get("published") === "on" || formData.get("published") === "true";
   const sortOrderRaw = Number(formData.get("sort_order"));
   const sortOrder = Number.isFinite(sortOrderRaw) ? Math.trunc(sortOrderRaw) : 0;
+  const sectionRaw = String(formData.get("section") ?? "").trim();
+  const section = (LEARNING_GUIDE_SECTION_ORDER as readonly string[]).includes(sectionRaw)
+    ? sectionRaw
+    : "Ollie Code Basics";
 
   const id = normalizeGuideId(idRaw);
   if (!id) {
@@ -119,6 +124,7 @@ export async function upsertLearningGuideAction(formData: FormData): Promise<Gui
       card_image_url: cardImageUrl,
       published,
       sort_order: sortOrder,
+      section,
     },
     { onConflict: "id" },
   );

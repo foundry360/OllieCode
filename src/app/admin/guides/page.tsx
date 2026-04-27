@@ -8,6 +8,7 @@ type Row = {
   published: boolean;
   sort_order: number;
   updated_at: string;
+  section: string | null;
 };
 
 function isLearningGuidesTableMissing(message: string | null | undefined): boolean {
@@ -39,7 +40,7 @@ export default async function AdminGuidesPage({
   if (admin) {
     const { data, error } = await admin
       .from("lms_learning_guides")
-      .select("id, title, published, sort_order, updated_at")
+      .select("id, title, published, sort_order, updated_at, section")
       .order("sort_order", { ascending: true })
       .order("title", { ascending: true });
     if (error) listError = error.message;
@@ -49,7 +50,7 @@ export default async function AdminGuidesPage({
     if (supabase) {
       const { data, error } = await supabase
         .from("lms_learning_guides")
-        .select("id, title, published, sort_order, updated_at")
+        .select("id, title, published, sort_order, updated_at, section")
         .order("sort_order", { ascending: true })
         .order("title", { ascending: true });
       if (error) listError = error.message;
@@ -149,6 +150,7 @@ export default async function AdminGuidesPage({
               <tr>
                 <th className="px-4 py-3">Sort</th>
                 <th className="px-4 py-3">Title</th>
+                <th className="px-4 py-3">Section</th>
                 <th className="px-4 py-3">ID</th>
                 <th className="px-4 py-3">Published</th>
                 <th className="px-4 py-3">Updated</th>
@@ -160,6 +162,7 @@ export default async function AdminGuidesPage({
                 <tr key={r.id} className="text-slate-800">
                   <td className="px-4 py-3 tabular-nums text-slate-600">{r.sort_order}</td>
                   <td className="px-4 py-3 font-medium">{r.title}</td>
+                  <td className="px-4 py-3 text-slate-600">{r.section?.trim() || "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs text-slate-500">{r.id}</td>
                   <td className="px-4 py-3">{r.published ? "Yes" : "No"}</td>
                   <td className="px-4 py-3 text-slate-600">

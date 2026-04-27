@@ -4,11 +4,7 @@ import {
   type LessonAdminRow,
 } from "@/app/admin/lessons/admin-lessons-view";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
-import {
-  LESSONS,
-  lessonHeroImageUrl,
-  type LessonCatalogEntry,
-} from "@/lib/lms/lessonsCatalog";
+import { lessonHeroImageUrl, type LessonCatalogEntry } from "@/lib/lms/lessonsCatalog";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type Row = {
@@ -17,31 +13,6 @@ type Row = {
   updated_at: string;
   payload: unknown;
 };
-
-function cloneLesson(l: LessonCatalogEntry): LessonCatalogEntry {
-  return {
-    ...l,
-    modules: l.modules.map((m) => ({ ...m })),
-  };
-}
-
-/** Static catalog + DB `lms_lessons.payload` so card/thumbnail URLs from uploads show in admin. */
-function mergeStaticWithDbPayload(
-  staticLesson: LessonCatalogEntry,
-  dbRow: Row | undefined,
-): LessonCatalogEntry {
-  if (!dbRow) return cloneLesson(staticLesson);
-  const v = parseLessonPayload(dbRow.payload);
-  if (!v || v.id !== staticLesson.id) return cloneLesson(staticLesson);
-  return {
-    ...cloneLesson(staticLesson),
-    ...cloneLesson(v),
-    modules:
-      v.modules.length > 0
-        ? v.modules.map((m) => ({ ...m }))
-        : staticLesson.modules.map((m) => ({ ...m })),
-  };
-}
 
 export default async function AdminLessonsPage() {
   const supabase = await createSupabaseServerClient();
@@ -53,61 +24,25 @@ export default async function AdminLessonsPage() {
     rows = (data ?? []) as Row[];
   }
 
-  const rowById = new Map(rows.map((r) => [r.id, r]));
-  const staticIds = new Set(LESSONS.map((l) => l.id));
-  const dbOnlyRows = rows.filter((r) => !staticIds.has(r.id));
-  const catalogIndex = new Map(LESSONS.map((l, i) => [l.id, i]));
+  type Sortable = { row: LessonAdminRow; ts: number };
 
-  type Sortable = { row: LessonAdminRow; ts: number | null };
-
-  const sortable: Sortable[] = [
-    ...LESSONS.map((lesson) => {
-      const row = rowById.get(lesson.id);
-      const ts = row ? new Date(row.updated_at).getTime() : null;
-      const merged = mergeStaticWithDbPayload(lesson, row);
-      return {
-        ts,
-        row: {
-          id: lesson.id,
-          title: lesson.title,
-          inDatabase: Boolean(row),
-          published: row ? row.published : null,
-          isDbOnly: false,
-          imageUrl: lessonHeroImageUrl(merged),
-          topic: lesson.topic,
-        } satisfies LessonAdminRow,
-      };
-    }),
-    ...dbOnlyRows.map((r) => {
-      const parsed = parseLessonPayload(r.payload);
-      return {
-        ts: new Date(r.updated_at).getTime(),
-        row: {
-          id: r.id,
-          title: parsed?.title ?? r.id,
-          inDatabase: true,
-          published: r.published,
-          isDbOnly: true,
-          imageUrl: parsed ? lessonHeroImageUrl(parsed) : null,
-          topic: parsed?.topic ?? null,
-        } satisfies LessonAdminRow,
-      };
-    }),
-  ];
-
-  sortable.sort((a, b) => {
-    const ta = a.ts;
-    const tb = b.ts;
-    if (ta != null && tb != null && ta !== tb) return tb - ta;
-    if (ta != null && tb == null) return -1;
-    if (ta == null && tb != null) return 1;
-    const ia = catalogIndex.get(a.row.id);
-    const ib = catalogIndex.get(b.row.id);
-    if (ia != null && ib != null) return ia - ib;
-    if (ia != null) return -1;
-    if (ib != null) return 1;
-    return a.row.id.localeCompare(b.row.id);
+  const sortable: Sortable[] = rows.map((r) => {
+    const parsed = parseLessonPayload(r.payload);
+    const entry: LessonCatalogEntry | null =
+      parsed && parsed.id === r.id ? parsed : null;
+    return {
+      ts: new Date(r.updated_at).getTime(),
+      row: {
+        id: r.id,
+        title: entry?.title ?? r.id,
+        published: r.published,
+        imageUrl: entry ? lessonHeroImageUrl(entry) : null,
+        topic: entry?.topic ?? null,
+      } satisfies LessonAdminRow,
+    };
   });
+
+  sortable.sort((a, b) => b.ts - a.ts);
 
   const lessonRows = sortable.map((s) => s.row);
 

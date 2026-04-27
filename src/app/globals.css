@@ -418,3 +418,91 @@ html::-webkit-scrollbar-thumb:hover {
 .ollie-rich-text .ProseMirror p {
   margin: 0.15rem 0;
 }
+
+/* Learning Hub guide pages — sanitized TipTap HTML from admin.
+   Preflight sets h1–h6 to font-weight: inherit (no @tailwindcss/typography). */
+.guide-modal-body {
+  max-width: none;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #1e293b;
+}
+.guide-modal-body h1,
+.guide-modal-body h2,
+.guide-modal-body h3,
+.guide-modal-body h4,
+.guide-modal-body h5,
+.guide-modal-body h6 {
+  font-family: var(--font-open-sans), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 600;
+  color: #0f172a;
+  letter-spacing: -0.015em;
+}
+.guide-modal-body h1 {
+  font-size: 1.5rem;
+  margin: 1.5rem 0 0.5rem;
+}
+.guide-modal-body h1:first-child {
+  margin-top: 0;
+}
+.guide-modal-body h2 {
+  font-size: 1.125rem;
+  margin: 1.75rem 0 0.5rem;
+}
+.guide-modal-body h2:first-child {
+  margin-top: 0;
+}
+.guide-modal-body h3 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.35rem;
+}
+.guide-modal-body h3:first-child {
+  margin-top: 0;
+}
+.guide-modal-body h4 {
+  font-size: 0.95rem;
+  margin: 1rem 0 0.35rem;
+}
+.guide-modal-body h5,
+.guide-modal-body h6 {
+  font-size: 0.9rem;
+  margin: 0.85rem 0 0.3rem;
+}
+.guide-modal-body p {
+  margin: 0 0 0.75rem;
+}
+.guide-modal-body p:last-child {
+  margin-bottom: 0;
+}
+.guide-modal-body strong,
+.guide-modal-body b {
+  font-weight: 600;
+  color: #0f172a;
+}
+.guide-modal-body a {
+  font-weight: 500;
+  color: #3f6212;
+  text-decoration: none;
+}
+.guide-modal-body a:hover {
+  color: #6b9e1f;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.guide-modal-body ul {
+  list-style-type: disc;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+.guide-modal-body ol {
+  list-style-type: decimal;
+  padding-left: 1.25rem;
+  margin: 0.5rem 0;
+}
+.guide-modal-body li {
+  margin: 0.125rem 0;
+}
+.guide-modal-body li::marker {
+  font-weight: 500;
+  color: #64748b;
+}

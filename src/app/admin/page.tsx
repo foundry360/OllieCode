@@ -26,7 +26,6 @@ import {
 } from "@/lib/admin/learnerGrowth";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
 import { getStripe } from "@/lib/stripe/server";
-import { LESSONS } from "@/lib/lms/lessonsCatalog";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
 type RecentLessonRow = {
@@ -130,8 +129,6 @@ export default async function AdminDashboardPage() {
       </div>
     );
   }
-
-  const lessonTitleById = new Map(LESSONS.map((lesson) => [lesson.id, lesson.title]));
 
   const growthFetchStart = utcTodayMidnight();
   growthFetchStart.setUTCDate(growthFetchStart.getUTCDate() - 62);
@@ -346,8 +343,7 @@ export default async function AdminDashboardPage() {
             <ul className="space-y-3">
               {recentLessons.map((row) => {
                 const parsed = parseLessonPayload(row.payload);
-                const title =
-                  parsed?.title ?? lessonTitleById.get(row.id) ?? "Untitled lesson";
+                const title = parsed?.title ?? row.id;
                 return (
                   <li key={`${row.id}:${row.updated_at}`}>
                     <Link
