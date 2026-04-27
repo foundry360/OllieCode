@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
   title: "Profile | Ollie Code",
-  description: "Your adventures, badges, and points.",
+  description: "Your adventures, favorites, and learner profile.",
 };
 
 export default function ProfileLayout({

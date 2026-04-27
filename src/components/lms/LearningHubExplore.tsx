@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   type CSSProperties,
   useCallback,
@@ -19,16 +20,16 @@ import {
   MoreHorizontal,
   Search,
 } from "lucide-react";
-import {
-  formatLessonDurationMinutes,
-  formatPointsLabel,
-  lessonDetailHref,
-  lessonHeroImageUrl,
-  lessonPointsReward,
-  type LessonCatalogEntry,
-} from "@/lib/lms/lessonsCatalog";
+import { LearningGuideModal } from "@/components/lms/LearningGuideModal";
 import { LearningHubSelect } from "@/components/lms/LearningHubSelect";
 import { LessonFavoriteStarButton } from "@/components/lms/LessonFavoriteStarButton";
+import type { LearningGuideListItem } from "@/lib/lms/learningGuides";
+import {
+  formatLessonDurationMinutes,
+  lessonDetailHref,
+  lessonHeroImageUrl,
+  type LessonCatalogEntry,
+} from "@/lib/lms/lessonsCatalog";
 
 type SortId =
   | "relevant"
@@ -95,14 +96,36 @@ function filterAndSort(
   return sorted;
 }
 
+type HubTab = "lessons" | "guides";
+
 export function LearningHubExplore({
   lessons,
+  guides,
   /** When set (signed-in user), star buttons save favorite lessons on `/profile`. */
   favoriteLessonIds,
 }: {
   lessons: LessonCatalogEntry[];
+  guides: readonly LearningGuideListItem[];
   favoriteLessonIds?: readonly string[];
 }) {
+  const router = useRouter();
+  const pathname = usePathname() || "/learn";
+  const searchParams = useSearchParams();
+  const hubTab: HubTab =
+    searchParams.get("tab") === "guides" ? "guides" : "lessons";
+  const [modalGuideId, setModalGuideId] = useState<string | null>(null);
+
+  const setHubTabAndUrl = useCallback(
+    (t: HubTab) => {
+      const q = new URLSearchParams(searchParams.toString());
+      if (t === "guides") q.set("tab", "guides");
+      else q.delete("tab");
+      const s = q.toString();
+      router.replace(s ? `${pathname}?${s}` : pathname, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
   const [topic, setTopic] = useState("");
   const [objective, setObjective] = useState("");
   const [level, setLevel] = useState("");
@@ -176,7 +199,9 @@ export function LearningHubExplore({
   );
 
   useEffect(() => {
-    setLessonListExpanded(false);
+    queueMicrotask(() => {
+      setLessonListExpanded(false);
+    });
   }, [topic, objective, level, status, search, sort, lessons]);
 
   const LIST_PREVIEW_COUNT = 5;
@@ -193,29 +218,77 @@ export function LearningHubExplore({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:py-10">
+      <LearningGuideModal guideId={modalGuideId} onClose={() => setModalGuideId(null)} />
+
       <header>
         <h1 className="font-display text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">
           Learning Hub
         </h1>
-        <p className="mt-2 max-w-full text-base leading-relaxed text-slate-600 whitespace-nowrap overflow-x-auto [scrollbar-width:thin]">
-          Browse lessons published on Ollie Code. Filter by topic and level, then open a lesson in the workspace when it is available.
+        <p className="mt-2 max-w-full text-base leading-relaxed text-slate-600 sm:whitespace-normal sm:overflow-x-visible whitespace-nowrap overflow-x-auto [scrollbar-width:thin]">
+          {hubTab === "lessons"
+            ? "Browse lessons published on Ollie Code. Filter by topic and level, then open a lesson in the workspace when it is available."
+            : "Short reads for families and learners—tips, getting started, and how to make the most of Ollie Code."}
         </p>
       </header>
 
-      <section className="mt-6" aria-labelledby="popular-heading">
-        <h2
-          id="popular-heading"
-          className="text-lg font-bold text-slate-900 sm:text-xl"
+      <div
+        className="mt-6 flex flex-wrap gap-8 border-b border-slate-200 sm:gap-10"
+        role="tablist"
+        aria-label="Learning Hub sections"
+      >
+        <button
+          type="button"
+          role="tab"
+          aria-selected={hubTab === "lessons"}
+          id="hub-tab-lessons"
+          aria-controls="hub-panel-lessons"
+          onClick={() => setHubTabAndUrl("lessons")}
+          className={
+            hubTab === "lessons"
+              ? "-mb-px border-b-[4px] border-[#84c126] pb-3 text-sm font-bold text-slate-900"
+              : "-mb-px border-b-[4px] border-transparent pb-3 text-sm font-semibold text-slate-600 transition hover:text-slate-900"
+          }
         >
-          Popular lessons
-        </h2>
-        <p className="mt-1 text-sm text-slate-600">
-          Start with these fun lessons, then explore even more below!
-        </p>
-        <PopularLessonsCarousel lessons={featured} />
-      </section>
+          Starter Lessons
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={hubTab === "guides"}
+          id="hub-tab-guides"
+          aria-controls="hub-panel-guides"
+          onClick={() => setHubTabAndUrl("guides")}
+          className={
+            hubTab === "guides"
+              ? "-mb-px border-b-[4px] border-[#84c126] pb-3 text-sm font-bold text-slate-900"
+              : "-mb-px border-b-[4px] border-transparent pb-3 text-sm font-semibold text-slate-600 transition hover:text-slate-900"
+          }
+        >
+          Learning Guides
+        </button>
+      </div>
 
-      <div className="mt-12 flex flex-col gap-10 lg:flex-row lg:items-start">
+      {hubTab === "lessons" ? (
+        <>
+          <section
+            className="mt-6"
+            id="hub-panel-lessons"
+            role="tabpanel"
+            aria-labelledby="hub-tab-lessons"
+          >
+            <h2
+              id="popular-heading"
+              className="text-lg font-bold text-slate-900 sm:text-xl"
+            >
+              Popular lessons
+            </h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Start with these fun lessons, then explore even more below!
+            </p>
+            <PopularLessonsCarousel lessons={featured} />
+          </section>
+
+          <div className="mt-12 flex flex-col gap-10 lg:flex-row lg:items-start">
         <aside
           className="w-full shrink-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm ring-1 ring-slate-900/[0.04] lg:w-60"
           aria-labelledby="filter-heading"
@@ -349,7 +422,78 @@ export function LearningHubExplore({
           )}
         </div>
       </div>
+        </>
+      ) : (
+        <section
+          className="mt-8"
+          id="hub-panel-guides"
+          role="tabpanel"
+          aria-labelledby="hub-tab-guides"
+        >
+          <h2 className="text-lg font-bold text-slate-900 sm:text-xl">Learning Guides</h2>
+          <p className="mt-1 text-sm text-slate-600">
+            Open a card to read the full guide. Nothing to install—just ideas and clarity.
+          </p>
+          {guides.length === 0 ? (
+            <p className="mt-8 rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-12 text-center text-sm text-slate-600">
+              No Learning Guides are published yet. Check back soon.
+            </p>
+          ) : (
+            <ul className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+              {guides.map((g) => (
+                <li key={g.id}>
+                  <LearningGuideCard guide={g} onOpen={() => setModalGuideId(g.id)} />
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
+  );
+}
+
+function LearningGuideCard({
+  guide,
+  onOpen,
+}: {
+  guide: LearningGuideListItem;
+  onOpen: () => void;
+}) {
+  const hero = guide.cardImageUrl?.trim() || null;
+  return (
+    <article className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:border-slate-300 hover:shadow">
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex min-h-0 flex-1 flex-col text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+      >
+        <div
+          className="relative flex min-h-[160px] shrink-0 items-center justify-center bg-gradient-to-br from-slate-100 via-slate-50 to-slate-200 sm:min-h-[180px]"
+          aria-hidden
+        >
+          {hero ? (
+            <Image
+              src={hero}
+              alt=""
+              fill
+              className="object-cover"
+              sizes="(max-width: 639px) 92vw, (max-width: 1023px) 45vw, 30vw"
+            />
+          ) : (
+            <ImageIcon
+              className="relative z-0 size-14 text-slate-300/90"
+              strokeWidth={1.25}
+              aria-hidden
+            />
+          )}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100 p-4 sm:p-5">
+          <h3 className="font-display text-lg font-bold leading-snug text-[#84c126]">{guide.title}</h3>
+          <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">{guide.summary}</p>
+        </div>
+      </button>
+    </article>
   );
 }
 
@@ -465,7 +609,7 @@ function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) 
         type="button"
         onClick={() => scrollByDir(-1)}
         disabled={cycleDisabled}
-        className="pointer-events-none absolute left-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:border-[#84c126]/50 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
+        className="pointer-events-none absolute left-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
         aria-label="Previous popular lessons"
       >
         <ChevronLeft className="size-5" strokeWidth={2} aria-hidden />
@@ -474,7 +618,7 @@ function PopularLessonsCarousel({ lessons }: { lessons: LessonCatalogEntry[] }) 
         type="button"
         onClick={() => scrollByDir(1)}
         disabled={cycleDisabled}
-        className="pointer-events-none absolute right-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200/90 bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:border-[#84c126]/50 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
+        className="pointer-events-none absolute right-3 top-1/2 z-20 flex size-10 -translate-y-1/2 items-center justify-center rounded-full bg-white/95 p-0 text-slate-700 opacity-0 shadow-md ring-1 ring-slate-900/5 backdrop-blur-sm transition-[opacity,box-shadow,colors] duration-200 hover:bg-white hover:text-[#3f6212] group-hover:pointer-events-auto group-hover:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100 disabled:pointer-events-none disabled:opacity-25"
         aria-label="Next popular lessons"
       >
         <ChevronRight className="size-5" strokeWidth={2} aria-hidden />
@@ -561,7 +705,6 @@ function LessonResultRow({
   lesson: LessonCatalogEntry;
   favoriteLessonIds?: readonly string[];
 }) {
-  const pts = lessonPointsReward(lesson);
   const detailHref = lessonDetailHref(lesson.id);
   const hero = lessonHeroImageUrl(lesson);
 
@@ -621,9 +764,6 @@ function LessonResultRow({
           {lesson.summary}
         </p>
         <div className="mt-3 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm tabular-nums">
-          <span className="font-semibold text-slate-800">
-            {formatPointsLabel(pts)}
-          </span>
           <span className="text-slate-500">
             {formatLessonDurationMinutes(lesson.estimatedMinutes)}
           </span>

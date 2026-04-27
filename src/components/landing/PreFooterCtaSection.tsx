@@ -3,7 +3,7 @@ import { PreFooterCtaContent } from "@/components/landing/PreFooterCta";
 
 export function PreFooterCtaSection() {
   return (
-    <section className="relative w-full min-w-0 overflow-x-clip bg-[#d9eeff] py-20 sm:py-24 lg:py-28">
+    <section className="relative w-full min-w-0 overflow-x-clip bg-[#d9eeff] pb-10 pt-16 sm:pb-12 sm:pt-20 lg:pb-14 lg:pt-24">
       <div
         className="pointer-events-none absolute inset-0 flex flex-col overflow-hidden bg-[#d9eeff]"
         aria-hidden

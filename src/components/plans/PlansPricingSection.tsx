@@ -26,7 +26,7 @@ const PLAN_CARD_CTA_COMING_SOON_COMPACT_CLASS =
   "inline-flex min-h-10 w-full max-w-full cursor-not-allowed items-center justify-center rounded-full border-2 border-[#e5e7eb] bg-[#f3f4f6] px-3 py-2.5 text-xs font-bold text-[#6b7280] sm:min-h-11 sm:px-4 sm:text-sm";
 
 const TOGGLE_WRAPPER =
-  "mx-auto mt-10 flex w-full max-w-md flex-col items-center gap-3 sm:mt-12";
+  "mx-auto mt-0 flex w-full max-w-md flex-col items-center gap-2 sm:mt-1";
 
 const TOGGLE_LABEL = "text-center text-sm font-semibold text-[#374151]";
 
@@ -174,7 +174,7 @@ export function PlansPricingSection({
           className={
             compact
               ? "mx-auto mt-0 max-w-2xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs leading-snug text-amber-950 sm:px-4"
-              : "mx-auto mt-8 max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm leading-relaxed text-amber-950 sm:mt-10 sm:px-5 sm:text-base"
+              : "mx-auto mt-4 max-w-2xl rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-center text-sm leading-relaxed text-amber-950 sm:mt-5 sm:px-5 sm:text-base"
           }
           role="status"
         >

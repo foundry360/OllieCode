@@ -2,7 +2,10 @@
 
 import { useCallback, useId, useRef, useState } from "react";
 import { ImageIcon, Upload } from "lucide-react";
-import { uploadLessonImageAction } from "@/app/admin/lessons/actions";
+import {
+  uploadLessonImageAction,
+  type UploadLessonImageResult,
+} from "@/app/admin/lessons/actions";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
 
@@ -13,6 +16,8 @@ type Props = {
   /** Taller drop target for wide card art vs square thumbnail */
   variant: "card" | "thumbnail";
   disabled?: boolean;
+  /** Defaults to lesson card upload; pass e.g. `uploadLearningGuideCardImageAction` for guides. */
+  uploadAction?: (formData: FormData) => Promise<UploadLessonImageResult>;
 };
 
 export function LessonImageDropzone({
@@ -21,6 +26,7 @@ export function LessonImageDropzone({
   onChange,
   variant,
   disabled = false,
+  uploadAction = uploadLessonImageAction,
 }: Props) {
   const inputId = useId();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -37,14 +43,14 @@ export function LessonImageDropzone({
       fd.set("file", file);
       setUploading(true);
       try {
-        const r = await uploadLessonImageAction(fd);
+        const r = await uploadAction(fd);
         if (!r.ok) setLocalError(r.message);
         else onChange(r.url);
       } finally {
         setUploading(false);
       }
     },
-    [onChange],
+    [onChange, uploadAction],
   );
 
   const onPickFiles = useCallback(

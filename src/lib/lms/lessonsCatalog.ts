@@ -380,34 +380,63 @@ export const LESSONS: LessonCatalogEntry[] = [
   },
   {
     id: "lvl1-motion-lab",
-    title: "Motion lab",
+    title: "Motion Hub",
     summary:
-      "Try turns, speed, and short pauses in one sandbox lesson — good for testing the hub list and Show More.",
+      "Move, turn, and choreograph Ollie on the stage—stack motion blocks, use short waits, then loop a path and save your routine.",
+    bodyHtml:
+      "<p>In <strong>Motion Hub</strong> you’ll stay inside the <strong>Motion</strong> palette: move forward, turn, add pauses, and wrap steps in a <strong>repeat</strong> or <strong>forever</strong> so the same path runs again and again. Keep <strong>Run</strong> handy after each change, and <strong>Save</strong> when you like what you built.</p>",
     skillLevel: 1,
-    workspaceHref: null,
-    estimatedMinutes: 16,
+    workspaceHref: "/workspace?mission=first-move&lesson=lvl1-motion-lab",
+    estimatedMinutes: 24,
     topic: "Blocks & motion",
-    objective: "Explore & create",
+    objective: "Motion & paths",
     levelName: "Beginner",
     roleLabel: "Learner",
     modules: [
       {
-        id: "motion-m1",
-        title: "Warm up",
-        points: 60,
-        durationMins: 5,
-        steps: 2,
-        detail:
-          "Roll forward once, then stop — confirm Run and the stage feel familiar.",
-      },
-      {
-        id: "motion-m2",
-        title: "Turn in place",
-        points: 90,
-        durationMins: 6,
+        id: "motionhub-m1",
+        title: "Roll forward on Run",
+        points: 70,
+        durationMins: 4,
         steps: 3,
         detail:
-          "Add a turn so Ollie faces a new direction before the next move.",
+          "<p>Start with <strong>When Run clicked</strong> (green). Snap <strong>move forward</strong> underneath so Ollie rolls when you tap <strong>Run</strong>.</p><ul><li>Try a few different step counts on the move block.</li><li>Press <strong>Run</strong> again to replay from the start.</li></ul>",
+      },
+      {
+        id: "motionhub-m2",
+        title: "Turn before the next move",
+        points: 80,
+        durationMins: 5,
+        steps: 3,
+        detail:
+          "<p>Add a <strong>turn</strong> block (or <strong>turn left</strong> / <strong>turn right</strong>) between two moves so Ollie changes facing.</p><ul><li>Watch the stage arrow so you know which way is “forward”.</li><li>Chain: move → turn → move, then <strong>Run</strong>.</li></ul>",
+      },
+      {
+        id: "motionhub-m3",
+        title: "Choreograph with waits",
+        points: 90,
+        durationMins: 5,
+        steps: 3,
+        detail:
+          "<p>Drop <strong>wait</strong> blocks (Control) between motions so each step reads clearly—like beats in a dance.</p><ul><li>Short waits feel snappy; longer waits feel dramatic.</li><li>Combine say/think from Looks if you want a line between moves.</li></ul>",
+      },
+      {
+        id: "motionhub-m4",
+        title: "Loop your path",
+        points: 100,
+        durationMins: 6,
+        steps: 4,
+        detail:
+          "<p>Wrap part of your stack in <strong>repeat</strong> or use <strong>forever</strong> so the path keeps going.</p><ul><li><strong>Repeat</strong> is great for “do this exactly N times.”</li><li><strong>Forever</strong> keeps going—use <strong>Stop</strong> when you want to halt while testing.</li></ul>",
+      },
+      {
+        id: "motionhub-m5",
+        title: "Edge bounce & save",
+        points: 110,
+        durationMins: 4,
+        steps: 3,
+        detail:
+          "<p>Optional: try <strong>if on edge, bounce</strong> inside a move loop so Ollie stays on stage.</p><p>When you’re happy, <strong>Save</strong> your adventure so this motion routine lives in <strong>Adventures</strong> for next time.</p>",
       },
     ],
   },

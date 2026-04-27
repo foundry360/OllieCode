@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useId, useState } from "react";
 import {
+  BookMarked,
   BookOpen,
   ChevronLeft,
   ChevronRight,
@@ -11,7 +12,6 @@ import {
   LayoutDashboard,
   Library,
   PanelsTopLeft,
-  PlusCircle,
   UsersRound,
 } from "lucide-react";
 
@@ -33,12 +33,8 @@ const SECTIONS: {
 }[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, exact: true },
   { href: "/admin/learners", label: "Learners", icon: UsersRound },
-  {
-    href: "/admin/lessons",
-    label: "Lessons",
-    icon: BookOpen,
-    excludePrefix: "/admin/lessons/new",
-  },
+  { href: "/admin/lessons", label: "Lessons", icon: BookOpen },
+  { href: "/admin/guides", label: "Learning Guides", icon: BookMarked },
 ];
 
 function isActivePath(
@@ -147,19 +143,6 @@ export function AdminSidebar() {
             </Link>
           );
         })}
-        <Link
-          href="/admin/lessons/new"
-          className={cn(
-            linkClass(pathname.startsWith("/admin/lessons/new")),
-            !collapsed && "md:ml-2 md:mt-1 md:border-l-2 md:border-[#84c126]/25 md:pl-3",
-            collapsed && "md:mt-1",
-          )}
-          aria-current={pathname.startsWith("/admin/lessons/new") ? "page" : undefined}
-          title={collapsed ? "New lesson" : undefined}
-        >
-          <PlusCircle className="size-4 shrink-0 opacity-80" strokeWidth={2} aria-hidden />
-          <span className={cn(collapsed && "md:sr-only")}>New lesson</span>
-        </Link>
         <div className={dividerClass} role="presentation" />
         <p className={sectionHeadingClass}>Product</p>
         {PRODUCT_LINKS.map(({ href, label, icon: Icon }) => (

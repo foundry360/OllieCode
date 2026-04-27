@@ -6,9 +6,7 @@ import { Footer } from "@/components/landing/Footer";
 import { ProfileAdventureGrid } from "@/components/profile/ProfileAdventureGrid";
 import { removeFavoriteLessonFormAction } from "@/app/profile/favorites-actions";
 import {
-  fetchLessonPointsTotal,
   fetchProfileAdventures,
-  fetchProfileBadges,
   fetchProfileFavoriteLessons,
   fetchProfileIdentity,
 } from "@/lib/supabase/lmsUserData";
@@ -24,8 +22,8 @@ export default async function ProfilePage() {
         <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-10 sm:px-6">
           <h1 className="font-display text-2xl font-bold">Profile</h1>
           <p className="mt-2 max-w-lg text-sm text-[#6b7280]">
-            Add Supabase environment variables to load your account profile,
-            points, and badges.
+            Add Supabase environment variables to load your account profile and
+            saved adventures.
           </p>
           <Link
             href="/workspace"
@@ -34,7 +32,7 @@ export default async function ProfilePage() {
             Go to workspace
           </Link>
         </main>
-        <Footer />
+        <Footer waveTopFillClassName="text-[#e8f3dc]" />
       </div>
     );
   }
@@ -47,14 +45,11 @@ export default async function ProfilePage() {
     redirect("/auth/login?next=/profile");
   }
 
-  const [adventures, points, badges, identity, favoriteLessons] =
-    await Promise.all([
-      fetchProfileAdventures(supabase, user.id),
-      fetchLessonPointsTotal(supabase, user.id),
-      fetchProfileBadges(supabase, user.id),
-      fetchProfileIdentity(supabase, user.id, user.email),
-      fetchProfileFavoriteLessons(supabase, user.id),
-    ]);
+  const [adventures, identity, favoriteLessons] = await Promise.all([
+    fetchProfileAdventures(supabase, user.id),
+    fetchProfileIdentity(supabase, user.id, user.email),
+    fetchProfileFavoriteLessons(supabase, user.id),
+  ]);
 
   return (
     <div className="flex min-h-[100dvh] flex-col bg-gradient-to-b from-slate-50 via-[#f3f7f0] to-[#e8f3dc] text-[#111827]">
@@ -106,21 +101,23 @@ export default async function ProfilePage() {
           className="mt-8 grid gap-4 sm:grid-cols-3"
           aria-label="Summary"
         >
-          <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-dashed border-[#d1d5db] bg-white/80 p-5 shadow-sm">
             <p className="text-sm font-semibold text-[#6b7280]">Points</p>
-            <p className="font-display mt-1 text-3xl font-bold tabular-nums text-[#111827]">
-              {points}
+            <p className="font-display mt-2 text-lg font-bold text-[#9ca3af]">
+              Coming soon
             </p>
-            <p className="mt-2 text-xs text-[#9ca3af]">
-              Earned from completed lessons
+            <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
+              Lesson points will show here once tracking goes live.
             </p>
           </div>
-          <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
+          <div className="rounded-2xl border border-dashed border-[#d1d5db] bg-white/80 p-5 shadow-sm">
             <p className="text-sm font-semibold text-[#6b7280]">Badges</p>
-            <p className="font-display mt-1 text-3xl font-bold tabular-nums text-[#111827]">
-              {badges.length}
+            <p className="font-display mt-2 text-lg font-bold text-[#9ca3af]">
+              Coming soon
             </p>
-            <p className="mt-2 text-xs text-[#9ca3af]">Unlocked achievements</p>
+            <p className="mt-2 text-xs leading-relaxed text-[#9ca3af]">
+              Achievements will appear here in a future update.
+            </p>
           </div>
           <div className="rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-sm">
             <p className="text-sm font-semibold text-[#6b7280]">My Adventures</p>
@@ -138,39 +135,11 @@ export default async function ProfilePage() {
           >
             Badges
           </h2>
-          {badges.length === 0 ? (
-            <p className="mt-3 rounded-2xl border border-dashed border-[#d1d5db] bg-white px-4 py-6 text-sm text-[#6b7280]">
-              No badges yet. Finish Level 1 lessons and adventures to earn your
-              first badge.
-            </p>
-          ) : (
-            <ul className="mt-4 flex flex-wrap gap-3">
-              {badges.map((b) => (
-                <li
-                  key={b.slug}
-                  className="flex max-w-sm items-start gap-3 rounded-2xl border border-[#e5e7eb] bg-white p-4 shadow-sm"
-                >
-                  <span className="text-2xl" aria-hidden>
-                    {b.icon_emoji}
-                  </span>
-                  <div>
-                    <p className="font-display font-bold text-[#111827]">
-                      {b.title}
-                    </p>
-                    <p className="mt-0.5 text-sm text-[#6b7280]">
-                      {b.description}
-                    </p>
-                    <p className="mt-2 text-xs text-[#9ca3af]">
-                      Earned{" "}
-                      {new Date(b.earned_at).toLocaleDateString(undefined, {
-                        dateStyle: "medium",
-                      })}
-                    </p>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
+          <p className="mt-3 rounded-2xl border border-dashed border-[#d1d5db] bg-white px-4 py-6 text-sm leading-relaxed text-[#6b7280]">
+            <span className="font-semibold text-[#374151]">Coming soon.</span>{" "}
+            You&apos;ll be able to see unlocked achievements here after we turn on
+            badges on profiles.
+          </p>
         </section>
 
         <section className="mt-10" aria-labelledby="my-adventures-heading">
@@ -240,7 +209,7 @@ export default async function ProfilePage() {
           to start Level 1 activities.
         </p>
       </main>
-      <Footer />
+      <Footer waveTopFillClassName="text-[#e8f3dc]" />
     </div>
   );
 }

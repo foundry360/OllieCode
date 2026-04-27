@@ -1,10 +1,9 @@
 "use client";
 
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   formatModuleDurationMinutes,
-  formatPointsLabel,
   formatStepCountLabel,
   type LessonModule,
 } from "@/lib/lms/lessonsCatalog";
@@ -26,6 +25,8 @@ type Props = {
   onIndexChange: (index: number) => void;
   /** Optional Scratch-style cards from the lesson payload (merged from DB when present). */
   visualSteps?: VisualLessonStep[];
+  /** Renders above the current module inside the scroll area (e.g. lesson summary on module 1). */
+  topSlot?: ReactNode;
 };
 
 function VisualLessonBlockPreview({ step }: { step: VisualLessonStep }) {
@@ -102,6 +103,7 @@ export function ModuleLessonStepper({
   index,
   onIndexChange,
   visualSteps,
+  topSlot,
 }: Props) {
   const last = modules.length - 1;
   const current = modules[index];
@@ -124,52 +126,52 @@ export function ModuleLessonStepper({
   if (!current || modules.length === 0) return null;
 
   return (
-    <div className="space-y-5">
-      <section aria-labelledby="module-step-title">
-        <h3
-          id="module-step-title"
-          className="font-display text-base font-bold capitalize leading-snug text-[#111827]"
-        >
-          {current.title}
-        </h3>
-        <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-[#6b7280]">
-          <span className="tabular-nums">
-            {formatModuleDurationMinutes(current.durationMins)}
-          </span>
-          {formatStepCountLabel(current.steps) ? (
-            <span className="tabular-nums">
-              {formatStepCountLabel(current.steps)}
-            </span>
-          ) : null}
-          {current.points > 0 ? (
-            <span className="tabular-nums text-[#365314]">
-              {formatPointsLabel(current.points)}
-            </span>
-          ) : null}
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+      <div className="ollie-lesson-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+        <div className="space-y-5">
+          {topSlot}
+          <section aria-labelledby="module-step-title">
+            <h3
+              id="module-step-title"
+              className="font-display text-base font-bold capitalize leading-snug text-[#111827]"
+            >
+              {current.title}
+            </h3>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs font-medium text-[#6b7280]">
+              <span className="tabular-nums">
+                {formatModuleDurationMinutes(current.durationMins)}
+              </span>
+              {formatStepCountLabel(current.steps) ? (
+                <span className="tabular-nums">
+                  {formatStepCountLabel(current.steps)}
+                </span>
+              ) : null}
+            </div>
+            {!isTrivialLessonHtml(current.detail) ? (
+              <div
+                className={`${moduleDetailProseClass} mt-3`}
+                dangerouslySetInnerHTML={{
+                  __html: sanitizeLessonBodyHtml(
+                    embellishLessonColorWords(current.detail),
+                  ),
+                }}
+              />
+            ) : null}
+            {visualForStep ? (
+              <VisualLessonBlockPreview step={visualForStep} />
+            ) : null}
+          </section>
         </div>
-        {!isTrivialLessonHtml(current.detail) ? (
-          <div
-            className={`${moduleDetailProseClass} mt-3`}
-            dangerouslySetInnerHTML={{
-              __html: sanitizeLessonBodyHtml(
-                embellishLessonColorWords(current.detail),
-              ),
-            }}
-          />
-        ) : null}
-        {visualForStep ? (
-          <VisualLessonBlockPreview step={visualForStep} />
-        ) : null}
-      </section>
+      </div>
 
-      <div className="border-t border-[#e5e7eb] pt-5">
+      <div className="shrink-0 bg-white pt-2">
         <div className="flex justify-center gap-2">
           <button
             type="button"
             onClick={goBack}
             disabled={index === 0}
             aria-label="Previous module"
-            className="inline-flex size-10 items-center justify-center rounded-xl border-2 border-[#e5e7eb] bg-white text-[#4b5563] shadow-sm transition hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex size-10 items-center justify-center rounded-full bg-white text-[#4b5563] shadow-sm transition hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
           >
             <ChevronLeft className="size-5" strokeWidth={2.5} aria-hidden />
           </button>
@@ -180,8 +182,8 @@ export function ModuleLessonStepper({
             aria-label="Next module"
             className={
               index >= last
-                ? "inline-flex size-10 cursor-not-allowed items-center justify-center rounded-xl border-2 border-[#e5e7eb] bg-white text-[#9ca3af] shadow-sm"
-                : "inline-flex size-10 items-center justify-center rounded-xl border-2 border-[#65a30d] bg-gradient-to-b from-[#a3e635] to-[#84cc16] text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635]"
+                ? "inline-flex size-10 cursor-not-allowed items-center justify-center rounded-full bg-white text-[#9ca3af] shadow-sm"
+                : "inline-flex size-10 items-center justify-center rounded-full bg-gradient-to-b from-[#a3e635] to-[#84cc16] text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635]"
             }
           >
             <ChevronRight className="size-5" strokeWidth={2.5} aria-hidden />

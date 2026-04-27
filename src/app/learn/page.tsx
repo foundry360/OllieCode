@@ -1,15 +1,27 @@
+import { Suspense } from "react";
 import { SignedInAppHeader } from "@/components/app/SignedInAppHeader";
 import { Footer } from "@/components/landing/Footer";
 import { LearningHubExplore } from "@/components/lms/LearningHubExplore";
+import { fetchPublishedLearningGuides } from "@/lib/lms/learningGuides";
 import { getMergedPublishedLessons } from "@/lib/lms/publishedLessons";
 import { fetchFavoriteLessonIds } from "@/lib/supabase/lmsUserData";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+
+function HubLoadingFallback() {
+  return (
+    <div className="mx-auto max-w-7xl px-4 py-16 text-center text-slate-600 sm:px-6">
+      Loading Learning Hub…
+    </div>
+  );
+}
 
 export default async function LearnPage() {
   const lessons = await getMergedPublishedLessons();
 
   const supabase = await createSupabaseServerClient();
   let favoriteLessonIds: string[] | undefined;
+  const guides = await fetchPublishedLearningGuides(supabase);
+
   if (supabase) {
     const {
       data: { user },
@@ -24,10 +36,13 @@ export default async function LearnPage() {
     <div className="flex min-h-[100dvh] flex-col bg-white text-[#111827]">
       <SignedInAppHeader active="learn" tone="learn" />
       <div className="flex-1">
-        <LearningHubExplore
-          lessons={lessons}
-          favoriteLessonIds={favoriteLessonIds}
-        />
+        <Suspense fallback={<HubLoadingFallback />}>
+          <LearningHubExplore
+            lessons={lessons}
+            guides={guides}
+            favoriteLessonIds={favoriteLessonIds}
+          />
+        </Suspense>
       </div>
       <Footer />
     </div>

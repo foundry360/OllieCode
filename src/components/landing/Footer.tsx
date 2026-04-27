@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { ContactChatLauncher } from "@/components/landing/ContactChatLauncher";
+import { SignupModalLauncher } from "@/components/landing/SignupModalLauncher";
 import { LandingSectionWave } from "@/components/landing/sectionWaves";
 
 const EXPLORE_LINKS = [
@@ -195,7 +196,12 @@ export function Footer({
           Ollie Code. All rights reserved.
         </p>
       </div>
-      {showContactLauncher ? <ContactChatLauncher /> : null}
+      {showContactLauncher ? (
+        <>
+          <ContactChatLauncher />
+          <SignupModalLauncher />
+        </>
+      ) : null}
     </footer>
   );
 }

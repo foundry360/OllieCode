@@ -63,7 +63,7 @@ export default function PlansWelcomePage() {
         </section>
         <PreFooterCtaSection />
       </main>
-      <Footer />
+      <Footer waveTopFillClassName="text-[#d9eeff]" />
       <BackToTop />
     </div>
   );

@@ -7,7 +7,6 @@ import {
   Clock,
   Share2,
   Star,
-  Trophy,
   User,
 } from "lucide-react";
 import { SignedInAppHeader } from "@/components/app/SignedInAppHeader";
@@ -15,10 +14,8 @@ import { Footer } from "@/components/landing/Footer";
 import {
   formatLessonDurationMinutes,
   formatModuleDurationMinutes,
-  formatPointsLabel,
   formatStepCountLabel,
   lessonHeroImageUrl,
-  lessonPointsReward,
   normalizeWorkspaceHrefWithLesson,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
@@ -45,7 +42,6 @@ export function LessonDetailPage({
     lesson.id,
   );
   const canActivate = Boolean(activateWorkspaceHref);
-  const totalPoints = lessonPointsReward(lesson);
   const hero = lessonHeroImageUrl(lesson);
 
   return (
@@ -124,11 +120,6 @@ export function LessonDetailPage({
             {/* Right: stats, overview, modules */}
             <div className="min-w-0 flex-1 space-y-8">
               <div className="flex flex-wrap items-stretch justify-center gap-0 overflow-hidden rounded-full border border-slate-200 bg-slate-100/90 px-2 py-3 text-sm sm:justify-between sm:px-4">
-                <StatItem
-                  icon={<Trophy className="size-4 text-[#84c126]" strokeWidth={2} />}
-                  label={formatPointsLabel(totalPoints)}
-                />
-                <div className="hidden w-px bg-slate-300 sm:block" aria-hidden />
                 <StatItem
                   icon={<BarChart3 className="size-4 text-[#84c126]" strokeWidth={2} />}
                   label={lesson.levelName}
@@ -214,12 +205,7 @@ export function LessonDetailPage({
                               <h3 className="font-display text-xl font-bold capitalize leading-snug text-slate-900 sm:text-2xl">
                                 {mod.title}
                               </h3>
-                              <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm font-medium text-slate-500">
-                                <span className="tabular-nums">
-                                  {mod.points > 0
-                                    ? formatPointsLabel(mod.points)
-                                    : "—"}
-                                </span>
+                              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm font-medium text-slate-500">
                                 <span className="tabular-nums">
                                   {formatModuleDurationMinutes(mod.durationMins)}
                                   {formatStepCountLabel(mod.steps)

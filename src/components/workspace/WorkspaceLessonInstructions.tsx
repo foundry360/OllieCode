@@ -137,26 +137,23 @@ export function WorkspaceLessonInstructions({
         ) : null}
       </div>
 
-      <div className="ollie-lesson-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4 pt-3">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-4 pb-4 pt-3">
         {moduleCount > 0 ? (
-          <div className="space-y-5">
-            {moduleIndex === 0 ? (
-              <p className="text-sm leading-relaxed text-[#374151]">
-                {lesson.summary}
-              </p>
-            ) : null}
-
-            <ModuleLessonStepper
-              modules={modules}
-              index={moduleIndex}
-              onIndexChange={setModuleIndex}
-              visualSteps={lesson.visualSteps}
-            />
-          </div>
+          <ModuleLessonStepper
+            topSlot={
+              moduleIndex === 0 ? (
+                <p className="text-sm leading-relaxed text-[#374151]">{lesson.summary}</p>
+              ) : undefined
+            }
+            modules={modules}
+            index={moduleIndex}
+            onIndexChange={setModuleIndex}
+            visualSteps={lesson.visualSteps}
+          />
         ) : (
-          <p className="text-sm leading-relaxed text-[#374151]">
-            {lesson.summary}
-          </p>
+          <div className="ollie-lesson-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain">
+            <p className="text-sm leading-relaxed text-[#374151]">{lesson.summary}</p>
+          </div>
         )}
       </div>
     </section>

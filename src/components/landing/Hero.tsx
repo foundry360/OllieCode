@@ -1,5 +1,5 @@
 import Image from "next/image";
-import Link from "next/link";
+import { OpenSignupModalButton } from "@/components/landing/OpenSignupModalButton";
 import { LandingSectionWave } from "@/components/landing/sectionWaves";
 
 type HeroHighlight = {
@@ -72,7 +72,7 @@ export function Hero() {
             return (
             <li
               key={title}
-              className="relative rounded-2xl border-2 border-white/12 bg-[#1a3750] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[#c8dcc8] hover:bg-[#152d42]"
+              className="relative rounded-2xl border-2 border-white/12 bg-[#1a3750] p-5 text-left shadow-sm transition-colors duration-200 ease-out hover:border-[var(--ollie-primary)] hover:bg-[#152d42]"
             >
               <span className="absolute left-5 top-5 flex size-10 items-center justify-center overflow-hidden rounded-xl bg-white/20 text-white sm:size-11">
                 <HeroHighlightMedia highlight={item} />
@@ -87,12 +87,9 @@ export function Hero() {
         </ul>
 
         <div className="mx-auto mt-10 flex flex-wrap justify-center gap-4 sm:mt-12">
-          <Link
-            href="/auth/login"
-            className="inline-flex items-center justify-center rounded-full bg-[#111727] px-8 py-3.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-[#243352] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80"
-          >
+          <OpenSignupModalButton className="inline-flex items-center justify-center rounded-full bg-[#111727] px-8 py-3.5 text-base font-bold text-white shadow-sm transition-colors hover:bg-[#243352] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white/80">
             Get Started Today!
-          </Link>
+          </OpenSignupModalButton>
         </div>
       </div>
     </section>
