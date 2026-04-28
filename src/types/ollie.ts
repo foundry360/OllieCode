@@ -370,6 +370,11 @@ export type SavedMissionProgressEntry = {
   savedAt: string;
   /** Name the learner chose when saving (optional on older data). */
   displayName?: string;
+  /**
+   * Learning Hub lesson id when this row was saved from an activated lesson (`?lesson=`).
+   * Omitted for freeform “My adventures” and older saves.
+   */
+  hubLessonId?: string;
 };
 
 /** User-uploaded backdrop referenced by `user-scene-{uuid}` in `sceneLayerIds`. */

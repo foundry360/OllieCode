@@ -26,7 +26,10 @@ import {
   missionCloudProjectId,
   MISSIONS,
 } from "@/lib/missions";
+import { getLessonById } from "@/lib/lms/lessonsCatalog";
 import type { ProjectPayload, SavedMissionProgressEntry } from "@/types/ollie";
+
+type AdventureMissionsFilter = "all" | "lessons" | "my_adventures";
 
 type SavedMissionsModalProps = {
   open: boolean;
@@ -53,6 +56,15 @@ function formatSavedAt(iso: string): string {
   } catch {
     return iso;
   }
+}
+
+function adventureSecondaryLine(
+  entry: SavedMissionProgressEntry,
+): string | null {
+  const hub = entry.hubLessonId?.trim();
+  if (!hub) return "My adventure";
+  const title = getLessonById(hub)?.title?.trim();
+  return title ? `Lesson · ${title}` : "Lesson progress";
 }
 
 function fallbackSceneForMission(missionId: string): SceneDef {
@@ -184,7 +196,10 @@ export function SavedMissionsModal({
   onRenameMission,
 }: SavedMissionsModalProps) {
   const titleId = useId();
+  const filterRegionId = useId();
   const closeBtnRef = useRef<HTMLButtonElement>(null);
+  const [categoryFilter, setCategoryFilter] =
+    useState<AdventureMissionsFilter>("all");
   /** Supabase Storage `mission-*.json` payloads — source of truth for card art. */
   const [cloudByMissionId, setCloudByMissionId] = useState<
     Record<string, ProjectPayload | null>
@@ -217,6 +232,30 @@ export function SavedMissionsModal({
     [entries, catalogIdSet],
   );
 
+  const filteredExtraSavedEntries = useMemo(() => {
+    if (categoryFilter === "all") return extraSavedEntries;
+    if (categoryFilter === "lessons") {
+      return extraSavedEntries.filter((e) => Boolean(e.hubLessonId?.trim()));
+    }
+    return extraSavedEntries.filter((e) => !e.hubLessonId?.trim());
+  }, [extraSavedEntries, categoryFilter]);
+
+  const showCatalogInGrid =
+    categoryFilter === "all" && visibleCatalogMissions.length > 0;
+
+  const listIsEmpty =
+    !showCatalogInGrid && filteredExtraSavedEntries.length === 0;
+
+  const filterEmptyHint = useMemo(() => {
+    if (categoryFilter === "lessons") {
+      return "No lesson saves yet. Open a lesson from the Learning Hub, then use Save in the workspace.";
+    }
+    if (categoryFilter === "my_adventures") {
+      return "No freeform adventures yet. Use New adventure (no hub lesson), build, then Save to name one.";
+    }
+    return null;
+  }, [categoryFilter]);
+
   const hasAnyMission =
     visibleCatalogMissions.length > 0 || extraSavedEntries.length > 0;
 
@@ -231,15 +270,22 @@ export function SavedMissionsModal({
 
   useLayoutEffect(() => {
     if (!open) return;
-    setCloudByMissionId({});
-    setCloudThumbsReady(false);
+    const raf = requestAnimationFrame(() => {
+      setCloudByMissionId({});
+      setCloudThumbsReady(false);
+      setCategoryFilter("all");
+    });
+    return () => cancelAnimationFrame(raf);
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
+    let thumbsRaf = 0;
     if (getSupabaseBrowserClient()) {
-      setCloudThumbsReady(false);
+      thumbsRaf = requestAnimationFrame(() => {
+        if (!cancelled) setCloudThumbsReady(false);
+      });
     }
 
     void (async () => {
@@ -285,6 +331,7 @@ export function SavedMissionsModal({
 
     return () => {
       cancelled = true;
+      if (thumbsRaf) cancelAnimationFrame(thumbsRaf);
     };
   }, [open, entriesKey, entries, visibleCatalogMissions]);
 
@@ -344,6 +391,34 @@ export function SavedMissionsModal({
           </button>
         </header>
 
+        <div
+          className="shrink-0 border-b border-[#e5e7eb] bg-[#f8fafc] px-3 py-2.5 sm:px-4"
+          role="region"
+          aria-label="Adventure categories"
+          id={filterRegionId}
+        >
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-[#64748b]">
+            Category
+          </p>
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            <FilterChip
+              label="All"
+              selected={categoryFilter === "all"}
+              onClick={() => setCategoryFilter("all")}
+            />
+            <FilterChip
+              label="Lessons"
+              selected={categoryFilter === "lessons"}
+              onClick={() => setCategoryFilter("lessons")}
+            />
+            <FilterChip
+              label="My adventures"
+              selected={categoryFilter === "my_adventures"}
+              onClick={() => setCategoryFilter("my_adventures")}
+            />
+          </div>
+        </div>
+
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain px-3 py-3 sm:px-4 sm:py-4">
           <p
             id={`${titleId}-hint`}
@@ -352,43 +427,53 @@ export function SavedMissionsModal({
             Open a saved adventure below, or go back to the workspace for the
             First Move starter. Use{" "}
             <strong className="font-semibold text-[#365314]">Save</strong> there
-            to add your named copy here.
+            to add your named copy here. Saves from an activated hub lesson appear
+            under <strong className="font-semibold text-[#365314]">Lessons</strong>
+            ; freeform projects under{" "}
+            <strong className="font-semibold text-[#365314]">My adventures</strong>
+            .
           </p>
           {!hasAnyMission ? (
             <p className="rounded-lg border-2 border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
               No adventures are available yet.
             </p>
+          ) : listIsEmpty ? (
+            <p className="rounded-lg border-2 border-dashed border-[#e5e7eb] bg-[#f9fafb] px-4 py-8 text-center text-sm text-[#6b7280]">
+              {filterEmptyHint}
+            </p>
           ) : (
             <ul className="grid grid-cols-2 gap-2 sm:grid-cols-6 sm:gap-2.5 md:gap-3 [grid-auto-rows:minmax(0,auto)]">
-              {visibleCatalogMissions.map((meta) => {
-                const saved = savedByMissionId.get(meta.id);
-                const isActive = activeMissionId === meta.id;
-                const displayName = saved?.displayName?.trim()
-                  ? saved.displayName.trim()
-                  : meta.title;
-                const metaLine = saved?.displayName?.trim()
-                  ? meta.title
-                  : null;
-                const payload = cloudByMissionId[meta.id];
-                const scene = sceneFromCloudPayload(payload, meta.id);
-                const thumbLoading = !cloudThumbsReady;
-                return (
-                  <MissionCard
-                    key={meta.id}
-                    missionId={meta.id}
-                    name={displayName}
-                    metaLine={metaLine}
-                    savedAtIso={saved?.savedAt ?? null}
-                    isActive={isActive}
-                    onSelect={onSelectMission}
-                    canRename={Boolean(saved?.savedAt)}
-                    onRename={onRenameMission}
-                    scene={scene}
-                    thumbLoading={thumbLoading}
-                  />
-                );
-              })}
-              {extraSavedEntries.map((entry) => {
+              {showCatalogInGrid
+                ? visibleCatalogMissions.map((meta) => {
+                    const saved = savedByMissionId.get(meta.id);
+                    const isActive = activeMissionId === meta.id;
+                    const displayName = saved?.displayName?.trim()
+                      ? saved.displayName.trim()
+                      : meta.title;
+                    const metaLine = saved?.displayName?.trim()
+                      ? meta.title
+                      : null;
+                    const payload = cloudByMissionId[meta.id];
+                    const scene = sceneFromCloudPayload(payload, meta.id);
+                    const thumbLoading = !cloudThumbsReady;
+                    return (
+                      <MissionCard
+                        key={meta.id}
+                        missionId={meta.id}
+                        name={displayName}
+                        metaLine={metaLine}
+                        savedAtIso={saved?.savedAt ?? null}
+                        isActive={isActive}
+                        onSelect={onSelectMission}
+                        canRename={Boolean(saved?.savedAt)}
+                        onRename={onRenameMission}
+                        scene={scene}
+                        thumbLoading={thumbLoading}
+                      />
+                    );
+                  })
+                : null}
+              {filteredExtraSavedEntries.map((entry) => {
                 const isActive = activeMissionId === entry.missionId;
                 const displayName =
                   entry.displayName?.trim() || "Untitled adventure";
@@ -400,7 +485,7 @@ export function SavedMissionsModal({
                     key={entry.missionId}
                     missionId={entry.missionId}
                     name={displayName}
-                    metaLine="Your Adventure"
+                    metaLine={adventureSecondaryLine(entry)}
                     savedAtIso={entry.savedAt}
                     isActive={isActive}
                     onSelect={onSelectMission}
@@ -417,5 +502,31 @@ export function SavedMissionsModal({
       </div>
     </div>,
     document.body,
+  );
+}
+
+function FilterChip({
+  label,
+  selected,
+  onClick,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        "rounded-full border px-2.5 py-1 text-left text-[11px] font-semibold transition sm:px-3 sm:text-xs",
+        selected
+          ? "border-[#84c126] bg-[#ecfccb] text-[#365314] shadow-sm"
+          : "border-[#e2e8f0] bg-white text-[#475569] hover:border-[#cbd5e1] hover:bg-[#f8fafc]",
+      ].join(" ")}
+      aria-pressed={selected}
+    >
+      {label}
+    </button>
   );
 }

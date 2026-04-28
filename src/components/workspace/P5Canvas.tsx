@@ -527,22 +527,31 @@ function ensurePaintedCostumeImage(
 type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
 
 /**
- * Scratch heading + optional costume bitmap offset (see `spriteRotationOffsetDeg`).
- * For side-view catalog art (−90° offset), “face left” is implemented with mirror + 0° net
- * rotation instead of 180° rotation (which would flip the sprite upside down).
+ * Scratch heading + bitmap “forward” offset (see `spriteRotationOffsetDeg` on catalog defs).
+ * For −90° art (bitmap +x = costume forward at Scratch 90°), face-left uses mirror instead of
+ * 180° rotation so art is not upside down.
  */
-function spriteDrawOrient(
-  s: Sprite,
-  images: Map<string, p5Types.Image>,
+function spriteDrawOrientFromOffset(
+  headingDeg: number,
+  off: number,
 ): SpriteDrawOrient {
+  const net = normHeading(headingDeg + off);
+  if (off === -90 && net === 180) {
+    return { rotationDeg: 0, mirrorX: true };
+  }
+  return { rotationDeg: net, mirrorX: false };
+}
+
+/**
+ * Scratch heading + optional costume bitmap offset (see `spriteRotationOffsetDeg`).
+ * User-painted PNGs use the same −90° framing as Ollie catalog cells so the paint editor’s
+ * x→y axes match the stage at default heading (90°); omitting that offset rotated art 90°
+ * (e.g. a horizontal stroke appeared vertical).
+ */
+function spriteDrawOrient(s: Sprite): SpriteDrawOrient {
   const painted = s.paintedCostumeSrc?.trim();
   if (painted) {
-    const img = images.get(painted);
-    if (img && img.width > 0) {
-      return { rotationDeg: normHeading(s.heading), mirrorX: false };
-    }
-    /** User bitmap: same as loaded path (no catalog sheet −90° offset). Don’t fall through. */
-    return { rotationDeg: normHeading(s.heading), mirrorX: false };
+    return spriteDrawOrientFromOffset(s.heading, -90);
   }
   const def =
     getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
@@ -550,21 +559,7 @@ function spriteDrawOrient(
     typeof def.spriteRotationOffsetDeg === "number"
       ? def.spriteRotationOffsetDeg
       : 0;
-  /**
-   * Align Scratch heading with bitmap facing (see `spriteRotationOffsetDeg`) even before
-   * `p5.Image` is ready — the old path used raw heading only and caused a visible snap.
-   */
-  const net = normHeading(s.heading + off);
-  /**
-   * Side-view catalog art uses offset −90 (bitmap “forward” is +x at net 0). At Scratch
-   * heading 270° (face left), `net` is 180° — a 180° rotation inverts the costume
-   * vertically; mirror horizontally at net 0 instead (see costume comments in
-   * `stageAssets`).
-   */
-  if (off === -90 && net === 180) {
-    return { rotationDeg: 0, mirrorX: true };
-  }
-  return { rotationDeg: net, mirrorX: false };
+  return spriteDrawOrientFromOffset(s.heading, off);
 }
 
 function layoutSlot(
@@ -1910,7 +1905,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               );
               p.push();
               p.translate(s.x, s.y);
-              const o = spriteDrawOrient(s, stageImages);
+              const o = spriteDrawOrient(s);
               if (o.mirrorX) p.scale(-1, 1);
               p.rotate(o.rotationDeg);
               p.imageMode(p.CENTER);

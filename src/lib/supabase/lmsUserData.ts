@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
+import { isMissingHubLessonIdColumnError } from "@/lib/supabase/savedMissionProgress";
 import {
   lessonDetailHref,
   levelNameForSkillLevel,
@@ -12,6 +13,7 @@ export type ProfileAdventureRow = {
   mission_id: string;
   display_name: string;
   saved_at: string;
+  hub_lesson_id?: string | null;
 };
 
 export type ProfileBadgeRow = {
@@ -84,14 +86,27 @@ export async function fetchProfileAdventures(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<ProfileAdventureRow[]> {
-  const { data, error } = await supabase
+  const withHub = await supabase
     .from("saved_mission_progress")
-    .select("mission_id, display_name, saved_at")
+    .select("mission_id, display_name, saved_at, hub_lesson_id")
     .eq("user_id", userId)
     .order("saved_at", { ascending: false });
 
-  if (error || !data) return [];
-  return data as ProfileAdventureRow[];
+  let rows: ProfileAdventureRow[] | null =
+    (withHub.data as ProfileAdventureRow[] | null) ?? null;
+  let error = withHub.error;
+  if (error && isMissingHubLessonIdColumnError(error.message)) {
+    const legacy = await supabase
+      .from("saved_mission_progress")
+      .select("mission_id, display_name, saved_at")
+      .eq("user_id", userId)
+      .order("saved_at", { ascending: false });
+    rows = (legacy.data as ProfileAdventureRow[] | null) ?? null;
+    error = legacy.error;
+  }
+
+  if (error || !rows) return [];
+  return rows;
 }
 
 export async function fetchLessonPointsTotal(

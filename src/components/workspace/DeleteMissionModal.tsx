@@ -56,38 +56,36 @@ export function DeleteMissionModal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className="relative z-10 w-full max-w-md rounded-3xl border-2 border-amber-200/80 bg-gradient-to-b from-amber-50 to-white p-6 shadow-2xl sm:p-8"
+        className="relative z-10 w-full max-w-sm rounded-2xl border border-[#e5e7eb] bg-white p-5 shadow-2xl sm:max-w-md"
       >
-        <p className="text-center text-4xl" aria-hidden>
-          🧹
-        </p>
         <h2
           id={titleId}
-          className="font-display mt-2 text-center text-xl font-bold text-[#1f2937] sm:text-2xl"
+          className="font-display text-lg font-bold text-[#111827]"
         >
           Sweep this adventure away?
         </h2>
-        <p className="mt-4 text-center text-sm leading-relaxed text-[#4b5563] sm:text-base">
-          If you tap <strong className="text-[#374151]">Delete</strong>, we’ll
+        <p className="mt-3 text-sm leading-relaxed text-[#4b5563] sm:text-base">
+          If you tap{" "}
+          <strong className="font-semibold text-[#374151]">Delete</strong>, we’ll
           pack up{" "}
           <span className="font-semibold text-[#365314]">
             &ldquo;{missionLabel}&rdquo;
           </span>{" "}
-          and say goodbye for good — it won’t be in your adventures list anymore,
+          and say goodbye for good. It won’t be in your adventures list anymore,
           and we can’t magic it back. Your coding space will get a shiny fresh
           start!
         </p>
-        <p className="mt-3 text-center text-sm font-medium text-[#92400e]">
-          Only say yes if you’re sure. No worries if you’re not — that’s what
+        <p className="mt-3 text-sm font-medium leading-relaxed text-[#b45309]">
+          Only say yes if you’re sure. No worries if you’re not. That’s what
           “Keep it” is for.
         </p>
-        <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-center sm:gap-3">
+        <div className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-2">
           <button
             type="button"
             autoFocus
             disabled={deleting}
             onClick={onClose}
-            className="rounded-2xl border-2 border-[#d9f99d] bg-[#ecfccb] px-5 py-3 text-sm font-bold text-[#3f6212] shadow-sm transition hover:bg-[#d9f99d] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] disabled:opacity-50"
+            className="rounded-xl border border-[#e5e7eb] bg-white px-4 py-2.5 text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] disabled:opacity-50"
           >
             Keep it
           </button>
@@ -95,7 +93,7 @@ export function DeleteMissionModal({
             type="button"
             disabled={deleting}
             onClick={() => void onConfirm()}
-            className="rounded-2xl bg-red-500 px-5 py-3 text-sm font-bold text-white shadow-md transition hover:bg-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 disabled:opacity-60"
+            className="rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2 disabled:opacity-60"
           >
             {deleting ? "Deleting…" : "Delete"}
           </button>

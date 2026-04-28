@@ -11,6 +11,7 @@ export {
   getSavedMissionProgress,
   mergeMissionProgressIntoStorage,
   recordMissionSaved,
+  type RecordMissionSavedOpts,
   removeSavedMissionProgressEntry,
   replaceSavedMissionProgressFromServer,
   syncSavedMissionStorageForAccount,

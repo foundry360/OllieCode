@@ -154,6 +154,8 @@ import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLes
 import {
   DEFAULT_WORKSPACE_LESSON_ID,
   getLessonById,
+  hubLessonIdFromWorkspaceLessonQuery,
+  REMOVED_PLATFORM_LESSON_IDS,
   WORKSPACE_NO_LESSON_QUERY,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
@@ -682,10 +684,13 @@ export function OllieWorkspace() {
     });
     if (isCatalogTemplateMissionId(missionForSave.id)) {
       const base = hubActivationLessonTitle ?? missionForSave.title;
+      if (hubLessonIdFromWorkspaceLessonQuery(rawLessonId)) {
+        return `My ${base}`.slice(0, 80);
+      }
       return `My ${base} — ${datePart}`;
     }
     return `${missionForSave.title} — ${datePart}`;
-  }, [missionForSave, hubActivationLessonTitle]);
+  }, [missionForSave, hubActivationLessonTitle, rawLessonId]);
 
   const topStageSceneId =
     stageSceneLayers[stageSceneLayers.length - 1] ?? DEFAULT_SCENE_ID;
@@ -1568,9 +1573,11 @@ export function OllieWorkspace() {
       serialization.workspaces.save(ws) as Record<string, unknown>;
     const workspacesByActorId = { ...spriteWorkspacesRef.current };
     if (opts?.missionRecord) {
+      const hlq = hubLessonIdFromWorkspaceLessonQuery(rawLessonId);
       recordMissionSaved(
         opts.missionRecord.missionId,
         opts.missionRecord.displayName,
+        hlq !== undefined ? { setHubLessonId: hlq } : undefined,
       );
     }
     const mergedMissionProgress = getSavedMissionProgress();
@@ -1668,6 +1675,7 @@ export function OllieWorkspace() {
       stageSceneLayers,
       topStageSceneId,
       userSceneRuntimeList,
+      rawLessonId,
     ],
   );
 
@@ -1734,10 +1742,20 @@ export function OllieWorkspace() {
           signedIn &&
           isCatalogTemplateMissionId(missionForSave.id)
         ) {
-          const newId = createCustomMissionId();
+          const hubId = hubLessonIdFromWorkspaceLessonQuery(rawLessonId);
+          const existingForLesson =
+            hubId
+              ? getSavedMissionProgress().find(
+                  (e) =>
+                    e.hubLessonId?.trim() === hubId &&
+                    isCustomMissionId(e.missionId),
+                )
+              : undefined;
+          const targetMissionId =
+            existingForLesson?.missionId ?? createCustomMissionId();
           const msg = await saveProject({
             missionRecord: {
-              missionId: newId,
+              missionId: targetMissionId,
               displayName: trimmed,
             },
           });
@@ -1751,15 +1769,18 @@ export function OllieWorkspace() {
           }
           skipNextMissionUrlEffectRef.current = true;
           const q = new URLSearchParams();
-          q.set("mission", newId);
+          q.set("mission", targetMissionId);
           appendHubLessonToWorkspaceQuery(q, rawLessonId);
           router.replace(`/workspace?${q.toString()}`, { scroll: false });
           setSaveMissionNameModalOpen(false);
           setSaveMissionForkFromTemplate(false);
           setSavedMissionEntries(getSavedMissionProgress());
+          const isUpdate = Boolean(existingForLesson?.missionId);
           setStatus(
             msg === "Saved to cloud!"
-              ? `Saved “${trimmed}” — you can keep editing here.`
+              ? isUpdate
+                ? `Saved “${trimmed}”. Updated your lesson progress.`
+                : `Saved “${trimmed}”. You can keep editing here.`
               : msg,
           );
           setTimeout(() => setStatus(""), 4000);
@@ -1790,7 +1811,8 @@ export function OllieWorkspace() {
 
   /**
    * Reuse the last name for this adventure when allowed; otherwise prompt.
-   * Signed-in users on a catalog starter (e.g. First Move) must always name a new copy.
+   * Signed-in users on a catalog starter must name a new copy — except when a hub lesson
+   * is active (`?lesson=`), where we auto-save using {@link defaultMissionSaveName}.
    */
   const saveMissionWithExistingNameOrPrompt = useCallback(() => {
     if (!missionForSave) return;
@@ -1804,6 +1826,14 @@ export function OllieWorkspace() {
         signedIn = !!user;
       }
       if (signedIn && isCatalogTemplateMissionId(missionForSave.id)) {
+        if (hubLessonIdFromWorkspaceLessonQuery(rawLessonId)) {
+          const auto = defaultMissionSaveName.trim();
+          if (auto) {
+            setSaveMissionForkFromTemplate(false);
+            void confirmSaveMissionName(auto);
+            return;
+          }
+        }
         setSaveMissionForkFromTemplate(true);
         setSaveMissionNameModalOpen(true);
         return;
@@ -1819,7 +1849,12 @@ export function OllieWorkspace() {
       }
       setSaveMissionNameModalOpen(true);
     })();
-  }, [missionForSave, confirmSaveMissionName]);
+  }, [
+    missionForSave,
+    confirmSaveMissionName,
+    rawLessonId,
+    defaultMissionSaveName,
+  ]);
 
   const handleSave = useCallback(() => {
     saveMissionWithExistingNameOrPrompt();
@@ -1863,6 +1898,9 @@ export function OllieWorkspace() {
       setRenameMissionLoading(true);
       try {
         recordMissionSaved(renameMissionContext.missionId, trimmed);
+        const renamedEntry = getSavedMissionProgress().find(
+          (e) => e.missionId === renameMissionContext.missionId,
+        );
         const sb = getSupabaseBrowserClient();
         if (sb) {
           const {
@@ -1873,6 +1911,7 @@ export function OllieWorkspace() {
               missionId: renameMissionContext.missionId,
               displayName: trimmed,
               savedAt: new Date().toISOString(),
+              hubLessonId: renamedEntry?.hubLessonId,
             });
             if (error) {
               setStatus(`Renamed on this device; cloud: ${error.message}`);
@@ -2161,6 +2200,33 @@ export function OllieWorkspace() {
     openMissionWorkspace,
   ]);
 
+  /**
+   * Custom adventures opened with `?mission=` only lose hub instructions; re-apply `?lesson=`
+   * from {@link SavedMissionProgressEntry.hubLessonId} when present.
+   */
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    if (!missionIdParam || !isCustomMissionId(missionIdParam)) return;
+    if (rawLessonId === WORKSPACE_NO_LESSON_QUERY) return;
+    if (rawLessonId.trim().length > 0) return;
+    const entry = getSavedMissionProgress().find(
+      (e) => e.missionId === missionIdParam,
+    );
+    const hid = entry?.hubLessonId?.trim();
+    if (!hid || REMOVED_PLATFORM_LESSON_IDS.has(hid)) return;
+    const q = new URLSearchParams(searchParamsString);
+    q.set("lesson", hid);
+    skipNextMissionUrlEffectRef.current = true;
+    router.replace(`/workspace?${q.toString()}`, { scroll: false });
+  }, [
+    blocklyMounted,
+    missionIdParam,
+    rawLessonId,
+    router,
+    searchParamsString,
+    savedMissionEntries,
+  ]);
+
   const openMissionsModal = useCallback(() => {
     setSavedMissionEntries(getSavedMissionProgress());
     setMissionsModalOpen(true);
@@ -2196,7 +2262,20 @@ export function OllieWorkspace() {
       }
       const q = new URLSearchParams();
       q.set("mission", missionId);
-      appendHubLessonToWorkspaceQuery(q, rawLessonId);
+      const progress = getSavedMissionProgress().find(
+        (e) => e.missionId === missionId,
+      );
+      const lessonFromProgress =
+        progress?.hubLessonId &&
+        progress.hubLessonId !== WORKSPACE_NO_LESSON_QUERY
+          ? progress.hubLessonId.trim()
+          : "";
+      const lessonParam =
+        rawLessonId.length > 0 &&
+        rawLessonId !== WORKSPACE_NO_LESSON_QUERY
+          ? rawLessonId
+          : lessonFromProgress;
+      appendHubLessonToWorkspaceQuery(q, lessonParam);
       router.replace(`/workspace?${q.toString()}`, { scroll: false });
     },
     [router, openMissionWorkspace, rawLessonId],

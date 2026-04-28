@@ -611,6 +611,16 @@ export function lessonDetailHref(lessonId: string): string {
  * Ensures workspace deep links include `?lesson=<id>` so the workspace lesson panel
  * can load instructions. Published payloads may store only `mission=`.
  */
+/** Valid `?lesson=` id for persisting on saved adventures (excludes `none` and removed ids). */
+export function hubLessonIdFromWorkspaceLessonQuery(
+  rawLessonId: string,
+): string | undefined {
+  const t = rawLessonId.trim();
+  if (!t || t === WORKSPACE_NO_LESSON_QUERY) return undefined;
+  if (REMOVED_PLATFORM_LESSON_IDS.has(t)) return undefined;
+  return t;
+}
+
 export function normalizeWorkspaceHrefWithLesson(
   href: string | null | undefined,
   lessonId: string,

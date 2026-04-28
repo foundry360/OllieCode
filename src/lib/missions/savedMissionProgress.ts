@@ -46,7 +46,9 @@ export function getSavedMissionProgress(): SavedMissionProgressEntry[] {
           typeof (x as SavedMissionProgressEntry).missionId === "string" &&
           typeof (x as SavedMissionProgressEntry).savedAt === "string" &&
           ((x as SavedMissionProgressEntry).displayName === undefined ||
-            typeof (x as SavedMissionProgressEntry).displayName === "string"),
+            typeof (x as SavedMissionProgressEntry).displayName === "string") &&
+          ((x as SavedMissionProgressEntry).hubLessonId === undefined ||
+            typeof (x as SavedMissionProgressEntry).hubLessonId === "string"),
       ),
     );
   } catch {
@@ -119,20 +121,44 @@ export function removeSavedMissionProgressEntry(missionId: string): void {
   persist(next);
 }
 
+export type RecordMissionSavedOpts = {
+  /**
+   * When a string: set hub lesson id from the current workspace `?lesson=`.
+   * When `null`: clear (freeform adventure).
+   * When omitted: keep the previous value for this `missionId` if any.
+   */
+  setHubLessonId?: string | null;
+};
+
 /** Record a named save for an adventure (one row per missionId, latest wins). */
 export function recordMissionSaved(
   missionId: string,
   displayName: string,
+  opts?: RecordMissionSavedOpts,
 ): void {
   const name = displayName.trim();
   if (!name) return;
-  persist(
-    mergeMissionProgressLists(getSavedMissionProgress(), [
-      {
-        missionId,
-        savedAt: new Date().toISOString(),
-        displayName: name,
-      },
-    ]),
+  const existing = getSavedMissionProgress().find(
+    (e) => e.missionId === missionId,
   );
+  let hubLessonId: string | undefined;
+  if (opts && "setHubLessonId" in opts) {
+    if (opts.setHubLessonId === null) {
+      hubLessonId = undefined;
+    } else if (typeof opts.setHubLessonId === "string") {
+      const t = opts.setHubLessonId.trim();
+      hubLessonId = t.length > 0 ? t : existing?.hubLessonId;
+    } else {
+      hubLessonId = existing?.hubLessonId;
+    }
+  } else {
+    hubLessonId = existing?.hubLessonId;
+  }
+  const row: SavedMissionProgressEntry = {
+    missionId,
+    savedAt: new Date().toISOString(),
+    displayName: name,
+    ...(hubLessonId ? { hubLessonId } : {}),
+  };
+  persist(mergeMissionProgressLists(getSavedMissionProgress(), [row]));
 }
