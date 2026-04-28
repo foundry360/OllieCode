@@ -293,6 +293,7 @@ export function OllieWorkspace() {
   const [mergedLesson, setMergedLesson] = useState<LessonCatalogEntry | null>(
     null,
   );
+  const hubActivationPostedForRef = useRef<string | null>(null);
   useEffect(() => {
     let cancelled = false;
     setMergedLesson(null);
@@ -323,6 +324,24 @@ export function OllieWorkspace() {
       cancelled = true;
     };
   }, [lessonIdParam]);
+
+  useEffect(() => {
+    hubActivationPostedForRef.current = null;
+  }, [rawLessonId]);
+
+  useEffect(() => {
+    const hubId = hubLessonIdFromWorkspaceLessonQuery(rawLessonId);
+    if (!hubId || mergedLesson?.id !== hubId) return;
+    if (hubActivationPostedForRef.current === hubId) return;
+    hubActivationPostedForRef.current = hubId;
+    void fetch("/api/lesson-hub-activations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ lessonId: hubId }),
+      keepalive: true,
+    }).catch(() => {});
+  }, [rawLessonId, mergedLesson?.id]);
+
   const activeLesson = mergedLesson ?? undefined;
   /**
    * Explicit `?lesson=` hub activation — use this title in Save UX and starter status copy

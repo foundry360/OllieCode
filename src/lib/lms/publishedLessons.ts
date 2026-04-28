@@ -54,6 +54,41 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
   return out;
 }
 
+type LessonHubActivationCountRow = {
+  lesson_id: string;
+  activation_count: number | string;
+};
+
+/**
+ * Same catalog as {@link getMergedPublishedLessons}, ordered by hub workspace activations
+ * (desc), then by the default `updated_at` order for ties. Used on `/learn` so “Popular”
+ * reflects real opens; falls back to `updated_at` order if counts are unavailable.
+ */
+export async function getMergedPublishedLessonsForLearnHub(): Promise<
+  LessonCatalogEntry[]
+> {
+  const lessons = await getMergedPublishedLessons();
+  const supabase = await createSupabaseServerClient();
+  if (!supabase || lessons.length === 0) return lessons;
+
+  const { data, error } = await supabase.rpc("lesson_hub_activation_counts");
+  if (error || !Array.isArray(data)) return lessons;
+
+  const counts = new Map(
+    (data as LessonHubActivationCountRow[]).map((row) => [
+      row.lesson_id,
+      Number(row.activation_count),
+    ]),
+  );
+  const orderIndex = new Map(lessons.map((l, i) => [l.id, i]));
+  return [...lessons].sort((a, b) => {
+    const ca = counts.get(a.id) ?? 0;
+    const cb = counts.get(b.id) ?? 0;
+    if (cb !== ca) return cb - ca;
+    return (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0);
+  });
+}
+
 export async function getLessonByIdMerged(
   lessonId: string,
 ): Promise<LessonCatalogEntry | undefined> {
