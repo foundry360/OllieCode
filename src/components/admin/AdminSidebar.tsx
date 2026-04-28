@@ -189,22 +189,28 @@ export function AdminSidebar({ initialUnreadInboxCount = 0 }: { initialUnreadInb
             <Link
               key={href}
               href={href}
-              className={linkClass(active)}
+              className={cn(linkClass(active), badgeOnIcon && "relative")}
               aria-current={active ? "page" : undefined}
               title={collapsed ? label : undefined}
             >
-              <span className="relative inline-flex shrink-0">
+              <span className="inline-flex shrink-0">
                 <Icon className="size-4 opacity-80" strokeWidth={2} aria-hidden />
-                {badgeOnIcon ? (
-                  <span className="pointer-events-none absolute -right-2 -top-1.5">
-                    <UnreadBadge count={unreadInboxCount} />
-                  </span>
-                ) : null}
               </span>
-              <span className={cn("flex min-w-0 flex-1 items-center gap-2", collapsed && "md:sr-only")}>
-                <span>{label}</span>
+              <span
+                className={cn(
+                  "flex min-w-0 flex-1 items-center gap-2",
+                  collapsed && "md:sr-only",
+                  showUnread && !collapsed && "justify-between gap-2",
+                )}
+              >
+                <span className={cn("min-w-0", showUnread && !collapsed && "truncate")}>{label}</span>
                 {showUnread && !collapsed ? <UnreadBadge count={unreadInboxCount} /> : null}
               </span>
+              {badgeOnIcon ? (
+                <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2">
+                  <UnreadBadge count={unreadInboxCount} />
+                </span>
+              ) : null}
             </Link>
           );
         })}

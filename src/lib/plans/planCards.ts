@@ -4,7 +4,7 @@ export type PlanCardId = PaidPlanId | "educators";
 
 export type PlanCardCta =
   | { kind: "signup"; label: string }
-  | { kind: "comingSoon"; label: string };
+  | { kind: "educatorsContact"; label: string };
 
 export type PlanCardAccent = {
   headerTop: string;
@@ -104,7 +104,7 @@ export const PLAN_CARDS: readonly PlanCardDefinition[] = [
     iconSrc: "/images/plan-icon-educators.png",
     iconAlt:
       "Friendly blue robot with glasses and a wand, representing the Educators plan.",
-    cta: { kind: "comingSoon", label: "Coming Soon" },
+    cta: { kind: "educatorsContact", label: "Contact Us" },
     accent: {
       headerTop: "bg-sky-100 border-b border-sky-200/50",
       iconFrame:

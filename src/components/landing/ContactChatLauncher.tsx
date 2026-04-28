@@ -120,9 +120,6 @@ export function ContactChatLauncher() {
         <div className="flex items-start justify-between gap-3 border-b border-[#e5e7eb] px-5 py-4">
           <div>
             <h2 className="font-display text-lg font-bold">Message us</h2>
-            <p className="mt-0.5 text-sm text-[#6b7280]">
-              Ask a question or say hello — we read every note.
-            </p>
           </div>
           <button
             type="button"
@@ -136,7 +133,7 @@ export function ContactChatLauncher() {
 
         {status === "sent" ? (
           <div className="px-5 py-8 text-center">
-            <p className="font-medium text-[#3f6212]">Thanks — we received your message.</p>
+            <p className="font-medium text-[#3f6212]">Thank you for your message!</p>
             <p className="mt-2 text-sm text-[#6b7280]">
               Our team reads every note and will follow up by email when we can.
             </p>

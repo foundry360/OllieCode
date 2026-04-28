@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { EducatorsContactModal } from "@/components/plans/EducatorsContactModal";
 import {
   PlanPaidCheckoutCtas,
   type PlanInlineCheckoutPayload,
@@ -16,14 +17,8 @@ import type { BillingInterval, PlanCheckoutAvailability } from "@/lib/stripe/pri
 const PLAN_CARD_CTA_CLASS =
   "inline-flex min-h-[2.75rem] w-full max-w-xs items-center justify-center rounded-full bg-[var(--ollie-primary)] px-8 py-3 text-base font-bold text-white shadow-sm transition-colors hover:bg-[#6fa020] sm:w-auto";
 
-const PLAN_CARD_CTA_COMING_SOON_CLASS =
-  "inline-flex min-h-[2.75rem] w-full max-w-xs cursor-not-allowed items-center justify-center rounded-full border-2 border-[#e5e7eb] bg-[#f3f4f6] px-8 py-3 text-base font-bold text-[#6b7280] shadow-sm sm:w-auto";
-
 const PLAN_CARD_CTA_COMPACT_CLASS =
   "inline-flex min-h-10 w-full max-w-full items-center justify-center rounded-full bg-[var(--ollie-primary)] px-3 py-2.5 text-xs font-bold text-white shadow-sm transition-colors hover:bg-[#6fa020] sm:min-h-11 sm:px-4 sm:text-sm";
-
-const PLAN_CARD_CTA_COMING_SOON_COMPACT_CLASS =
-  "inline-flex min-h-10 w-full max-w-full cursor-not-allowed items-center justify-center rounded-full border-2 border-[#e5e7eb] bg-[#f3f4f6] px-3 py-2.5 text-xs font-bold text-[#6b7280] sm:min-h-11 sm:px-4 sm:text-sm";
 
 const TOGGLE_WRAPPER =
   "mx-auto mt-0 flex w-full max-w-md flex-col items-center gap-2 sm:mt-1";
@@ -104,6 +99,8 @@ export function PlansPricingSection({
   const showToggle = canMonthly || canYearly;
 
   const checkoutResumeKeyRef = useRef<string | null>(null);
+  const [educatorsContactOpen, setEducatorsContactOpen] = useState(false);
+  const [educatorsModalKey, setEducatorsModalKey] = useState(0);
 
   useEffect(() => {
     const intent = parsePlansCheckoutIntent(searchParams);
@@ -169,6 +166,11 @@ export function PlansPricingSection({
 
   const section = (
     <>
+      <EducatorsContactModal
+        key={educatorsModalKey}
+        open={educatorsContactOpen}
+        onClose={() => setEducatorsContactOpen(false)}
+      />
       {subscriptionRequired ? (
         <div
           className={
@@ -386,16 +388,18 @@ export function PlansPricingSection({
                           {plan.cta.label}
                         </Link>
                       )
-                    ) : (
+                    ) : plan.cta.kind === "educatorsContact" ? (
                       <button
                         type="button"
-                        disabled
-                        className={compact ? PLAN_CARD_CTA_COMING_SOON_COMPACT_CLASS : PLAN_CARD_CTA_COMING_SOON_CLASS}
-                        aria-disabled="true"
+                        onClick={() => {
+                          setEducatorsModalKey((k) => k + 1);
+                          setEducatorsContactOpen(true);
+                        }}
+                        className={compact ? PLAN_CARD_CTA_COMPACT_CLASS : PLAN_CARD_CTA_CLASS}
                       >
                         {plan.cta.label}
                       </button>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </article>

@@ -2,7 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import { markContactInboxReadAction } from "@/app/admin/messages/actions";
+import { EducatorInquiryBadge } from "@/components/admin/EducatorInquiryBadge";
 import { dispatchAdminInboxUnreadRefresh } from "@/lib/admin/adminInboxUnreadEvent";
+import { isEducatorsInquiryMessage } from "@/lib/contact/educatorsInquiry";
 
 export type ContactInboxRow = {
   id: string;
@@ -106,6 +108,7 @@ export function MessagesInbox({ initialMessages }: { initialMessages: ContactInb
             messages.map((m) => {
               const active = m.id === selectedId;
               const unread = !m.read_at;
+              const educator = isEducatorsInquiryMessage(m.message);
               return (
                 <li key={m.id}>
                   <button
@@ -123,12 +126,15 @@ export function MessagesInbox({ initialMessages }: { initialMessages: ContactInb
                       >
                         {m.visitor_name}
                       </span>
-                      {unread ? (
-                        <span
-                          className="mt-1 size-2 shrink-0 rounded-full bg-[#84c126]"
-                          aria-label="Unread"
-                        />
-                      ) : null}
+                      <span className="flex shrink-0 items-start gap-1.5">
+                        {educator ? <EducatorInquiryBadge /> : null}
+                        {unread ? (
+                          <span
+                            className="mt-1 size-2 shrink-0 rounded-full bg-[#84c126]"
+                            aria-label="Unread"
+                          />
+                        ) : null}
+                      </span>
                     </div>
                     <p className="mt-0.5 truncate text-xs text-slate-500">{m.visitor_email}</p>
                     <p className="mt-1 line-clamp-2 text-xs leading-snug text-slate-600">
@@ -158,7 +164,10 @@ export function MessagesInbox({ initialMessages }: { initialMessages: ContactInb
             <header className="shrink-0 border-b border-slate-200 bg-white px-5 py-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="font-display text-lg font-bold text-slate-900">{selected.visitor_name}</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="font-display text-lg font-bold text-slate-900">{selected.visitor_name}</h2>
+                    {isEducatorsInquiryMessage(selected.message) ? <EducatorInquiryBadge /> : null}
+                  </div>
                   <p className="mt-1 text-sm text-slate-600">
                     <a
                       className="font-medium text-[#3f6212] underline hover:text-[#84c126]"
@@ -189,11 +198,9 @@ export function MessagesInbox({ initialMessages }: { initialMessages: ContactInb
               </div>
             </header>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-                <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800">
-                  {selected.message}
-                </pre>
-              </div>
+              <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-slate-800">
+                {selected.message}
+              </pre>
             </div>
           </>
         )}

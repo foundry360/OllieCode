@@ -24,7 +24,9 @@ import {
   sumCountsForKeys,
   utcTodayMidnight,
 } from "@/lib/admin/learnerGrowth";
+import { EducatorInquiryBadge } from "@/components/admin/EducatorInquiryBadge";
 import { isContactInboxMissing } from "@/lib/admin/contactInbox";
+import { isEducatorsInquiryMessage } from "@/lib/contact/educatorsInquiry";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
 import { getStripe } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
@@ -473,11 +475,14 @@ export default async function AdminDashboardPage() {
                         <p className="mt-0.5 truncate text-xs text-slate-500">{row.visitor_email}</p>
                       </div>
                       <div className="flex shrink-0 flex-col items-end gap-1">
-                        {!row.read_at ? (
-                          <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-white">
-                            New
-                          </span>
-                        ) : null}
+                        <span className="flex flex-wrap items-center justify-end gap-1">
+                          {isEducatorsInquiryMessage(row.message) ? <EducatorInquiryBadge /> : null}
+                          {!row.read_at ? (
+                            <span className="rounded-full bg-orange-500 px-2 py-0.5 text-[0.65rem] font-bold uppercase tracking-wide text-white">
+                              New
+                            </span>
+                          ) : null}
+                        </span>
                         <span className="text-xs text-slate-500">{formatDateTime(row.created_at)}</span>
                       </div>
                     </div>
