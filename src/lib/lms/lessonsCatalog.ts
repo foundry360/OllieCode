@@ -99,6 +99,12 @@ export const DEFAULT_WORKSPACE_LESSON_ID = "lvl1-get-started" as const;
  */
 export const WORKSPACE_NO_LESSON_QUERY = "none" as const;
 
+/**
+ * Lesson ids permanently removed from the platform. Hub, API, and admin flows ignore these
+ * even if a legacy `lms_lessons` row existed before DB cleanup.
+ */
+export const REMOVED_PLATFORM_LESSON_IDS = new Set<string>(["lvl1-paddle-vertical"]);
+
 export const LESSONS: LessonCatalogEntry[] = [
   {
     id: "lvl1-get-started",
@@ -441,6 +447,115 @@ export const LESSONS: LessonCatalogEntry[] = [
     ],
   },
   {
+    id: "lvl1-pandle-pong",
+    title: "Pandle Pong",
+    summary:
+      "Build a two-sprite pong-style game: backdrop, paddle, and a ball from the sprite catalog—then add score, balls left, and a Game Over message with color-coded blocks.",
+    bodyHtml:
+      "<p><strong>Pandle Pong</strong> uses exactly <strong>one backdrop</strong> and <strong>two sprites</strong> on the stage. Follow each module in order while your workspace is open.</p><p><strong>How to read block colors</strong> (they match the toolbox categories): <span style='color:#FFBF00'><strong>Events</strong></span> · <span style='color:#59C059'><strong>Motion</strong></span> · <span style='color:#9966FF'><strong>Looks</strong></span> · <span style='color:#FFAB19'><strong>Control</strong></span> · <span style='color:#5CB1D6'><strong>Sensing</strong></span> · <span style='color:#4C97FF'><strong>Logic</strong></span> · <span style='color:#59C059'><strong>Math</strong></span> · <span style='color:#FF8C1A'><strong>Variables</strong></span> · <span style='color:#9966FF'><strong>Text</strong></span> (join messages).</p>",
+    skillLevel: 1,
+    workspaceHref:
+      "/workspace?mission=first-move&lesson=lvl1-pandle-pong",
+    estimatedMinutes: 35,
+    topic: "Games & stories",
+    objective: "Sprites, motion & variables",
+    levelName: "Beginner",
+    roleLabel: "Learner",
+    cardImageUrl: "/images/features-build-games-v2.png",
+    modules: [
+      {
+        id: "pandle-m1",
+        title: "Rules: two sprites + one backdrop",
+        points: 60,
+        durationMins: 3,
+        steps: 2,
+        detail:
+          "<p>Your finished game has <strong>two actors</strong> (Paddle + Ball) and <strong>one</strong> backdrop. Use <strong>Adventures</strong> naming when you save so you can find the project later.</p>",
+      },
+      {
+        id: "pandle-m2",
+        title: "Pick or paint the backdrop",
+        points: 80,
+        durationMins: 4,
+        steps: 3,
+        detail:
+          "<p>Open the <strong>scene / backdrop</strong> controls and choose a look for your court (solid color or image backdrop).</p><p>Then stack: <span style='color:#FFBF00'><strong>When Run clicked</strong></span> → <span style='color:#9966FF'><strong>switch scene to</strong></span> so every run starts on the same backdrop.</p>",
+      },
+      {
+        id: "pandle-m3",
+        title: "Sprite 1: build the paddle",
+        points: 90,
+        durationMins: 5,
+        steps: 3,
+        detail:
+          "<p>Rename your first sprite <strong>Paddle</strong>. Give it a <strong>wide, flat</strong> costume: open the <strong>sprite library</strong> or <strong>paint</strong> a simple horizontal bar.</p><p>Optional: <span style='color:#9966FF'><strong>set size to</strong></span> so the paddle feels right on the stage.</p>",
+      },
+      {
+        id: "pandle-m4",
+        title: "Sprite 2: ball from the catalog",
+        points: 100,
+        durationMins: 5,
+        steps: 4,
+        detail:
+          "<p><strong>Add a second sprite</strong> from the <strong>sprite catalog</strong>. Pick something round (a ball-like costume). Rename it <strong>Ball</strong>.</p><p>Use <span style='color:#9966FF'><strong>set size to</strong></span> if the ball is too big or too small.</p>",
+      },
+      {
+        id: "pandle-m5",
+        title: "Paddle: move with arrow keys",
+        points: 110,
+        durationMins: 6,
+        steps: 4,
+        detail:
+          "<p>On the <strong>Paddle</strong> sprite, drag two hats from <span style='color:#FFBF00'><strong>Events</strong></span>: <strong>when left arrow key pressed</strong> and <strong>when right arrow key pressed</strong>.</p><p>Under each, add <span style='color:#59C059'><strong>change x by</strong></span>: use a <span style='color:#59C059'><strong>small negative</strong></span> number for left and a <span style='color:#59C059'><strong>small positive</strong></span> number for right. Tap <strong>Run</strong>, then hold the keys to slide.</p>",
+      },
+      {
+        id: "pandle-m6",
+        title: "Ball: bounce around the stage",
+        points: 120,
+        durationMins: 7,
+        steps: 5,
+        detail:
+          "<p>On the <strong>Ball</strong> sprite: <span style='color:#FFBF00'><strong>When Run clicked</strong></span> → <span style='color:#59C059'><strong>go to x: y:</strong></span> (start near the top center using <span style='color:#59C059'><strong>number</strong></span> blocks from <strong>Math</strong>).</p><p>Add <span style='color:#FFAB19'><strong>forever</strong></span>. Inside: <span style='color:#59C059'><strong>move forward</strong></span> (or small <strong>change x / change y</strong>) and <span style='color:#59C059'><strong>if on edge, bounce</strong></span> so the ball stays in the court.</p>",
+      },
+      {
+        id: "pandle-m7",
+        title: "Score when the ball hits the paddle",
+        points: 130,
+        durationMins: 7,
+        steps: 5,
+        detail:
+          "<p>In <span style='color:#FF8C1A'><strong>Variables</strong></span>, make a variable named <strong>Score</strong>. On <strong>Run</strong>, <strong>set Score to 0</strong>.</p><p>Inside the ball loop, add <span style='color:#4C97FF'><strong>if</strong></span> with <span style='color:#5CB1D6'><strong>touching Paddle?</strong></span>. In the <strong>then</strong> branch: bounce the ball up (<span style='color:#59C059'><strong>change y by</strong></span> or <strong>point in direction</strong> + <strong>move forward</strong>) and <span style='color:#FF8C1A'><strong>change Score by 1</strong></span>.</p>",
+      },
+      {
+        id: "pandle-m8",
+        title: "Balls left (lives)",
+        points: 120,
+        durationMins: 6,
+        steps: 4,
+        detail:
+          "<p>Create <span style='color:#FF8C1A'><strong>Balls left</strong></span> in <strong>Variables</strong>. On <strong>Run</strong>, set it to <span style='color:#59C059'><strong>3</strong></span> (or another number you choose).</p><p>When the ball misses (for example it passes the paddle line—use <span style='color:#4C97FF'><strong>if</strong></span> with a <span style='color:#59C059'><strong>compare</strong></span> on y-position), <span style='color:#FF8C1A'><strong>change Balls left by -1</strong></span> and reset the ball position with <span style='color:#59C059'><strong>go to x: y:</strong></span>.</p>",
+      },
+      {
+        id: "pandle-m9",
+        title: "Game Over message",
+        points: 140,
+        durationMins: 6,
+        steps: 5,
+        detail:
+          "<p>Still with <span style='color:#4C97FF'><strong>if</strong></span>: when <span style='color:#FF8C1A'><strong>Balls left</strong></span> equals <span style='color:#59C059'><strong>0</strong></span>, show <span style='color:#9966FF'><strong>say</strong></span> for a few seconds. Use <span style='color:#9966FF'><strong>join</strong></span> (<strong>Text</strong>) to combine words like <strong>Game Over! Score:</strong> with the <span style='color:#FF8C1A'><strong>Score</strong></span> block.</p><p>Then add <span style='color:#FFAB19'><strong>stop all</strong></span> so loops end.</p>",
+      },
+      {
+        id: "pandle-m10",
+        title: "Save and play-test",
+        points: 100,
+        durationMins: 4,
+        steps: 3,
+        detail:
+          "<p><strong>Save</strong> your named adventure. Play-test: score should go up on hits, balls left should count down, and Game Over should appear at zero.</p>",
+      },
+    ],
+  },
+  {
     id: "lvl1-art-splash",
     title: "Art splash",
     summary:
@@ -483,6 +598,7 @@ export function lessonsByLevel(): Map<number, LessonCatalogEntry[]> {
 const lessonById = new Map(LESSONS.map((l) => [l.id, l]));
 
 export function getLessonById(id: string): LessonCatalogEntry | undefined {
+  if (REMOVED_PLATFORM_LESSON_IDS.has(id)) return undefined;
   return lessonById.get(id);
 }
 

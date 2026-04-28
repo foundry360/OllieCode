@@ -49,6 +49,8 @@ import { playOllieSound, stopOllieSounds } from "@/lib/sounds/ollieSounds";
 export type StageActorPaint = {
   id: string;
   costumeId: OllieSpriteCostumeId;
+  /** Omitted or true: draw on stage; false: hidden until a script sets visibility. */
+  visible?: boolean;
   /** Supabase (or other) URL for user-painted costume bitmap. */
   paintedCostumeUrl?: string;
   pointTowardsAimOrigin?: PointTowardsAimOrigin;
@@ -1027,7 +1029,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         const existing = map.get(a.id);
         if (existing) {
           existing.sizePct = existing.sizePct ?? 100;
-          existing.visible = existing.visible !== false;
+          existing.visible = a.visible !== false;
           existing.paintedCostumeSrc = nextPainted;
           /**
            * `runningRef` is set true synchronously at the start of `runProjectPlans`, before any
@@ -1065,7 +1067,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             paintedCostumeSrc: nextPainted,
             sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
             sizePct: 100,
-            visible: true,
+            visible: a.visible !== false,
             pointTowardsAimOrigin: a.pointTowardsAimOrigin,
             pointTowardsForwardPx: a.pointTowardsForwardPx,
             pointTowardsLateralPx: a.pointTowardsLateralPx,
@@ -1111,7 +1113,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
           s.sheetFrame = defaultSheetFrameForCostumeId(a.costumeId);
           s.sizePct = 100;
-          s.visible = true;
+          s.visible = a.visible !== false;
           s.pointTowardsAimOrigin = a.pointTowardsAimOrigin;
           s.pointTowardsForwardPx = a.pointTowardsForwardPx;
           s.pointTowardsLateralPx = a.pointTowardsLateralPx;
@@ -1808,7 +1810,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 paintedCostumeSrc: a.paintedCostumeUrl?.trim() || undefined,
                 sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
                 sizePct: 100,
-                visible: true,
+                visible: a.visible !== false,
                 pointTowardsAimOrigin: a.pointTowardsAimOrigin,
                 pointTowardsForwardPx: a.pointTowardsForwardPx,
                 pointTowardsLateralPx: a.pointTowardsLateralPx,

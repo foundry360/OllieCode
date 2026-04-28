@@ -28,6 +28,7 @@ import { EducatorInquiryBadge } from "@/components/admin/EducatorInquiryBadge";
 import { isContactInboxMissing } from "@/lib/admin/contactInbox";
 import { isEducatorsInquiryMessage } from "@/lib/contact/educatorsInquiry";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
+import { REMOVED_PLATFORM_LESSON_IDS } from "@/lib/lms/lessonsCatalog";
 import { getStripe } from "@/lib/stripe/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
 
@@ -248,7 +249,9 @@ export default async function AdminDashboardPage() {
   }
 
   const recentLessonsRaw = (recentLessonsRes.data ?? []) as RecentLessonRow[];
-  const recentLessons = recentLessonsRaw.slice(0, 5);
+  const recentLessons = recentLessonsRaw
+    .filter((r) => !REMOVED_PLATFORM_LESSON_IDS.has(r.id))
+    .slice(0, 5);
 
   const recentLearnersRaw = (recentLearnersRes.data ?? []) as RecentLearnerRow[];
   const recentLearners = recentLearnersRaw.slice(0, 5);

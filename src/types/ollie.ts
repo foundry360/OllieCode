@@ -49,6 +49,8 @@ export type StageActor = {
    */
   stageXPct?: number;
   stageYPct?: number;
+  /** When false, the stage does not draw this actor until scripts or the learner show it. */
+  visible?: boolean;
 };
 
 /** Legacy saves used `name` for sprite label; map to {@link StageActor.label}. */
@@ -64,6 +66,7 @@ export function normalizeStageActor(
     pointTowardsLateralPct?: number;
     stageXPct?: number;
     stageYPct?: number;
+    visible?: boolean;
   },
 ): StageActor {
   const label = raw.label ?? raw.name ?? "Sprite";
@@ -100,6 +103,7 @@ export function normalizeStageActor(
       : {}),
     ...(typeof raw.stageXPct === "number" ? { stageXPct: raw.stageXPct } : {}),
     ...(typeof raw.stageYPct === "number" ? { stageYPct: raw.stageYPct } : {}),
+    ...(raw.visible === false ? { visible: false as const } : {}),
   };
 }
 

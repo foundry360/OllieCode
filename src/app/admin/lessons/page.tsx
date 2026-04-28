@@ -4,7 +4,11 @@ import {
   type LessonAdminRow,
 } from "@/app/admin/lessons/admin-lessons-view";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
-import { lessonHeroImageUrl, type LessonCatalogEntry } from "@/lib/lms/lessonsCatalog";
+import {
+  lessonHeroImageUrl,
+  REMOVED_PLATFORM_LESSON_IDS,
+  type LessonCatalogEntry,
+} from "@/lib/lms/lessonsCatalog";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 type Row = {
@@ -21,7 +25,9 @@ export default async function AdminLessonsPage() {
     const { data } = await supabase
       .from("lms_lessons")
       .select("id, published, updated_at, payload");
-    rows = (data ?? []) as Row[];
+    rows = ((data ?? []) as Row[]).filter(
+      (r) => !REMOVED_PLATFORM_LESSON_IDS.has(r.id),
+    );
   }
 
   type Sortable = { row: LessonAdminRow; ts: number };

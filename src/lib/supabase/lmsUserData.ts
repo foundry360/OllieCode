@@ -3,6 +3,7 @@ import { authEmailLocalPart } from "@/lib/auth/authEmailDomain";
 import {
   lessonDetailHref,
   levelNameForSkillLevel,
+  REMOVED_PLATFORM_LESSON_IDS,
 } from "@/lib/lms/lessonsCatalog";
 import { getMergedPublishedLessons } from "@/lib/lms/publishedLessons";
 import { getAvatarBySlug } from "@/lib/profiles/avatarAssets";
@@ -176,7 +177,9 @@ export async function fetchFavoriteLessonIds(
 
   if (error || !data?.length) return new Set();
   return new Set(
-    (data as { lesson_id: string }[]).map((r) => r.lesson_id),
+    (data as { lesson_id: string }[])
+      .map((r) => r.lesson_id)
+      .filter((id) => !REMOVED_PLATFORM_LESSON_IDS.has(id)),
   );
 }
 
@@ -195,10 +198,12 @@ export async function fetchProfileFavoriteLessons(
   const merged = await getMergedPublishedLessons();
   const byId = new Map(merged.map((l) => [l.id, l]));
 
-  return (data as { lesson_id: string; created_at: string }[]).map((row) => ({
-    lessonId: row.lesson_id,
-    title: byId.get(row.lesson_id)?.title ?? row.lesson_id,
-    href: lessonDetailHref(row.lesson_id),
-    createdAt: row.created_at,
-  }));
+  return (data as { lesson_id: string; created_at: string }[])
+    .filter((row) => !REMOVED_PLATFORM_LESSON_IDS.has(row.lesson_id))
+    .map((row) => ({
+      lessonId: row.lesson_id,
+      title: byId.get(row.lesson_id)?.title ?? row.lesson_id,
+      href: lessonDetailHref(row.lesson_id),
+      createdAt: row.created_at,
+    }));
 }

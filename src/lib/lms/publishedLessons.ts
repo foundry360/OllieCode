@@ -1,6 +1,7 @@
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import {
   normalizeWorkspaceHrefWithLesson,
+  REMOVED_PLATFORM_LESSON_IDS,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
 import { parseLessonPayload } from "@/lib/lms/lessonPayload";
@@ -44,6 +45,7 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
   const out: LessonCatalogEntry[] = [];
   const seenIds = new Set<string>();
   for (const row of data) {
+    if (REMOVED_PLATFORM_LESSON_IDS.has(row.id)) continue;
     if (seenIds.has(row.id)) continue;
     seenIds.add(row.id);
     const lesson = lessonFromPublishedRow(row);
@@ -55,6 +57,7 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
 export async function getLessonByIdMerged(
   lessonId: string,
 ): Promise<LessonCatalogEntry | undefined> {
+  if (REMOVED_PLATFORM_LESSON_IDS.has(lessonId)) return undefined;
   const supabase = await createSupabaseServerClient();
   if (!supabase) return undefined;
 
@@ -104,6 +107,7 @@ export async function getDiscoverMoreLessons(
 export async function getLessonPayloadForAdminEdit(
   lessonId: string,
 ): Promise<LessonCatalogEntry | undefined> {
+  if (REMOVED_PLATFORM_LESSON_IDS.has(lessonId)) return undefined;
   const supabase = await createSupabaseServerClient();
   if (!supabase) return undefined;
   const { data } = await supabase

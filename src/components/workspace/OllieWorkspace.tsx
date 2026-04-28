@@ -4,6 +4,7 @@ import {
   Fragment,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -51,6 +52,10 @@ import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { setTouchingSpriteDropdownActors } from "@/lib/blockly/spriteTouchingDropdownRegistry";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
 import { EMPTY_START_WORKSPACE_XML } from "@/lib/workspace/emptyStartWorkspaceXml";
+import {
+  HUB_LESSON_BLANK_SCENE_ID,
+  hubLessonOpensBlankCanvas,
+} from "@/lib/workspace/hubLessonBlankCanvas";
 import {
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
@@ -171,7 +176,11 @@ const CREATE_SPRITE_PAINT_DEFAULT_NAME = "Untitled Sprite";
 
 const ADVENTURE_STAGE_SIZE_STORAGE_KEY = "ollie_workspace_adventure_stage";
 
+/** Pass to {@link resetWorkspaceToStarter} so “new custom adventure” ignores the current URL mission. */
+const RESET_MISSION_DEFAULT_ROBOT = "default-robot" as const;
+
 type AdventureStageSizeMode = "default" | "compact";
+type ResetMissionHint = MissionDefinition | typeof RESET_MISSION_DEFAULT_ROBOT;
 
 function adventureCardShellClass(
   lessonChromeCompact: boolean,
@@ -223,6 +232,11 @@ export function OllieWorkspace() {
         : missionIdParam && isCustomMissionId(missionIdParam)
           ? WORKSPACE_NO_LESSON_QUERY
           : DEFAULT_WORKSPACE_LESSON_ID;
+  /** Hub lessons (except Getting Started) open on an empty hat + hidden placeholder sprite + solid scene. */
+  const blankLessonCanvas = useMemo(
+    () => hubLessonOpensBlankCanvas(rawLessonId),
+    [rawLessonId],
+  );
   const activeMission = missionIdParam
     ? getMissionById(missionIdParam)
     : undefined;
@@ -302,16 +316,28 @@ export function OllieWorkspace() {
   const [blocklyInjectKey, setBlocklyInjectKey] = useState(0);
   const [blocklyMounted, setBlocklyMounted] = useState(false);
   const [initError, setInitError] = useState<string | null>(null);
-  const [stageSceneLayers, setStageSceneLayers] = useState<OllieSceneId[]>([
-    DEFAULT_SCENE_ID,
-  ]);
-  const [actors, setActors] = useState<StageActor[]>(() =>
-    makeDefaultStageActors(
-      (missionIdParam ? getMissionById(missionIdParam) : undefined) ??
-        MISSIONS[0],
-    ),
+  const [stageSceneLayers, setStageSceneLayers] = useState<OllieSceneId[]>(
+    () =>
+      hubLessonOpensBlankCanvas(rawLessonId)
+        ? [HUB_LESSON_BLANK_SCENE_ID]
+        : [DEFAULT_SCENE_ID],
   );
-  const [activeActorId, setActiveActorId] = useState<string>(ACTOR_ROBOT_ID);
+  const [actors, setActors] = useState<StageActor[]>(() =>
+    hubLessonOpensBlankCanvas(rawLessonId)
+      ? [
+          {
+            id: ACTOR_ROBOT_ID,
+            label: "Sprite",
+            costumeId: DEFAULT_COSTUME_ID,
+            visible: false,
+          },
+        ]
+      : makeDefaultStageActors(
+          (missionIdParam ? getMissionById(missionIdParam) : undefined) ??
+            MISSIONS[0],
+        ),
+  );
+  const [activeActorId, setActiveActorId] = useState(() => ACTOR_ROBOT_ID);
   const activeActorIdRef = useRef(activeActorId);
   activeActorIdRef.current = activeActorId;
 
@@ -792,7 +818,10 @@ export function OllieWorkspace() {
         removeViewportClamp = installClampBlocksToWorkspaceViewport(ws);
         setBlocklyMounted(true);
 
-        const xml = utils.xml.textToDom(DEFAULT_WORKSPACE_XML);
+        const starterXml = blankLessonCanvas
+          ? EMPTY_START_WORKSPACE_XML
+          : DEFAULT_WORKSPACE_XML;
+        const xml = utils.xml.textToDom(starterXml);
         Xml.clearWorkspaceAndLoadFromXml(xml, ws);
         spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
           serialization.workspaces.save(ws) as Record<string, unknown>;
@@ -812,7 +841,31 @@ export function OllieWorkspace() {
       workspaceRef.current?.dispose();
       workspaceRef.current = null;
     };
-  }, [blocklyInjectKey]);
+  }, [blocklyInjectKey, missionIdParam, blankLessonCanvas]);
+
+  const prevBlankLessonCanvasRef = useRef(false);
+  useLayoutEffect(() => {
+    if (blankLessonCanvas) {
+      setStageSceneLayers([HUB_LESSON_BLANK_SCENE_ID]);
+      setActors([
+        {
+          id: ACTOR_ROBOT_ID,
+          label: "Sprite",
+          costumeId: DEFAULT_COSTUME_ID,
+          visible: false,
+        },
+      ]);
+      setActiveActorId(ACTOR_ROBOT_ID);
+    } else if (prevBlankLessonCanvasRef.current && !blankLessonCanvas) {
+      const mission = missionIdParam
+        ? getMissionById(missionIdParam)
+        : undefined;
+      setStageSceneLayers([DEFAULT_SCENE_ID]);
+      setActors(makeDefaultStageActors(mission ?? MISSIONS[0]));
+      setActiveActorId(ACTOR_ROBOT_ID);
+    }
+    prevBlankLessonCanvasRef.current = blankLessonCanvas;
+  }, [blankLessonCanvas, missionIdParam]);
 
   /** Blockly’s SVG must be resized when the flex host changes size; otherwise toolbox/blocks can render at 0×0. */
   useEffect(() => {
@@ -1234,12 +1287,45 @@ export function OllieWorkspace() {
   }, [actors, activeActorId, activeMission]);
 
   const resetWorkspaceToStarter = useCallback(
-    (kind: "welcome" | "minimal" = "welcome") => {
+    (
+      kind: "welcome" | "minimal" = "welcome",
+      missionHint?: ResetMissionHint,
+    ) => {
       const ws = workspaceRef.current;
       if (!ws) return;
-      setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
-      setActiveActorId(ACTOR_ROBOT_ID);
+      if (blankLessonCanvas) {
+        setStageSceneLayers([HUB_LESSON_BLANK_SCENE_ID]);
+        setActors([
+          {
+            id: ACTOR_ROBOT_ID,
+            label: "Sprite",
+            costumeId: DEFAULT_COSTUME_ID,
+            visible: false,
+          },
+        ]);
+        setActiveActorId(ACTOR_ROBOT_ID);
+        const dom = utils.xml.textToDom(EMPTY_START_WORKSPACE_XML);
+        Events.disable();
+        ws.clear();
+        Xml.clearWorkspaceAndLoadFromXml(dom, ws);
+        Events.enable();
+        spriteWorkspacesRef.current = {
+          [ACTOR_ROBOT_ID]: serialization.workspaces.save(ws) as Record<
+            string,
+            unknown
+          >,
+        };
+        p5Ref.current?.resetSprite();
+        return;
+      }
+      const mission: MissionDefinition | undefined =
+        missionHint === RESET_MISSION_DEFAULT_ROBOT
+          ? undefined
+          : (missionHint ?? activeMission ?? MISSIONS[0]);
+      setActors(makeDefaultStageActors(mission));
       setStageSceneLayers([DEFAULT_SCENE_ID]);
+
+      setActiveActorId(ACTOR_ROBOT_ID);
       const xmlStr =
         kind === "welcome" ? DEFAULT_WORKSPACE_XML : EMPTY_START_WORKSPACE_XML;
       const xml = utils.xml.textToDom(xmlStr);
@@ -1255,7 +1341,7 @@ export function OllieWorkspace() {
       };
       p5Ref.current?.resetSprite();
     },
-    [activeMission],
+    [activeMission, blankLessonCanvas],
   );
 
   const handleRefresh = useCallback(() => {
@@ -1678,8 +1764,8 @@ export function OllieWorkspace() {
         setActors(hydrated);
       })();
     } else {
-      setActors(makeDefaultStageActors(activeMission ?? MISSIONS[0]));
-      setActiveActorId(ACTOR_ROBOT_ID);
+      const mission = activeMission ?? MISSIONS[0];
+      setActors(makeDefaultStageActors(mission));
       setStageSceneLayers(
         normalizeSceneLayerIdsFromPayload(
           payload.sceneLayerIds,
@@ -1698,6 +1784,7 @@ export function OllieWorkspace() {
         return;
       }
       Events.enable();
+      setActiveActorId(ACTOR_ROBOT_ID);
       spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
     }
@@ -1723,7 +1810,7 @@ export function OllieWorkspace() {
         } = await sb.auth.getUser();
         if (user) {
           if (isCatalogTemplateMissionId(missionId)) {
-            resetWorkspaceToStarter();
+            resetWorkspaceToStarter("welcome", meta);
             missionRewardShownRef.current = false;
             requestAnimationFrame(() => {
               const w = workspaceRef.current;
@@ -1751,7 +1838,7 @@ export function OllieWorkspace() {
             setTimeout(() => setStatus(""), 2000);
             return;
           }
-          resetWorkspaceToStarter();
+          resetWorkspaceToStarter("welcome", meta);
           missionRewardShownRef.current = false;
           requestAnimationFrame(() => {
             const w = workspaceRef.current;
@@ -1778,7 +1865,7 @@ export function OllieWorkspace() {
         return;
       }
 
-      resetWorkspaceToStarter();
+      resetWorkspaceToStarter("welcome", meta);
       missionRewardShownRef.current = false;
       requestAnimationFrame(() => {
         const w = workspaceRef.current;
@@ -1865,7 +1952,7 @@ export function OllieWorkspace() {
     if (!ws) return;
     const newId = createCustomMissionId();
     skipNextMissionUrlEffectRef.current = true;
-    resetWorkspaceToStarter("minimal");
+    resetWorkspaceToStarter("minimal", RESET_MISSION_DEFAULT_ROBOT);
     missionRewardShownRef.current = false;
     requestAnimationFrame(() => {
       const w = workspaceRef.current;
@@ -2619,6 +2706,7 @@ export function OllieWorkspace() {
                 actors={actors.map((a) => ({
                   id: a.id,
                   costumeId: a.costumeId,
+                  visible: a.visible !== false,
                   paintedCostumeUrl: a.paintedCostumeUrl,
                   pointTowardsAimOrigin: a.pointTowardsAimOrigin,
                   pointTowardsForwardPx: a.pointTowardsForwardPx,
@@ -2636,6 +2724,7 @@ export function OllieWorkspace() {
                         ? {
                             ...a,
                             costumeId,
+                            visible: true,
                             ...(paintedUrl !== undefined
                               ? {
                                   paintedCostumeUrl: paintedUrl,
