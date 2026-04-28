@@ -165,28 +165,32 @@ export function ModuleLessonStepper({
       </div>
 
       <div className="shrink-0 bg-white pt-2">
-        <div className="flex justify-center gap-2">
+        <div className="flex h-10 w-full items-stretch overflow-hidden rounded-full border border-[#d1d5db] bg-white shadow-sm">
           <button
             type="button"
             onClick={goBack}
             disabled={index === 0}
             aria-label="Previous module"
-            className="inline-flex size-10 items-center justify-center rounded-full bg-white text-[#4b5563] shadow-sm transition hover:bg-[#f9fafb] disabled:cursor-not-allowed disabled:opacity-40"
+            className="inline-flex flex-1 items-center justify-start gap-1.5 px-3 text-sm font-semibold text-[#374151] transition hover:bg-[#f9fafb] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            <ChevronLeft className="size-5" strokeWidth={2.5} aria-hidden />
+            <ChevronLeft className="size-4" strokeWidth={2.5} aria-hidden />
+            <span>Back</span>
           </button>
+          <p
+            className="flex items-center border-x border-[#e5e7eb] px-3 text-xs font-semibold tabular-nums text-[#6b7280]"
+            aria-live="polite"
+          >
+            {index + 1} / {last + 1}
+          </p>
           <button
             type="button"
             onClick={goNext}
             disabled={index >= last}
             aria-label="Next module"
-            className={
-              index >= last
-                ? "inline-flex size-10 cursor-not-allowed items-center justify-center rounded-full bg-white text-[#9ca3af] shadow-sm"
-                : "inline-flex size-10 items-center justify-center rounded-full bg-gradient-to-b from-[#a3e635] to-[#84cc16] text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635]"
-            }
+            className="inline-flex flex-1 items-center justify-end gap-1.5 px-3 text-sm font-bold text-[#1a2e05] transition hover:bg-[#f3fbe1] focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#84c126] disabled:cursor-not-allowed disabled:text-[#9ca3af] disabled:hover:bg-transparent"
           >
-            <ChevronRight className="size-5" strokeWidth={2.5} aria-hidden />
+            <span>Next</span>
+            <ChevronRight className="size-4" strokeWidth={2.5} aria-hidden />
           </button>
         </div>
       </div>

@@ -1,4 +1,4 @@
-/** Default blocks for the First Move / welcome starter — two Run stacks (costume loop + repeating greeting). */
+/** Default blocks for the First Move / welcome starter — two Run stacks (costume animation + greeting). */
 export const DEFAULT_WORKSPACE_XML = `<?xml version="1.0" encoding="UTF-8"?>
 <xml xmlns="https://developers.google.com/blockly/xml">
   <block type="ollie_start" x="48" y="48">
@@ -8,7 +8,7 @@ export const DEFAULT_WORKSPACE_XML = `<?xml version="1.0" encoding="UTF-8"?>
           <block type="ollie_next_costume">
             <next>
               <block type="ollie_wait">
-                <field name="SECS">0.1</field>
+                <field name="SECS">0.12</field>
               </block>
             </next>
           </block>

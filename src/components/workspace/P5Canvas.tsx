@@ -603,6 +603,30 @@ function pixelToScratchStage(
   };
 }
 
+/**
+ * After the canvas size changes, snap each actor to the correct pixels so Scratch coords (or
+ * default slots) match the new stage — fixes sprites stuck off-center when setup ran before
+ * the flex layout had real dimensions.
+ */
+function repositionEditorSpritesForCanvasSize(
+  cw: number,
+  ch: number,
+  actorsList: StageActorPaint[],
+  map: Map<string, Sprite>,
+) {
+  actorsList.forEach((a, i) => {
+    const s = map.get(a.id);
+    if (!s) return;
+    const pos =
+      typeof a.stageXPct === "number" &&
+      typeof a.stageYPct === "number"
+        ? scratchStageToPixel(a.stageXPct, a.stageYPct, cw, ch)
+        : layoutSlot(i, actorsList.length, cw, ch);
+    s.x = pos.x;
+    s.y = pos.y;
+  });
+}
+
 function drawSceneLayer(
   p: p5Types,
   sceneId: OllieSceneId,
@@ -774,6 +798,12 @@ function drawSpriteForCostume(
     getCostumeById(sprite.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const img = images.get(def.src);
   if (img && img.width > 0) {
+    if (def.src.endsWith(".gif")) {
+      const w = def.width;
+      const h = w * (img.height / img.width);
+      p.image(img, 0, 0, w, h);
+      return;
+    }
     const cols = def.spriteSheet?.columns ?? 1;
     const rows = def.spriteSheet?.rows ?? 1;
     const cellW = Math.floor(img.width / cols);
@@ -1934,11 +1964,24 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           p.windowResized = () => {
             if (!containerRef.current) return;
             const el = containerRef.current;
-            p.resizeCanvas(
-              Math.min(CANVAS_MAX_PX, Math.max(1, el.clientWidth)),
-              Math.min(CANVAS_MAX_PX, Math.max(1, el.clientHeight)),
+            const w = Math.min(
+              CANVAS_MAX_PX,
+              Math.max(1, el.clientWidth),
             );
+            const h = Math.min(
+              CANVAS_MAX_PX,
+              Math.max(1, el.clientHeight),
+            );
+            p.resizeCanvas(w, h);
             p.pixelDensity(1);
+            if (!runningRef.current) {
+              repositionEditorSpritesForCanvasSize(
+                w,
+                h,
+                actorsRef.current,
+                spritesByIdRef.current,
+              );
+            }
           };
 
           p.mousePressed = () => {
@@ -2020,6 +2063,14 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             if (w === p.width && h === p.height) return;
             p.resizeCanvas(w, h);
             p.pixelDensity(1);
+            if (!runningRef.current) {
+              repositionEditorSpritesForCanvasSize(
+                w,
+                h,
+                actorsRef.current,
+                spritesByIdRef.current,
+              );
+            }
           });
         });
         resizeObserver.observe(el);

@@ -970,8 +970,9 @@ export const OLLIE_SPRITE_COSTUMES = [
     label: "Welcome bot",
     kind: "image" as const,
     src: "/images/sprites/welcomebot.png",
-    width: 200,
-    spriteSheet: { columns: 5, rows: 5 },
+    width: 180,
+    /** 8-frame waving sprite sheet. */
+    spriteSheet: { columns: 8, rows: 1 },
     spriteRotationOffsetDeg: -90,
     spriteCategories: ["robots_tech", "characters"] as const,
   },

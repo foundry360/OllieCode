@@ -233,7 +233,15 @@ function makeDefaultStageActors(
   mission: MissionDefinition | undefined,
 ): StageActor[] {
   const costume = mission?.starterCostumeId ?? DEFAULT_COSTUME_ID;
-  return [{ id: ACTOR_ROBOT_ID, label: "Ollie", costumeId: costume }];
+  return [
+    {
+      id: ACTOR_ROBOT_ID,
+      label: "Ollie",
+      costumeId: costume,
+      stageXPct: 0,
+      stageYPct: 0,
+    },
+  ];
 }
 
 /** Generic reset when mission is unknown — standard Ollie Bot. */

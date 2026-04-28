@@ -19,6 +19,8 @@ export function WorkspaceHeaderNavLinks() {
     >
       <Link
         href="/learn"
+        target="_blank"
+        rel="noopener noreferrer"
         className={linkClass(path.startsWith("/learn"))}
         aria-current={path.startsWith("/learn") ? "page" : undefined}
       >
