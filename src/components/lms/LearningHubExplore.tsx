@@ -286,9 +286,6 @@ export function LearningHubExplore({
             >
               Popular lessons
             </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              Start with these fun lessons, then explore even more below!
-            </p>
             <PopularLessonsCarousel lessons={featured} />
           </section>
 
@@ -688,26 +685,16 @@ function FeaturedLessonCard({ lesson }: { lesson: LessonCatalogEntry }) {
           />
         )}
       </div>
-      <div className="flex min-h-0 flex-1 flex-col border-t border-slate-100">
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden p-4 sm:p-5">
-          <h3 className="min-w-0 font-display text-lg font-bold capitalize leading-snug">
-            <Link
-              href={lessonDetailHref(lesson.id)}
-              title={lesson.title}
-              className="block truncate text-[#84c126] no-underline hover:text-[#6b9e1f] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-            >
-              {lesson.title}
-            </Link>
-          </h3>
-          <p className="mt-2 min-h-[2lh] line-clamp-2 text-sm leading-relaxed text-slate-600 sm:mt-3">
-            {lesson.summary}
-          </p>
-        </div>
-        <div className="shrink-0 bg-[#84c126] px-4 py-2.5 sm:px-5 sm:py-3">
-          <p className="text-base font-bold text-white">
-            Level {lesson.skillLevel} · {lesson.topic}
-          </p>
-        </div>
+      <div className="border-t border-slate-100 p-3 sm:p-4">
+        <h3 className="min-w-0 font-display text-sm font-semibold capitalize leading-snug sm:text-base">
+          <Link
+            href={lessonDetailHref(lesson.id)}
+            title={lesson.title}
+            className="block truncate text-slate-900 no-underline hover:text-slate-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2"
+          >
+            {lesson.title}
+          </Link>
+        </h3>
       </div>
     </article>
   );
