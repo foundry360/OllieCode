@@ -1,4 +1,5 @@
-import type { OllieSceneId } from "@/lib/canvas/stageAssets";
+import type { CatalogSceneId, OllieSceneId } from "@/lib/canvas/stageAssets";
+import { isUserSceneLayerId } from "@/lib/canvas/userSceneIds";
 
 /** Backdrop library filters — each scene id maps to one or more categories. */
 export const SCENE_CATEGORY_IDS = [
@@ -10,6 +11,7 @@ export const SCENE_CATEGORY_IDS = [
   "indoor",
   "sports",
   "stage_events",
+  "my_scenes",
 ] as const;
 export type SceneCategoryId = (typeof SCENE_CATEGORY_IDS)[number];
 
@@ -22,10 +24,24 @@ export const SCENE_CATEGORY_LABELS: Record<SceneCategoryId, string> = {
   indoor: "Indoor & rooms",
   sports: "Sports & play",
   stage_events: "Stage & events",
+  my_scenes: "My Scenes",
 };
 
 export const SCENE_CATEGORIES_BY_ID = {
   "white_dots": ["solids"] as const,
+  "color_light_blue": ["solids"] as const,
+  "color_lime_green": ["solids"] as const,
+  "color_blue": ["solids"] as const,
+  "color_gray": ["solids"] as const,
+  "color_black": ["solids"] as const,
+  "color_lavender": ["solids"] as const,
+  "color_light_gray": ["solids"] as const,
+  "color_yellow": ["solids"] as const,
+  "color_cyan": ["solids"] as const,
+  "color_red": ["solids"] as const,
+  "color_green": ["solids"] as const,
+  "color_violet": ["solids"] as const,
+  "color_orange": ["solids"] as const,
   "sky": ["solids"] as const,
   "mint": ["solids"] as const,
   "park": ["nature"] as const,
@@ -126,13 +142,17 @@ export const SCENE_CATEGORIES_BY_ID = {
   "faithsymbolpattern": ["stage_events"] as const,
   "templemeditation": ["indoor", "stage_events"] as const,
   "mosquefacade": ["urban"] as const,
-} as const satisfies Record<OllieSceneId, readonly SceneCategoryId[]>;
+} as const satisfies Record<CatalogSceneId, readonly SceneCategoryId[]>;
 
 export function sceneMatchesCategory(
   sceneId: OllieSceneId,
   filter: SceneCategoryId | "all",
 ): boolean {
   if (filter === "all") return true;
-  const cats = SCENE_CATEGORIES_BY_ID[sceneId];
+  if (filter === "my_scenes") return isUserSceneLayerId(sceneId);
+  if (isUserSceneLayerId(sceneId)) return false;
+  const cats =
+    SCENE_CATEGORIES_BY_ID[sceneId as keyof typeof SCENE_CATEGORIES_BY_ID];
+  if (!cats) return false;
   return (cats as readonly SceneCategoryId[]).includes(filter);
 }

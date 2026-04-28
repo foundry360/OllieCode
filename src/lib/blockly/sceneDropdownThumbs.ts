@@ -51,3 +51,18 @@ export function getSceneDropdownThumbSrc(
   if (s?.kind === "solid") return solidSceneThumbDataUrl(s.rgb);
   return fallbackSrc;
 }
+
+/** Register a square thumb for a My Scenes backdrop (signed URL). */
+export async function registerUserSceneDropdownThumb(
+  sceneId: string,
+  imageUrl: string,
+): Promise<void> {
+  if (!sceneId.trim() || !imageUrl.trim()) return;
+  try {
+    const dataUrl = await imageUrlToContainThumbDataUrl(imageUrl);
+    if (dataUrl) sceneThumbById.set(sceneId, dataUrl);
+    else sceneThumbById.set(sceneId, imageUrl);
+  } catch {
+    sceneThumbById.set(sceneId, imageUrl);
+  }
+}

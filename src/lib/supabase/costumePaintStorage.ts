@@ -59,6 +59,39 @@ export function inferProjectsBucketObjectPathFromUrl(
   return null;
 }
 
+/** User-uploaded backdrop PNGs: `{userId}/user-scenes/{sceneUuid}.png` */
+export async function uploadUserScenePng(
+  supabase: SupabaseClient,
+  userId: string,
+  sceneUuid: string,
+  pngBlob: Blob,
+): Promise<{
+  publicUrl: string | null;
+  storagePath: string | null;
+  error: Error | null;
+}> {
+  const path = `${userId}/user-scenes/${sceneUuid}.png`;
+  const { error } = await supabase.storage.from(BUCKET).upload(path, pngBlob, {
+    contentType: "image/png",
+    upsert: false,
+  });
+  if (error) {
+    return { publicUrl: null, storagePath: null, error: new Error(error.message) };
+  }
+
+  const signedUrl = await mintProjectsObjectSignedUrl(supabase, path);
+  if (signedUrl) {
+    return { publicUrl: signedUrl, storagePath: path, error: null };
+  }
+
+  const { data: pub } = supabase.storage.from(BUCKET).getPublicUrl(path);
+  return {
+    publicUrl: pub.publicUrl,
+    storagePath: path,
+    error: null,
+  };
+}
+
 export async function uploadPaintedCostumePng(
   supabase: SupabaseClient,
   userId: string,

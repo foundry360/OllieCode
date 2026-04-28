@@ -3,6 +3,8 @@
  * `public/images/backdrops/` and `public/images/sprites/`, then register here.
  */
 
+import { isUserSceneLayerId } from "@/lib/canvas/userSceneIds";
+
 /** Pixels within `threshold` of `rgb` (per channel) become transparent after load. */
 export type CostumeChromaKey = {
   rgb: readonly [number, number, number];
@@ -54,6 +56,110 @@ export const OLLIE_SCENES = [
     kind: "solid" as const,
     rgb: [255, 255, 255] as const,
     grid: true,
+  },
+  {
+    id: "color_light_blue",
+    label: "Light blue",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/light_blue.png",
+    grid: false,
+    fallbackRgb: [51, 177, 255] as const,
+  },
+  {
+    id: "color_lime_green",
+    label: "Lime green",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/lime_green.png",
+    grid: false,
+    fallbackRgb: [118, 215, 82] as const,
+  },
+  {
+    id: "color_blue",
+    label: "Blue",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/blue.png",
+    grid: false,
+    fallbackRgb: [0, 80, 181] as const,
+  },
+  {
+    id: "color_gray",
+    label: "Gray",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/gray.png",
+    grid: false,
+    fallbackRgb: [120, 120, 125] as const,
+  },
+  {
+    id: "color_black",
+    label: "Black",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/black.png",
+    grid: false,
+    fallbackRgb: [0, 0, 0] as const,
+  },
+  {
+    id: "color_lavender",
+    label: "Lavender",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/lavender.png",
+    grid: false,
+    fallbackRgb: [145, 113, 242] as const,
+  },
+  {
+    id: "color_light_gray",
+    label: "Light gray",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/light_gray.png",
+    grid: false,
+    fallbackRgb: [217, 217, 217] as const,
+  },
+  {
+    id: "color_yellow",
+    label: "Yellow",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/yellow.png",
+    grid: false,
+    fallbackRgb: [255, 220, 80] as const,
+  },
+  {
+    id: "color_cyan",
+    label: "Cyan",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/cyan.png",
+    grid: false,
+    fallbackRgb: [85, 221, 224] as const,
+  },
+  {
+    id: "color_red",
+    label: "Red",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/red.png",
+    grid: false,
+    fallbackRgb: [220, 50, 50] as const,
+  },
+  {
+    id: "color_green",
+    label: "Green",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/green.png",
+    grid: false,
+    fallbackRgb: [60, 180, 80] as const,
+  },
+  {
+    id: "color_violet",
+    label: "Violet",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/violet.png",
+    grid: false,
+    fallbackRgb: [98, 0, 255] as const,
+  },
+  {
+    id: "color_orange",
+    label: "Orange",
+    kind: "image" as const,
+    src: "/images/backdrops/colors/orange.png",
+    grid: false,
+    fallbackRgb: [255, 145, 77] as const,
   },
   {
     id: "park",
@@ -1531,7 +1637,10 @@ export const OLLIE_SPRITE_COSTUMES = [
   },
 ] as const;
 
-export type OllieSceneId = (typeof OLLIE_SCENES)[number]["id"];
+/** Built-in backdrop id from {@link OLLIE_SCENES}. */
+export type CatalogSceneId = (typeof OLLIE_SCENES)[number]["id"];
+/** Catalog backdrop or a `user-scene-…` layer from {@link user_scenes}. */
+export type OllieSceneId = CatalogSceneId | string;
 export type OllieSpriteCostumeId = (typeof OLLIE_SPRITE_COSTUMES)[number]["id"];
 
 export type SceneDef = (typeof OLLIE_SCENES)[number];
@@ -1551,12 +1660,43 @@ export function getSceneById(id: string): SceneDef | undefined {
   return OLLIE_SCENES.find((b) => b.id === canonical);
 }
 
+/** Build a catalog-shaped scene def for a user-uploaded PNG (signed URL as `src`). */
+export function buildUserUploadedBackdropSceneDef(
+  layerId: string,
+  imageUrl: string,
+  label: string,
+): SceneDef {
+  return {
+    id: layerId as unknown as SceneDef["id"],
+    label: label.slice(0, 80),
+    kind: "image",
+    src: imageUrl,
+    grid: false,
+    fallbackRgb: [220, 230, 210] as const,
+  } as SceneDef;
+}
+
+export function userSceneIdSetFromPayload(
+  rows: readonly { id: string }[] | undefined | null,
+): Set<string> | undefined {
+  if (!rows?.length) return undefined;
+  const s = new Set<string>();
+  for (const r of rows) {
+    if (r.id && isUserSceneLayerId(r.id)) s.add(r.id);
+  }
+  return s.size > 0 ? s : undefined;
+}
+
 /** Normalize scene id from saved projects (legacy ids). */
 export function migrateSceneIdFromStorage(
   id: string | undefined | null,
+  allowedUserSceneIds?: Set<string> | null,
 ): OllieSceneId {
   if (id === "white_grid") return "white_dots";
-  if (id && isOllieSceneId(id)) return id;
+  if (id && OLLIE_SCENES.some((b) => b.id === id)) return id as CatalogSceneId;
+  if (id && isUserSceneLayerId(id) && allowedUserSceneIds?.has(id)) {
+    return id;
+  }
   return DEFAULT_SCENE_ID;
 }
 
@@ -1566,15 +1706,28 @@ export function migrateSceneIdFromStorage(
 export function normalizeSceneLayerIdsFromPayload(
   sceneLayerIds: unknown,
   sceneId: unknown,
+  allowedUserSceneIds?: Set<string> | null,
 ): OllieSceneId[] {
   if (Array.isArray(sceneLayerIds)) {
     const out: OllieSceneId[] = [];
     for (const x of sceneLayerIds) {
-      if (typeof x === "string" && isOllieSceneId(x)) out.push(x);
+      if (typeof x !== "string") continue;
+      if (OLLIE_SCENES.some((b) => b.id === x)) {
+        out.push(x as CatalogSceneId);
+        continue;
+      }
+      if (isUserSceneLayerId(x) && allowedUserSceneIds?.has(x)) {
+        out.push(x);
+      }
     }
     if (out.length > 0) return out;
   }
-  return [migrateSceneIdFromStorage(typeof sceneId === "string" ? sceneId : undefined)];
+  return [
+    migrateSceneIdFromStorage(
+      typeof sceneId === "string" ? sceneId : undefined,
+      allowedUserSceneIds,
+    ),
+  ];
 }
 
 /**
@@ -1586,8 +1739,14 @@ export function normalizeSceneLayerIdsFromPayload(
 export function primaryBackdropIdFromProjectPayload(
   sceneLayerIds: unknown,
   sceneId: unknown,
+  userScenes?: readonly { id: string }[] | null,
 ): OllieSceneId {
-  const layers = normalizeSceneLayerIdsFromPayload(sceneLayerIds, sceneId);
+  const allowed = userSceneIdSetFromPayload(userScenes);
+  const layers = normalizeSceneLayerIdsFromPayload(
+    sceneLayerIds,
+    sceneId,
+    allowed,
+  );
   return layers[layers.length - 1]!;
 }
 
@@ -1660,14 +1819,17 @@ export function sceneDropdownOptions(): [string, string][] {
 }
 
 export function isOllieSceneId(s: string): s is OllieSceneId {
-  return OLLIE_SCENES.some((b) => b.id === s);
+  return OLLIE_SCENES.some((b) => b.id === s) || isUserSceneLayerId(s);
 }
 
 /** Next scene in {@link OLLIE_SCENES} order (wraps). */
 export function nextOllieSceneId(current: OllieSceneId): OllieSceneId {
+  if (isUserSceneLayerId(current)) {
+    return OLLIE_SCENES[0]!.id;
+  }
   const i = OLLIE_SCENES.findIndex((s) => s.id === current);
   const idx = i < 0 ? 0 : (i + 1) % OLLIE_SCENES.length;
-  return OLLIE_SCENES[idx].id;
+  return OLLIE_SCENES[idx]!.id;
 }
 
 export function isOllieSpriteCostumeId(s: string): s is OllieSpriteCostumeId {

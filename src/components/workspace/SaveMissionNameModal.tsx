@@ -16,6 +16,11 @@ type SaveMissionNameModalProps = {
    * prompt for the learner’s own adventure name.
    */
   forkFromCatalogTemplate?: boolean;
+  /**
+   * When opening from a hub lesson (`?lesson=`), explain Save using this title instead of
+   * calling the lesson a “starter” (the starter is the underlying shared workspace).
+   */
+  hubLessonTitle?: string | null;
 };
 
 export function SaveMissionNameModal({
@@ -27,6 +32,7 @@ export function SaveMissionNameModal({
   saving = false,
   variant = "save",
   forkFromCatalogTemplate = false,
+  hubLessonTitle = null,
 }: SaveMissionNameModalProps) {
   const titleId = useId();
   const inputId = useId();
@@ -92,16 +98,28 @@ export function SaveMissionNameModal({
         </h2>
         <p className="mt-1 text-sm text-[#6b7280]">
           {forkFromCatalogTemplate ? (
-            <>
-              The <span className="font-semibold text-[#374151]">{missionTitle}</span>{" "}
-              starter cannot be saved over. Pick a name for{" "}
-              <span className="font-semibold text-[#374151]">your</span> copy — then you
-              can keep editing and saving it.
-            </>
+            hubLessonTitle ? (
+              <>
+                <span className="font-semibold text-[#374151]">{hubLessonTitle}</span>{" "}
+                uses a shared starter workspace that can’t be saved over. Pick a name for{" "}
+                <span className="font-semibold text-[#374151]">your</span> copy — then you
+                can keep editing and saving it.
+              </>
+            ) : (
+              <>
+                The{" "}
+                <span className="font-semibold text-[#374151]">{missionTitle}</span>{" "}
+                starter cannot be saved over. Pick a name for{" "}
+                <span className="font-semibold text-[#374151]">your</span> copy — then you
+                can keep editing and saving it.
+              </>
+            )
           ) : (
             <>
               Adventure:{" "}
-              <span className="font-semibold text-[#374151]">{missionTitle}</span>
+              <span className="font-semibold text-[#374151]">
+                {hubLessonTitle ?? missionTitle}
+              </span>
             </>
           )}
         </p>

@@ -51,6 +51,7 @@ function sceneFromCloudPayload(
     const id = primaryBackdropIdFromProjectPayload(
       payload.sceneLayerIds,
       payload.sceneId,
+      payload.userScenes,
     );
     return getSceneById(id) ?? getSceneById(DEFAULT_SCENE_ID)!;
   }

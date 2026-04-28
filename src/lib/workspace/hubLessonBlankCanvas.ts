@@ -5,10 +5,9 @@ import {
 } from "@/lib/lms/lessonsCatalog";
 
 /**
- * Calm solid scene for “blank canvas” hub lessons — no image backdrop, no visible sprite until
- * the learner adds one.
+ * Default stage for activated hub lessons: white dotted grid (`white_dots` in stage assets).
  */
-export const HUB_LESSON_BLANK_SCENE_ID: OllieSceneId = "mint";
+export const HUB_LESSON_BLANK_SCENE_ID: OllieSceneId = "white_dots";
 
 /**
  * True when the URL has an explicit `lesson=` query for a hub lesson that should open on a clean

@@ -22,6 +22,7 @@ import {
   svgResize,
   utils,
 } from "blockly/core";
+import type { ImageProperties } from "blockly/core";
 import type { WorkspaceSvg } from "blockly/core";
 import { initBlocklyLocale } from "@/lib/blockly/initBlocklyLocale";
 import { loadBlocklyLibraryBlocks } from "@/lib/blockly/registerLibraryBlocks";
@@ -44,10 +45,18 @@ import {
   setSwitchCostumeDropdownExtras,
 } from "@/lib/blockly/costumeDropdownRegistry";
 import {
+  setSceneTextDropdownExtras,
+  setSwitchSceneImageDropdownExtras,
+} from "@/lib/blockly/sceneDropdownRegistry";
+import {
+  COSTUME_MENU_THUMB_PX,
   imageUrlToContainThumbDataUrl,
   preloadCatalogCostumeDropdownThumbs,
 } from "@/lib/blockly/costumeDropdownThumbs";
-import { preloadSceneDropdownThumbs } from "@/lib/blockly/sceneDropdownThumbs";
+import {
+  preloadSceneDropdownThumbs,
+  registerUserSceneDropdownThumb,
+} from "@/lib/blockly/sceneDropdownThumbs";
 import { getEmptyWorkspaceSave } from "@/lib/blockly/emptyWorkspaceState";
 import { setTouchingSpriteDropdownActors } from "@/lib/blockly/spriteTouchingDropdownRegistry";
 import { DEFAULT_WORKSPACE_XML } from "@/lib/workspace/defaultWorkspaceXml";
@@ -57,15 +66,22 @@ import {
   hubLessonOpensBlankCanvas,
 } from "@/lib/workspace/hubLessonBlankCanvas";
 import {
+  buildUserUploadedBackdropSceneDef,
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
   getCostumeById,
   getSceneById,
   normalizeSceneLayerIdsFromPayload,
+  userSceneIdSetFromPayload,
 } from "@/lib/canvas/stageAssets";
+import { makeUserSceneLayerId } from "@/lib/canvas/userSceneIds";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { P5Canvas, type P5CanvasHandle } from "@/components/workspace/P5Canvas";
-import { ScenePickerModal } from "@/components/workspace/ScenePickerModal";
+import {
+  ScenePickerModal,
+  type UserScenePickerEntry,
+} from "@/components/workspace/ScenePickerModal";
+import { SceneUploadModal } from "@/components/workspace/SceneUploadModal";
 import { ScenePreview } from "@/components/workspace/ScenePreview";
 import { ConfirmDeleteModal } from "@/components/workspace/ConfirmDeleteModal";
 import { DeleteMissionModal } from "@/components/workspace/DeleteMissionModal";
@@ -105,6 +121,16 @@ import {
   upsertSavedMissionProgress,
 } from "@/lib/supabase/savedMissionProgress";
 import {
+  buildUserScenesProjectSlice,
+  fetchUserSceneLibrary,
+  hydrateUserSceneProjectEntries,
+  insertUserSceneRow,
+  mergeUserSceneRuntimeByLayerId,
+  userSceneLibraryRowsToRuntime,
+  type UserSceneLibraryRow,
+  type UserSceneRuntimeEntry,
+} from "@/lib/supabase/userScenes";
+import {
   fetchUserSpriteLibrary,
   insertUserSpriteRow,
   mergeUserSpritePickerEntries,
@@ -127,6 +153,7 @@ import { AvatarPickerModal } from "@/components/workspace/AvatarPickerModal";
 import { WorkspaceLessonInstructions } from "@/components/workspace/WorkspaceLessonInstructions";
 import {
   DEFAULT_WORKSPACE_LESSON_ID,
+  getLessonById,
   WORKSPACE_NO_LESSON_QUERY,
   type LessonCatalogEntry,
 } from "@/lib/lms/lessonsCatalog";
@@ -210,6 +237,19 @@ function makeDefaultStageActors(
 /** Generic reset when mission is unknown — standard Ollie Bot. */
 const DEFAULT_STAGE_ACTORS: StageActor[] = makeDefaultStageActors(undefined);
 
+/** After fork/duplicate, keep `lesson=` so hub lesson instructions stay visible while editing. */
+function appendHubLessonToWorkspaceQuery(
+  q: URLSearchParams,
+  rawLessonId: string,
+) {
+  if (
+    rawLessonId.length > 0 &&
+    rawLessonId !== WORKSPACE_NO_LESSON_QUERY
+  ) {
+    q.set("lesson", rawLessonId);
+  }
+}
+
 /** Main Blockly + canvas + kid-friendly toolbar — extend with new blocks in lib/blockly. */
 export function OllieWorkspace() {
   const router = useRouter();
@@ -232,7 +272,7 @@ export function OllieWorkspace() {
         : missionIdParam && isCustomMissionId(missionIdParam)
           ? WORKSPACE_NO_LESSON_QUERY
           : DEFAULT_WORKSPACE_LESSON_ID;
-  /** Hub lessons (except Getting Started) open on an empty hat + hidden placeholder sprite + solid scene. */
+  /** Hub lessons (except Getting Started) open on an empty hat + hidden placeholder sprite + white_dots backdrop. */
   const blankLessonCanvas = useMemo(
     () => hubLessonOpensBlankCanvas(rawLessonId),
     [rawLessonId],
@@ -274,6 +314,23 @@ export function OllieWorkspace() {
     };
   }, [lessonIdParam]);
   const activeLesson = mergedLesson ?? undefined;
+  /**
+   * Explicit `?lesson=` hub activation — use this title in Save UX and starter status copy
+   * instead of the catalog mission name (“Welcome to Ollie Code”).
+   */
+  const hubActivationLessonTitle = useMemo(() => {
+    if (
+      rawLessonId.length === 0 ||
+      rawLessonId === WORKSPACE_NO_LESSON_QUERY
+    ) {
+      return null;
+    }
+    return (
+      activeLesson?.title?.trim() ||
+      getLessonById(rawLessonId)?.title?.trim() ||
+      null
+    );
+  }, [rawLessonId, activeLesson?.title]);
   /** No hub lesson + collapsed lesson card: shrink lesson rail so the stage column can grow up. */
   const [lessonChromeCompact, setLessonChromeCompact] = useState(
     () => !activeLesson,
@@ -416,6 +473,15 @@ export function OllieWorkspace() {
   const [libraryUserSprites, setLibraryUserSprites] = useState<
     UserSpriteLibraryRow[]
   >([]);
+  /** Supabase `user_scenes` — My Scenes in the backdrop picker. */
+  const [libraryUserScenes, setLibraryUserScenes] = useState<
+    UserSceneLibraryRow[]
+  >([]);
+  /** Runtime URLs + paths for `user-scene-…` layer ids (library + current project). */
+  const [userSceneRuntimeList, setUserSceneRuntimeList] = useState<
+    UserSceneRuntimeEntry[]
+  >([]);
+  const [sceneUploadOpen, setSceneUploadOpen] = useState(false);
   const [renameMissionLoading, setRenameMissionLoading] = useState(false);
   const [savedMissionEntries, setSavedMissionEntries] = useState<
     SavedMissionProgressEntry[]
@@ -567,6 +633,7 @@ export function OllieWorkspace() {
   /**
    * Stage header: only show a specific adventure title when `?mission=` is in the URL.
    * Plain `/workspace` shows the generic label “Adventure”.
+   * Hub activations (`?lesson=<id>`) use the lesson title instead of the starter mission name.
    */
   const canvasMissionLabel = useMemo(() => {
     if (!activeMission) return "Adventure";
@@ -574,8 +641,17 @@ export function OllieWorkspace() {
       (e) => e.missionId === activeMission.id,
     );
     if (saved?.displayName?.trim()) return saved.displayName.trim();
+    const explicitLesson =
+      rawLessonId.length > 0 &&
+      rawLessonId !== WORKSPACE_NO_LESSON_QUERY;
+    if (explicitLesson) {
+      const lessonTitle =
+        activeLesson?.title?.trim() ||
+        getLessonById(rawLessonId)?.title?.trim();
+      if (lessonTitle) return lessonTitle;
+    }
     return activeMission.title;
-  }, [activeMission, savedMissionEntries]);
+  }, [activeMission, savedMissionEntries, rawLessonId, activeLesson?.title]);
 
   const canvasMissionTooltip = useMemo(() => {
     if (!activeMission) return undefined;
@@ -583,8 +659,17 @@ export function OllieWorkspace() {
       (e) => e.missionId === activeMission.id,
     );
     if (saved?.displayName?.trim()) return activeMission.title;
+    const explicitLesson =
+      rawLessonId.length > 0 &&
+      rawLessonId !== WORKSPACE_NO_LESSON_QUERY;
+    if (explicitLesson) {
+      const lessonTitle =
+        activeLesson?.title?.trim() ||
+        getLessonById(rawLessonId)?.title?.trim();
+      if (lessonTitle) return activeMission.title;
+    }
     return activeMission.description || undefined;
-  }, [activeMission, savedMissionEntries]);
+  }, [activeMission, savedMissionEntries, rawLessonId, activeLesson?.title]);
 
   /** Fixed locale + UTC so server and client match during hydration. */
   const defaultMissionSaveName = useMemo(() => {
@@ -596,10 +681,11 @@ export function OllieWorkspace() {
       timeZone: "UTC",
     });
     if (isCatalogTemplateMissionId(missionForSave.id)) {
-      return `My ${missionForSave.title} — ${datePart}`;
+      const base = hubActivationLessonTitle ?? missionForSave.title;
+      return `My ${base} — ${datePart}`;
     }
     return `${missionForSave.title} — ${datePart}`;
-  }, [missionForSave]);
+  }, [missionForSave, hubActivationLessonTitle]);
 
   const topStageSceneId =
     stageSceneLayers[stageSceneLayers.length - 1] ?? DEFAULT_SCENE_ID;
@@ -611,6 +697,70 @@ export function OllieWorkspace() {
     () => mergeUserSpritePickerEntries(libraryUserSprites, actors),
     [libraryUserSprites, actors],
   );
+
+  const userSceneRuntimeMapForP5 = useMemo(() => {
+    const m: Record<string, { imageUrl: string; label: string }> = {};
+    for (const e of userSceneRuntimeList) {
+      m[e.layerId] = { imageUrl: e.signed_url, label: e.display_name };
+    }
+    return m;
+  }, [userSceneRuntimeList]);
+
+  const userScenesForScenePicker = useMemo((): UserScenePickerEntry[] => {
+    return userSceneRuntimeList.map((e) => ({
+      id: e.layerId as OllieSceneId,
+      label: e.display_name,
+      imageUrl: e.signed_url,
+    }));
+  }, [userSceneRuntimeList]);
+
+  useEffect(() => {
+    setUserSceneRuntimeList((prev) =>
+      mergeUserSceneRuntimeByLayerId(
+        prev,
+        userSceneLibraryRowsToRuntime(libraryUserScenes),
+      ),
+    );
+  }, [libraryUserScenes]);
+
+  useEffect(() => {
+    if (userSceneRuntimeList.length === 0) {
+      setSwitchSceneImageDropdownExtras(null);
+      setSceneTextDropdownExtras(null);
+      return;
+    }
+    setSwitchSceneImageDropdownExtras(() =>
+      userSceneRuntimeList.map((e) => {
+        const img: ImageProperties = {
+          src: e.signed_url,
+          alt: e.display_name,
+          width: COSTUME_MENU_THUMB_PX,
+          height: COSTUME_MENU_THUMB_PX,
+        };
+        return [img, e.layerId] as [ImageProperties, string];
+      }),
+    );
+    setSceneTextDropdownExtras(() =>
+      userSceneRuntimeList.map((e) => [e.display_name, e.layerId]),
+    );
+    return () => {
+      setSwitchSceneImageDropdownExtras(null);
+      setSceneTextDropdownExtras(null);
+    };
+  }, [userSceneRuntimeList]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      for (const e of userSceneRuntimeList) {
+        if (cancelled) return;
+        await registerUserSceneDropdownThumb(e.layerId, e.signed_url);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [userSceneRuntimeList]);
 
   /** Record a new paint/upload in `user_sprites` and refresh My Sprites (signed-in only). */
   const registerSpriteInCloudLibrary = useCallback(
@@ -635,6 +785,47 @@ export function OllieWorkspace() {
         if (error) return;
         const lib = await fetchUserSpriteLibrary(sb, user.id);
         setLibraryUserSprites(lib);
+      });
+    },
+    [runAuthSerialized],
+  );
+
+  const handleUserSceneUploadSuccess = useCallback(
+    (payload: {
+      publicUrl: string;
+      displayName: string;
+      storagePath: string;
+      sceneUuid: string;
+    }) => {
+      void runAuthSerialized(async () => {
+        const sb = getSupabaseBrowserClient();
+        if (!sb) return;
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        const user = session?.user;
+        if (!user) return;
+        const { error } = await insertUserSceneRow(sb, user.id, {
+          id: payload.sceneUuid,
+          storage_path: payload.storagePath,
+          display_name: payload.displayName,
+        });
+        if (error) return;
+        const layerId = makeUserSceneLayerId(payload.sceneUuid);
+        const entry: UserSceneRuntimeEntry = {
+          layerId,
+          storage_path: payload.storagePath,
+          display_name: payload.displayName,
+          signed_url: payload.publicUrl,
+        };
+        setUserSceneRuntimeList((prev) =>
+          mergeUserSceneRuntimeByLayerId(prev, [entry]),
+        );
+        setStageSceneLayers((prev) => [...prev, layerId]);
+        const sceneLib = await fetchUserSceneLibrary(sb, user.id);
+        setLibraryUserScenes(sceneLib);
+        setSceneUploadOpen(false);
+        setScenePickerOpen(false);
       });
     },
     [runAuthSerialized],
@@ -695,6 +886,7 @@ export function OllieWorkspace() {
     const client = getSupabaseBrowserClient();
     if (!client) {
       setLibraryUserSprites([]);
+      setLibraryUserScenes([]);
       return;
     }
 
@@ -705,6 +897,7 @@ export function OllieWorkspace() {
           setUserCodename(null);
           setAvatarSlug(null);
           setLibraryUserSprites([]);
+          setLibraryUserScenes([]);
           return;
         }
         const {
@@ -716,6 +909,7 @@ export function OllieWorkspace() {
           setUserCodename(null);
           setAvatarSlug(null);
           setLibraryUserSprites([]);
+          setLibraryUserScenes([]);
           setSavedMissionEntries(getSavedMissionProgress());
           return;
         }
@@ -736,6 +930,8 @@ export function OllieWorkspace() {
         setAvatarSlug(isOllieAvatarSlug(rawSlug) ? rawSlug : null);
         const lib = await fetchUserSpriteLibrary(sb, user.id);
         setLibraryUserSprites(lib);
+        const sceneLib = await fetchUserSceneLibrary(sb, user.id);
+        setLibraryUserScenes(sceneLib);
       });
     }
 
@@ -841,21 +1037,24 @@ export function OllieWorkspace() {
       workspaceRef.current?.dispose();
       workspaceRef.current = null;
     };
-  }, [blocklyInjectKey, missionIdParam, blankLessonCanvas]);
+    /** Mission changes are applied via {@link openMissionWorkspace} / payload — not full reinject. */
+  }, [blocklyInjectKey, blankLessonCanvas]);
 
   const prevBlankLessonCanvasRef = useRef(false);
   useLayoutEffect(() => {
     if (blankLessonCanvas) {
-      setStageSceneLayers([HUB_LESSON_BLANK_SCENE_ID]);
-      setActors([
-        {
-          id: ACTOR_ROBOT_ID,
-          label: "Sprite",
-          costumeId: DEFAULT_COSTUME_ID,
-          visible: false,
-        },
-      ]);
-      setActiveActorId(ACTOR_ROBOT_ID);
+      if (!prevBlankLessonCanvasRef.current) {
+        setStageSceneLayers([HUB_LESSON_BLANK_SCENE_ID]);
+        setActors([
+          {
+            id: ACTOR_ROBOT_ID,
+            label: "Sprite",
+            costumeId: DEFAULT_COSTUME_ID,
+            visible: false,
+          },
+        ]);
+        setActiveActorId(ACTOR_ROBOT_ID);
+      }
     } else if (prevBlankLessonCanvasRef.current && !blankLessonCanvas) {
       const mission = missionIdParam
         ? getMissionById(missionIdParam)
@@ -1381,6 +1580,10 @@ export function OllieWorkspace() {
       actors,
       sceneLayerIds: stageSceneLayers,
       sceneId: topStageSceneId,
+      userScenes: buildUserScenesProjectSlice(
+        stageSceneLayers,
+        userSceneRuntimeList,
+      ),
       name: "My Ollie Project",
       updatedAt: new Date().toISOString(),
       savedMissionProgress: mergedMissionProgress,
@@ -1458,7 +1661,14 @@ export function OllieWorkspace() {
     }
     return "Saved to cloud!";
   },
-    [actors, activeActorId, missionIdParam, stageSceneLayers, topStageSceneId],
+    [
+      actors,
+      activeActorId,
+      missionIdParam,
+      stageSceneLayers,
+      topStageSceneId,
+      userSceneRuntimeList,
+    ],
   );
 
   /**
@@ -1491,6 +1701,7 @@ export function OllieWorkspace() {
     skipNextMissionUrlEffectRef.current = true;
     const q = new URLSearchParams();
     q.set("mission", newId);
+    appendHubLessonToWorkspaceQuery(q, rawLessonId);
     router.replace(`/workspace?${q.toString()}`, { scroll: false });
     setSavedMissionEntries(getSavedMissionProgress());
     setStatus(`Opened a copy — “${copyName}”`);
@@ -1499,7 +1710,13 @@ export function OllieWorkspace() {
       const w = workspaceRef.current;
       if (w) svgResize(w);
     });
-  }, [saveProject, router, canvasMissionLabel, activeMission?.title]);
+  }, [
+    saveProject,
+    router,
+    canvasMissionLabel,
+    activeMission?.title,
+    rawLessonId,
+  ]);
 
   const confirmSaveMissionName = useCallback(
     async (displayName: string) => {
@@ -1535,6 +1752,7 @@ export function OllieWorkspace() {
           skipNextMissionUrlEffectRef.current = true;
           const q = new URLSearchParams();
           q.set("mission", newId);
+          appendHubLessonToWorkspaceQuery(q, rawLessonId);
           router.replace(`/workspace?${q.toString()}`, { scroll: false });
           setSaveMissionNameModalOpen(false);
           setSaveMissionForkFromTemplate(false);
@@ -1567,7 +1785,7 @@ export function OllieWorkspace() {
         setSaveMissionNameLoading(false);
       }
     },
-    [missionForSave, saveProject, router],
+    [missionForSave, saveProject, router, rawLessonId],
   );
 
   /**
@@ -1739,6 +1957,7 @@ export function OllieWorkspace() {
         normalizeSceneLayerIdsFromPayload(
           payload.sceneLayerIds,
           payload.sceneId,
+          userSceneIdSetFromPayload(payload.userScenes),
         ),
       );
       const blob =
@@ -1762,6 +1981,18 @@ export function OllieWorkspace() {
         if (!session?.user) return;
         const hydrated = await hydratePaintedCostumeUrls(sb, migratedActors);
         setActors(hydrated);
+        const sceneLib = await fetchUserSceneLibrary(sb, session.user.id);
+        setLibraryUserScenes(sceneLib);
+        const hydratedScenes = await hydrateUserSceneProjectEntries(
+          sb,
+          payload.userScenes ?? [],
+        );
+        setUserSceneRuntimeList(
+          mergeUserSceneRuntimeByLayerId(
+            userSceneLibraryRowsToRuntime(sceneLib),
+            hydratedScenes,
+          ),
+        );
       })();
     } else {
       const mission = activeMission ?? MISSIONS[0];
@@ -1770,6 +2001,7 @@ export function OllieWorkspace() {
         normalizeSceneLayerIdsFromPayload(
           payload.sceneLayerIds,
           payload.sceneId,
+          userSceneIdSetFromPayload(payload.userScenes),
         ),
       );
       Events.disable();
@@ -1787,6 +2019,26 @@ export function OllieWorkspace() {
       setActiveActorId(ACTOR_ROBOT_ID);
       spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
+      void (async () => {
+        const sb = getSupabaseBrowserClient();
+        if (!sb) return;
+        const {
+          data: { session },
+        } = await sb.auth.getSession();
+        if (!session?.user) return;
+        const sceneLib = await fetchUserSceneLibrary(sb, session.user.id);
+        setLibraryUserScenes(sceneLib);
+        const hydratedScenes = await hydrateUserSceneProjectEntries(
+          sb,
+          payload.userScenes ?? [],
+        );
+        setUserSceneRuntimeList(
+          mergeUserSceneRuntimeByLayerId(
+            userSceneLibraryRowsToRuntime(sceneLib),
+            hydratedScenes,
+          ),
+        );
+      })();
     }
     mergeMissionProgressIntoStorage(payload.savedMissionProgress);
     setSavedMissionEntries(getSavedMissionProgress());
@@ -1817,7 +2069,9 @@ export function OllieWorkspace() {
               if (w) svgResize(w);
             });
             setStatus(
-              `“${meta.title}” is a starter — use Save to name your own copy and keep working.`,
+              hubActivationLessonTitle
+                ? `“${hubActivationLessonTitle}” — use Save to name your own copy and keep working.`
+                : `“${meta.title}” is a starter — use Save to name your own copy and keep working.`,
             );
             setTimeout(() => setStatus(""), 4500);
             return;
@@ -1876,7 +2130,7 @@ export function OllieWorkspace() {
       );
       setTimeout(() => setStatus(""), 4000);
     },
-    [applyProjectPayload, resetWorkspaceToStarter],
+    [applyProjectPayload, resetWorkspaceToStarter, hubActivationLessonTitle],
   );
 
   /** Open adventure from URL (direct links / refresh) and when Blockly becomes ready after navigation. */
@@ -1942,9 +2196,10 @@ export function OllieWorkspace() {
       }
       const q = new URLSearchParams();
       q.set("mission", missionId);
+      appendHubLessonToWorkspaceQuery(q, rawLessonId);
       router.replace(`/workspace?${q.toString()}`, { scroll: false });
     },
-    [router, openMissionWorkspace],
+    [router, openMissionWorkspace, rawLessonId],
   );
 
   const handleNewMission = useCallback(() => {
@@ -1962,6 +2217,7 @@ export function OllieWorkspace() {
     q.set("mission", newId);
     q.set("lesson", WORKSPACE_NO_LESSON_QUERY);
     router.replace(`/workspace?${q.toString()}`, { scroll: false });
+    setUserSceneRuntimeList([]);
     setStatus("New adventure — use Save to name it.");
     setTimeout(() => setStatus(""), 3500);
   }, [resetWorkspaceToStarter, router]);
@@ -2703,6 +2959,7 @@ export function OllieWorkspace() {
                 ref={p5Ref}
                 className="min-h-0 min-w-0 w-full flex-1"
                 sceneLayerIds={stageSceneLayers}
+                userSceneRuntime={userSceneRuntimeMapForP5}
                 actors={actors.map((a) => ({
                   id: a.id,
                   costumeId: a.costumeId,
@@ -2791,9 +3048,16 @@ export function OllieWorkspace() {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       {stageSceneLayers.map((layerId, index) => {
+                      const rt = userSceneRuntimeMapForP5[layerId];
                       const scene =
                         getSceneById(layerId) ??
-                        getSceneById(DEFAULT_SCENE_ID)!;
+                        (rt
+                          ? buildUserUploadedBackdropSceneDef(
+                              layerId,
+                              rt.imageUrl,
+                              rt.label,
+                            )
+                          : getSceneById(DEFAULT_SCENE_ID)!);
                       return (
                         <div
                           key={`${layerId}-${index}`}
@@ -3069,10 +3333,18 @@ export function OllieWorkspace() {
         onClose={() => setScenePickerOpen(false)}
         title="Choose a Scene"
         selectedId={false}
+        userScenes={userScenesForScenePicker}
+        canUpload={Boolean(userCodename && getSupabaseBrowserClient())}
+        onOpenUpload={() => setSceneUploadOpen(true)}
         onSelect={(id) => {
           setStageSceneLayers((prev) => [...prev, id]);
           setScenePickerOpen(false);
         }}
+      />
+      <SceneUploadModal
+        open={sceneUploadOpen}
+        onClose={() => setSceneUploadOpen(false)}
+        onSuccess={handleUserSceneUploadSuccess}
       />
       <SpriteUploadModal
         open={spriteUploadOpen}
@@ -3191,6 +3463,7 @@ export function OllieWorkspace() {
       <SaveMissionNameModal
         open={saveMissionNameModalOpen && !!missionForSave}
         missionTitle={missionForSave?.title ?? "Adventure"}
+        hubLessonTitle={hubActivationLessonTitle}
         defaultName={defaultMissionSaveName}
         saving={saveMissionNameLoading}
         forkFromCatalogTemplate={saveMissionForkFromTemplate}

@@ -24,6 +24,7 @@ import {
   loadImageElement,
 } from "@/lib/canvas/spriteChromaKey";
 import {
+  buildUserUploadedBackdropSceneDef,
   DEFAULT_COSTUME_ID,
   DEFAULT_SCENE_ID,
   collectStageImageUrls,
@@ -37,6 +38,7 @@ import {
   normalizeSceneLayerIdsFromPayload,
   pointTowardsForwardOffsetPxForCostumeId,
 } from "@/lib/canvas/stageAssets";
+import { isUserSceneLayerId } from "@/lib/canvas/userSceneIds";
 import {
   PAINTED_COSTUME_FIT_BOX_PX,
   paintedCostumeFitInBox,
@@ -93,6 +95,8 @@ export type P5CanvasProps = {
   className?: string;
   /** Backdrop layers (bottom → top). At least one id. */
   sceneLayerIds: OllieSceneId[];
+  /** My Scenes (`user-scene-…`) — image URLs for drawing and lazy-load. */
+  userSceneRuntime?: Record<string, { imageUrl: string; label: string }>;
   actors: StageActorPaint[];
   /**
    * While true, do not push `actors[].costumeId` into the runtime sprite map.
@@ -617,11 +621,30 @@ function drawSceneLayers(
   p: p5Types,
   sceneIds: OllieSceneId[],
   images: Map<string, p5Types.Image>,
+  userSceneRuntime?: Record<string, { imageUrl: string; label: string }>,
 ) {
-  const layers = normalizeSceneLayerIdsFromPayload(sceneIds, undefined);
+  const allowedUserIds = new Set<string>();
+  for (const id of sceneIds) {
+    if (isUserSceneLayerId(id)) allowedUserIds.add(id);
+  }
+  const layers = normalizeSceneLayerIdsFromPayload(
+    sceneIds,
+    undefined,
+    allowedUserIds.size > 0 ? allowedUserIds : undefined,
+  );
   let isFirst = true;
   for (const sceneId of layers) {
-    const scene = getSceneById(sceneId) ?? getSceneById(DEFAULT_SCENE_ID)!;
+    const cat = getSceneById(sceneId);
+    const scene =
+      cat ??
+      (userSceneRuntime?.[sceneId]
+        ? buildUserUploadedBackdropSceneDef(
+            sceneId,
+            userSceneRuntime[sceneId]!.imageUrl,
+            userSceneRuntime[sceneId]!.label,
+          )
+        : null) ??
+      getSceneById(DEFAULT_SCENE_ID)!;
     if (scene.kind === "solid") {
       const [r, g, b] = scene.rgb;
       if (isFirst) {
@@ -860,6 +883,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     {
       className,
       sceneLayerIds,
+      userSceneRuntime,
       actors,
       pauseActorCostumePropSync = false,
       onSceneChange,
@@ -871,15 +895,25 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     ref,
   ) {
     const containerRef = useRef<HTMLDivElement>(null);
+    const userSceneRuntimeRef = useRef<
+      Record<string, { imageUrl: string; label: string }> | undefined
+    >(undefined);
+    userSceneRuntimeRef.current = userSceneRuntime;
+
     const p5Ref = useRef<p5Types | null>(null);
     const spritesByIdRef = useRef<Map<string, Sprite>>(new Map());
     /** Latest costume images from the p5 draw loop — used for “touching [sprite]?” radii. */
     const stageImagesForSensingRef = useRef<Map<string, p5Types.Image>>(
       new Map(),
     );
+    const allowedUserBackdropIds = new Set<string>();
+    for (const id of sceneLayerIds) {
+      if (isUserSceneLayerId(id)) allowedUserBackdropIds.add(id);
+    }
     const normalizedLayers = normalizeSceneLayerIdsFromPayload(
       sceneLayerIds,
       undefined,
+      allowedUserBackdropIds.size > 0 ? allowedUserBackdropIds : undefined,
     );
     const topSceneId =
       normalizedLayers[normalizedLayers.length - 1] ?? DEFAULT_SCENE_ID;
@@ -1789,8 +1823,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             p.pixelDensity(1);
             p.angleMode(p.DEGREES);
             const urls = collectStageImageUrls();
+            const userUrls = Object.values(userSceneRuntimeRef.current ?? {})
+              .map((v) => v.imageUrl.trim())
+              .filter(Boolean);
             await Promise.all(
-              urls.map((url) => loadStageImage(p, url, stageImages)),
+              [...urls, ...userUrls].map((url) =>
+                loadStageImage(p, url, stageImages),
+              ),
             );
             currentSceneRef.current = latestSceneIdRef.current;
             const map = spritesByIdRef.current;
@@ -1822,10 +1861,35 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           p.draw = () => {
             stageImagesForSensingRef.current = stageImages;
             const layers = latestSceneLayerIdsRef.current;
+            for (const sid of layers) {
+              const url = userSceneRuntimeRef.current?.[sid]?.imageUrl?.trim();
+              if (url) {
+                ensurePaintedCostumeImage(
+                  p,
+                  url,
+                  stageImages,
+                  paintedLoadPending,
+                );
+              }
+            }
             const sid =
               layers[layers.length - 1] ?? DEFAULT_SCENE_ID;
-            const sceneMeta = getSceneById(sid) ?? getSceneById(DEFAULT_SCENE_ID)!;
-            drawSceneLayers(p, layers, stageImages);
+            const rt = userSceneRuntimeRef.current?.[sid];
+            const sceneMeta =
+              getSceneById(sid) ??
+              (rt
+                ? buildUserUploadedBackdropSceneDef(
+                    sid,
+                    rt.imageUrl,
+                    rt.label,
+                  )
+                : getSceneById(DEFAULT_SCENE_ID)!);
+            drawSceneLayers(
+              p,
+              layers,
+              stageImages,
+              userSceneRuntimeRef.current,
+            );
             if (sceneMeta.grid) {
               drawDotsBackground(p);
             }

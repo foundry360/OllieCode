@@ -372,6 +372,13 @@ export type SavedMissionProgressEntry = {
   displayName?: string;
 };
 
+/** User-uploaded backdrop referenced by `user-scene-{uuid}` in `sceneLayerIds`. */
+export type UserSceneProjectEntry = {
+  id: string;
+  storage_path: string;
+  display_name: string;
+};
+
 export type ProjectPayload = {
   /** Blockly workspace JSON — legacy single-sprite save; used if `workspacesByActorId` absent */
   workspace: Record<string, unknown>;
@@ -382,6 +389,8 @@ export type ProjectPayload = {
   /** Bottom → top draw order. Prefer over legacy `sceneId`. */
   sceneLayerIds?: OllieSceneId[];
   sceneId?: OllieSceneId;
+  /** Signed URLs are not stored — re-mint from `storage_path` on load. */
+  userScenes?: UserSceneProjectEntry[];
   /** Project title (not a user’s real name). */
   name: string;
   updatedAt: string;

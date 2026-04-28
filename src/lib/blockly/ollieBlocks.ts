@@ -3,8 +3,10 @@ import { Blocks, FieldDropdown } from "blockly/core";
 import type { Block } from "blockly/core";
 import { getSwitchCostumeDropdownOptions } from "@/lib/blockly/costumeDropdownRegistry";
 import { getTouchingSpriteDropdownOptions } from "@/lib/blockly/spriteTouchingDropdownRegistry";
-import { getSwitchSceneDropdownOptions } from "@/lib/blockly/sceneDropdownRegistry";
-import { sceneDropdownOptions } from "@/lib/canvas/stageAssets";
+import {
+  getSceneTextDropdownOptions,
+  getSwitchSceneDropdownOptions,
+} from "@/lib/blockly/sceneDropdownRegistry";
 import { soundDropdownOptions } from "@/lib/sounds/ollieSounds";
 import { animationDropdownOptions } from "@/lib/canvas/ollieAnimationPresets";
 
@@ -82,22 +84,6 @@ export function getOllieBlockDefinitions(): Parameters<
     nextStatement: true,
     style: "scratch_events",
     tooltip: "Start when you click the stage (after you tap Run).",
-    helpUrl: "",
-    hat: "cap",
-  },
-  {
-    type: "ollie_event_backdrop_switches",
-    message0: "when scene switches to %1",
-    args0: [
-      {
-        type: "field_dropdown",
-        name: "SCENE",
-        options: sceneDropdownOptions(),
-      },
-    ],
-    nextStatement: true,
-    style: "scratch_events",
-    tooltip: "Start when the scene matches (from the scene picker or a switch scene block).",
     helpUrl: "",
     hat: "cap",
   },
@@ -921,6 +907,28 @@ function registerOllieSensingTouchingBlock() {
   };
 }
 
+function registerOllieEventBackdropSwitchesBlock() {
+  Blocks["ollie_event_backdrop_switches"] = {
+    init: function (this: Block) {
+      this.setStyle("scratch_events");
+      this.appendDummyInput()
+        .appendField("when scene switches to")
+        .appendField(
+          new FieldDropdown(function (this: FieldDropdown) {
+            return getSceneTextDropdownOptions();
+          }),
+          "SCENE",
+        );
+      this.setNextStatement(true, null);
+      this.setTooltip(
+        "Start when the scene matches (from the scene picker or a switch scene block).",
+      );
+      this.setHelpUrl("");
+      (this as unknown as { setHat?: (h: string) => void }).setHat?.("cap");
+    },
+  };
+}
+
 function registerOllieSwitchSceneBlock() {
   Blocks["ollie_switch_scene"] = {
     init: function (this: Block) {
@@ -957,6 +965,7 @@ function registerOllieSetSpeechBubbleColorBlock() {
 
 export function registerOllieBlocks() {
   Blockly.common.defineBlocksWithJsonArray(getOllieBlockDefinitions());
+  registerOllieEventBackdropSwitchesBlock();
   registerOllieSwitchCostumeBlock();
   registerOllieSensingTouchingBlock();
   registerOllieSwitchSceneBlock();
