@@ -37,6 +37,9 @@ yarn-error.log*
 # Filled Vercel upload file (from vercel-production.env.example — never commit secrets)
 vercel-production.env
 
+# Stripe catalog import (from import.env.example — contains live secret key)
+import.env
+
 # Cursor IDE (local)
 .cursor/
 

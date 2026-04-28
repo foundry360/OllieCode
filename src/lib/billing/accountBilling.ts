@@ -35,6 +35,13 @@ export type AccountBillingSummary = {
   /** Seats in use when `plan` is family (master + siblings); null otherwise. */
   familySeatsUsed: number | null;
   familySeatsCap: number | null;
+  /**
+   * Next renewal total from a Stripe invoice preview (includes coupons/discounts).
+   * When set, prefer this over catalog list prices in account UI (e.g. "$0/month").
+   */
+  recurringPriceDisplay: string | null;
+  /** Customer-facing promotion code on the subscription discount, when expanded from Stripe. */
+  discountPromotionCode: string | null;
 };
 
 function isPaidPlanId(value: unknown): value is PaidPlanId {
@@ -137,6 +144,66 @@ export function parseSubscriptionPlanAndBilling(subscription: Stripe.Subscriptio
 
   const firstItem = subscription.items.data[0];
   return inferPlanAndBillingFromPriceId(priceIdFromSubscriptionItem(firstItem?.price));
+}
+
+function formatInvoiceTotalForPlanLine(
+  totalMinorUnits: number,
+  currency: string | null | undefined,
+  billing: BillingInterval,
+): string {
+  const cur = (currency ?? "usd").toLowerCase();
+  const suffix = billing === "month" ? "month" : "year";
+  if (cur === "usd") {
+    if (totalMinorUnits % 100 === 0) {
+      return `$${totalMinorUnits / 100}/${suffix}`;
+    }
+    return `$${(totalMinorUnits / 100).toFixed(2)}/${suffix}`;
+  }
+  try {
+    const formatted = new Intl.NumberFormat(undefined, {
+      style: "currency",
+      currency: cur.toUpperCase(),
+    }).format(totalMinorUnits / 100);
+    return `${formatted}/${suffix}`;
+  } catch {
+    return `${(totalMinorUnits / 100).toFixed(2)} ${cur.toUpperCase()}/${suffix}`;
+  }
+}
+
+async function loadRecurringPriceDisplayFromStripe(
+  stripe: Stripe,
+  customerId: string,
+  subscriptionId: string,
+  billing: BillingInterval,
+): Promise<string | null> {
+  try {
+    const preview = await stripe.invoices.createPreview({
+      customer: customerId,
+      subscription: subscriptionId,
+    });
+    const total = typeof preview.total === "number" ? preview.total : 0;
+    return formatInvoiceTotalForPlanLine(total, preview.currency, billing);
+  } catch {
+    return null;
+  }
+}
+
+function promotionCodeFromExpandedSubscription(sub: Stripe.Subscription): string | null {
+  const discounts = (
+    sub as Stripe.Subscription & {
+      discounts?: Array<{ promotion_code?: string | Stripe.PromotionCode | null }> | null;
+    }
+  ).discounts;
+  if (!Array.isArray(discounts)) return null;
+  for (const d of discounts) {
+    if (!d || typeof d !== "object") continue;
+    const pc = d.promotion_code;
+    if (pc && typeof pc === "object" && "code" in pc) {
+      const code = (pc as { code?: string | null }).code?.trim();
+      if (code) return code;
+    }
+  }
+  return null;
 }
 
 function getSubscriptionPeriodEndIso(subscription: Stripe.Subscription | null): string | null {
@@ -270,6 +337,8 @@ export async function loadAccountBillingSummary(
     isFamilyBillingMaster: false,
     familySeatsUsed: null,
     familySeatsCap: null,
+    recurringPriceDisplay: null,
+    discountPromotionCode: null,
   };
 
   const billingSubject = await getBillingSubjectAppUser(supabase, user);
@@ -334,6 +403,30 @@ export async function loadAccountBillingSummary(
   const isFamilyBillingMaster =
     plan === "family" && billingMasterId === null && billingSubjectId === user.id;
 
+  let recurringPriceDisplay: string | null = null;
+  let discountPromotionCode: string | null = null;
+
+  if (
+    winning &&
+    billing &&
+    (winning.status === "active" || winning.status === "trialing")
+  ) {
+    recurringPriceDisplay = await loadRecurringPriceDisplayFromStripe(
+      stripe,
+      customerId,
+      winning.id,
+      billing,
+    );
+    try {
+      const subExpanded = await stripe.subscriptions.retrieve(winning.id, {
+        expand: ["discounts.promotion_code"],
+      });
+      discountPromotionCode = promotionCodeFromExpandedSubscription(subExpanded);
+    } catch {
+      /* ignore */
+    }
+  }
+
   return {
     customerId,
     subscriptionId: winning?.id ?? null,
@@ -348,5 +441,7 @@ export async function loadAccountBillingSummary(
     isFamilyBillingMaster,
     familySeatsUsed,
     familySeatsCap,
+    recurringPriceDisplay,
+    discountPromotionCode,
   };
 }

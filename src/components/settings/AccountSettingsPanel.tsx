@@ -127,6 +127,13 @@ function formatPlanPrice(
   return card?.pricingByBilling?.[billing] ?? null;
 }
 
+/** Catalog price or Stripe preview total (reflects coupons, e.g. $0/month). */
+function planPriceLineForSettings(billing: AccountBillingSummary | null): string | null {
+  if (!billing) return null;
+  if (billing.recurringPriceDisplay) return billing.recurringPriceDisplay;
+  return formatPlanPrice(billing.plan, billing.billing);
+}
+
 function formatDateLabel(value: string | null): string {
   if (!value) return "No renewal date";
   const date = new Date(value);
@@ -520,10 +527,19 @@ export function AccountSettingsPanel({
                 <PanelCard title="Current plan">
                   <p className="font-display overflow-hidden text-lg font-bold text-[#111827] whitespace-nowrap text-ellipsis sm:text-xl">
                     {formatPlanLabel(billing?.plan ?? null)}
-                    {formatPlanPrice(billing?.plan ?? null, billing?.billing ?? null)
-                      ? ` (${formatPlanPrice(billing?.plan ?? null, billing?.billing ?? null)})`
-                      : ""}
+                    {(() => {
+                      const line = planPriceLineForSettings(billing);
+                      return line ? ` (${line})` : "";
+                    })()}
                   </p>
+                  {billing?.discountPromotionCode ? (
+                    <p className="mt-1 text-xs text-[#6b7280]">
+                      Promo Code:{" "}
+                      <span className="font-mono text-[10px] font-semibold tracking-wide text-[#111827] sm:text-[11px]">
+                        {billing.discountPromotionCode}
+                      </span>
+                    </p>
+                  ) : null}
                   <p className="mt-2 text-sm text-[#6b7280]">
                     {billing?.plan
                       ? `${formatBillingLabel(billing.billing)} billing`
