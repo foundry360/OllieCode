@@ -389,6 +389,38 @@ function normHeading(deg: number) {
   return ((deg % 360) + 360) % 360;
 }
 
+/**
+ * Scratch-style “if on edge, bounce”: reflect motion off the struck edge(s) instead of
+ * always turning 180° (which keeps motion on one line for diagonal headings).
+ * Velocity matches {@link move}: canvas (dx, dy) = (sin θ, -cos θ) per Scratch heading θ.
+ */
+function applyScratchStyleEdgeBounceHeading(
+  s: { x: number; y: number; heading: number },
+  cw: number,
+  ch: number,
+  marginPx: number,
+): void {
+  const m = marginPx;
+  const hitLeft = s.x <= m;
+  const hitRight = s.x >= cw - m;
+  const hitTop = s.y <= m;
+  const hitBottom = s.y >= ch - m;
+  if (!hitLeft && !hitRight && !hitTop && !hitBottom) return;
+
+  const rad = (s.heading * Math.PI) / 180;
+  let vx = Math.sin(rad);
+  let vyCanvas = -Math.cos(rad);
+  if (hitLeft || hitRight) vx = -vx;
+  if (hitTop || hitBottom) vyCanvas = -vyCanvas;
+
+  const deg = (Math.atan2(vx, -vyCanvas) * 180) / Math.PI;
+  if (!Number.isFinite(deg)) {
+    s.heading = normHeading(s.heading + 180);
+    return;
+  }
+  s.heading = normHeading(deg);
+}
+
 /** Scratch-style angle from (ax,ay) to (mx,my); 0° = up, 90° = right (y down on canvas). */
 function scratchAngleDegTowardPoint(
   ax: number,
@@ -1316,10 +1348,13 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
 
           for (const a of actions) {
             if (shouldCancel()) return;
+            const ctx = buildSensingCtx(spriteId);
             if (a.type === "rotate") {
-              s.heading = normHeading(s.heading + a.degrees);
+              s.heading = normHeading(
+                s.heading + evalSerializedNum(a.degrees, ctx),
+              );
             } else if (a.type === "setHeading") {
-              s.heading = normHeading(a.degrees);
+              s.heading = normHeading(evalSerializedNum(a.degrees, ctx));
             } else if (a.type === "pointTowardsMouse") {
               const mouse = resolveMouseOnStagePx(
                 p5Ref.current,
@@ -1333,9 +1368,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               }
               applyHeadingTowardsResolvedMouse(s, mouse);
             } else if (a.type === "move") {
+              const dist = evalSerializedNum(a.distance, ctx);
               const rad = (s.heading * Math.PI) / 180;
-              const dx = Math.sin(rad) * a.distance;
-              const dy = -Math.cos(rad) * a.distance;
+              const dx = Math.sin(rad) * dist;
+              const dy = -Math.cos(rad) * dist;
               await animateMove(
                 s,
                 s.x + dx,
@@ -1344,9 +1380,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 shouldCancel,
               );
             } else if (a.type === "moveWithBob") {
+              const dist = evalSerializedNum(a.distance, ctx);
               const rad = (s.heading * Math.PI) / 180;
-              const dx = Math.sin(rad) * a.distance;
-              const dy = -Math.cos(rad) * a.distance;
+              const dx = Math.sin(rad) * dist;
+              const dy = -Math.cos(rad) * dist;
               const isRun = a.style === "run";
               const bob = isRun
                 ? { amplitude: 7, cycles: 3 }
@@ -1363,7 +1400,9 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 bob,
               );
             } else if (a.type === "goTo") {
-              const pos = scratchStageToPixel(a.xPct, a.yPct, cw, ch);
+              const xPct = evalSerializedNum(a.xPct, ctx);
+              const yPct = evalSerializedNum(a.yPct, ctx);
+              const pos = scratchStageToPixel(xPct, yPct, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
             } else if (a.type === "goToTarget") {
@@ -1387,7 +1426,8 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 cw,
                 ch,
               );
-              const nx = Math.min(100, Math.max(-100, xPct + a.deltaPct));
+              const d = evalSerializedNum(a.deltaPct, ctx);
+              const nx = Math.min(100, Math.max(-100, xPct + d));
               const pos = scratchStageToPixel(nx, yPct, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
@@ -1396,6 +1436,15 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                * between steps, so “jump up then down” looks like no movement (net Δ often 0).
                */
               await waitNextAnimationFrame(shouldCancel);
+            } else if (a.type === "setXPct") {
+              const ctx = buildSensingCtx(spriteId);
+              let nx = evalSerializedNum(a.x, ctx);
+              nx = Math.min(100, Math.max(-100, nx));
+              const { yPct } = pixelToScratchStage(s.x, s.y, cw, ch);
+              const pos = scratchStageToPixel(nx, yPct, cw, ch);
+              s.x = pos.x;
+              s.y = pos.y;
+              await waitNextAnimationFrame(shouldCancel);
             } else if (a.type === "changeYPctBy") {
               const { xPct, yPct } = pixelToScratchStage(
                 s.x,
@@ -1403,23 +1452,22 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 cw,
                 ch,
               );
-              const ny = Math.min(100, Math.max(-100, yPct + a.deltaPct));
+              const d = evalSerializedNum(a.deltaPct, ctx);
+              const ny = Math.min(100, Math.max(-100, yPct + d));
               const pos = scratchStageToPixel(xPct, ny, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
               await waitNextAnimationFrame(shouldCancel);
             } else if (a.type === "glideTo") {
-              const { x: tx, y: ty } = scratchStageToPixel(
-                a.xPct,
-                a.yPct,
-                cw,
-                ch,
-              );
+              const gx = evalSerializedNum(a.xPct, ctx);
+              const gy = evalSerializedNum(a.yPct, ctx);
+              const secs = evalSerializedNum(a.secs, ctx);
+              const { x: tx, y: ty } = scratchStageToPixel(gx, gy, cw, ch);
               await animateMove(
                 s,
                 tx,
                 ty,
-                Math.max(8, Math.round((a.secs * 1000) / 16)),
+                Math.max(8, Math.round((secs * 1000) / 16)),
                 shouldCancel,
               );
             } else if (a.type === "jumpArc") {
@@ -1429,81 +1477,81 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 cw,
                 ch,
               );
+              const peakYPct = evalSerializedNum(a.peakYPct, ctx);
+              const halfSecs = evalSerializedNum(a.halfSecs, ctx);
               const peakY = Math.min(
                 100,
-                Math.max(-100, yPct + a.peakYPct),
+                Math.max(-100, yPct + peakYPct),
               );
               const frames = Math.max(
                 8,
-                Math.round((a.halfSecs * 1000) / 16),
+                Math.round((halfSecs * 1000) / 16),
               );
               const up = scratchStageToPixel(xPct, peakY, cw, ch);
               await animateMove(s, up.x, up.y, frames, shouldCancel);
               const down = scratchStageToPixel(xPct, yPct, cw, ch);
               await animateMove(s, down.x, down.y, frames, shouldCancel);
             } else if (a.type === "bounceEdge") {
-              const m = 14;
-              if (
-                s.x <= m ||
-                s.x >= cw - m ||
-                s.y <= m ||
-                s.y >= ch - m
-              ) {
-                s.heading = normHeading(s.heading + 180);
-              }
+              applyScratchStyleEdgeBounceHeading(s, cw, ch, 14);
             } else if (a.type === "say") {
+              const ms = Math.max(100, evalSerializedNum(a.ms, ctx));
               const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text: a.text,
                 kind: "say",
-                until: Date.now() + a.ms,
+                until: Date.now() + ms,
                 ...(fillHex ? { fillHex } : {}),
               };
-              await waitMs(a.ms, shouldCancel);
+              await waitMs(ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "sayDynamic") {
-              const ctx = buildSensingCtx(spriteId);
               const text = evalSerializedString(a.expr, ctx).slice(0, 120);
+              const ms = Math.max(100, evalSerializedNum(a.ms, ctx));
               const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text,
                 kind: "say",
-                until: Date.now() + a.ms,
+                until: Date.now() + ms,
                 ...(fillHex ? { fillHex } : {}),
               };
-              await waitMs(a.ms, shouldCancel);
+              await waitMs(ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "think") {
+              const ms = Math.max(100, evalSerializedNum(a.ms, ctx));
               const fillHex = s.speechBubbleFillHex;
               s.bubble = {
                 text: a.text,
                 kind: "think",
-                until: Date.now() + a.ms,
+                until: Date.now() + ms,
                 ...(fillHex ? { fillHex } : {}),
               };
-              await waitMs(a.ms, shouldCancel);
+              await waitMs(ms, shouldCancel);
               s.bubble = undefined;
             } else if (a.type === "setSpeechBubbleColor") {
-              const ctx = buildSensingCtx(spriteId);
               s.speechBubbleFillHex = evalSerializedColorExpr(a.expr, ctx);
             } else if (a.type === "changeSize") {
               const cur = s.sizePct ?? 100;
+              const d = evalSerializedNum(a.deltaPct, ctx);
               s.sizePct = Math.min(
                 MAX_SPRITE_SIZE_PCT,
-                Math.max(MIN_SPRITE_SIZE_PCT, cur + a.deltaPct),
+                Math.max(MIN_SPRITE_SIZE_PCT, cur + d),
               );
             } else if (a.type === "setSizePct") {
+              const pct = evalSerializedNum(a.sizePct, ctx);
               s.sizePct = Math.min(
                 MAX_SPRITE_SIZE_PCT,
-                Math.max(MIN_SPRITE_SIZE_PCT, a.sizePct),
+                Math.max(MIN_SPRITE_SIZE_PCT, pct),
               );
             } else if (a.type === "setVisible") {
               s.visible = a.visible;
             } else if (a.type === "setPointTowardAim") {
               s.pointTowardsAimOrigin = a.origin;
               if (a.origin === "custom") {
-                if (typeof a.lateralPct === "number") {
-                  s.pointTowardsLateralPct = a.lateralPct;
+                if (a.lateralPct !== undefined) {
+                  s.pointTowardsLateralPct = evalSerializedNum(
+                    a.lateralPct,
+                    ctx,
+                  );
                   s.pointTowardsForwardPx = 0;
                   s.pointTowardsLateralPx = undefined;
                 } else {
@@ -1519,11 +1567,14 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               onActorPointTowardAimChangeRef.current?.(spriteId, {
                 pointTowardsAimOrigin: a.origin,
                 ...(a.origin === "custom"
-                  ? typeof a.lateralPct === "number"
+                  ? a.lateralPct !== undefined
                     ? {
                         pointTowardsForwardPx: 0,
                         pointTowardsLateralPx: undefined,
-                        pointTowardsLateralPct: a.lateralPct,
+                        pointTowardsLateralPct: evalSerializedNum(
+                          a.lateralPct,
+                          ctx,
+                        ),
                       }
                     : {
                         pointTowardsForwardPx: a.forwardPx ?? 0,
@@ -1598,9 +1649,11 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               playOllieSound(a.id);
               await waitMs(a.ms, shouldCancel);
             } else if (a.type === "wait") {
-              await waitMs(a.ms, shouldCancel);
+              await waitMs(
+                Math.max(0, evalSerializedNum(a.ms, ctx)),
+                shouldCancel,
+              );
             } else if (a.type === "setVar") {
-              const ctx = buildSensingCtx(spriteId);
               assignRunVar(
                 runVars,
                 a.varId,
@@ -1608,7 +1661,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 a.varName,
               );
             } else if (a.type === "changeVar") {
-              const ctx = buildSensingCtx(spriteId);
               const cur =
                 readVarValue(runVars, a.varId, a.varName) ?? 0;
               assignRunVar(
@@ -1618,7 +1670,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 a.varName,
               );
             } else if (a.type === "promptAndSetVar") {
-              const ctx = buildSensingCtx(spriteId);
               let promptMsg = a.message;
               if (a.messageExpr != null) {
                 const ev = evalSerializedString(a.messageExpr, ctx);
@@ -1646,7 +1697,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 );
               }
             } else if (a.type === "repeatDynamic") {
-              const ctx = buildSensingCtx(spriteId);
               const n = Math.min(
                 MAX_REPEAT_DYNAMIC_ITER,
                 Math.max(0, Math.floor(evalSerializedNum(a.times, ctx))),
@@ -1656,7 +1706,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 await runSequenceForSprite(spriteId, a.body);
               }
             } else if (a.type === "ifChainDynamic") {
-              const ctx = buildSensingCtx(spriteId);
               let taken = false;
               for (const br of a.branches) {
                 if (evalSerializedBool(br.cond, ctx)) {

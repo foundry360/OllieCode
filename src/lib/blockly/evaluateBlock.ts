@@ -257,7 +257,8 @@ export function evaluateNumber(block: Block | null): number {
       const hi = evaluateNumber(block.getInputTargetBlock("HIGH"));
       return Math.min(hi, Math.max(lo, v));
     }
-    case "math_random_int": {
+    case "math_random_int":
+    case "ollie_pick_random": {
       const a = Math.ceil(evaluateNumber(block.getInputTargetBlock("FROM")));
       const b = Math.floor(evaluateNumber(block.getInputTargetBlock("TO")));
       if (b < a) return a;

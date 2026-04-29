@@ -111,14 +111,14 @@ export function normalizeStageActor(
 export type OllieCostume = OllieSpriteCostumeId;
 
 export type OllieAction =
-  | { type: "move"; distance: number }
+  | { type: "move"; distance: SerializedNumExpr }
   /**
    * Move forward (along heading) with a vertical bob so walk/run read as animated
    * without extra costume frames. Used by “play animation” presets.
    */
-  | { type: "moveWithBob"; distance: number; style: "walk" | "run" }
-  | { type: "rotate"; degrees: number }
-  | { type: "setHeading"; degrees: number }
+  | { type: "moveWithBob"; distance: SerializedNumExpr; style: "walk" | "run" }
+  | { type: "rotate"; degrees: SerializedNumExpr }
+  | { type: "setHeading"; degrees: SerializedNumExpr }
   /** Face the current mouse position on the stage (Scratch-style “point towards mouse-pointer”). */
   | { type: "pointTowardsMouse" }
   /**
@@ -131,33 +131,40 @@ export type OllieAction =
       forwardPx?: number;
       lateralPx?: number;
       /** Sideways offset as % of half costume width; scales with art and grow/shrink. */
-      lateralPct?: number;
+      lateralPct?: SerializedNumExpr;
     }
   /**
    * goTo / glideTo: xPct, yPct are Scratch-style stage coords in −100…100
    * (center 0,0; +y toward top, −y toward bottom).
    */
-  | { type: "goTo"; xPct: number; yPct: number }
+  | { type: "goTo"; xPct: SerializedNumExpr; yPct: SerializedNumExpr }
   /**
    * Scratch-style “go to” menu: random spot on stage, or the current mouse position
    * (inside the stage area).
    */
   | { type: "goToTarget"; target: "random" | "mouse" }
   /** Add to current Scratch x (−100…100); result clamped to the stage. */
-  | { type: "changeXPctBy"; deltaPct: number }
+  | { type: "changeXPctBy"; deltaPct: SerializedNumExpr }
+  /** Set Scratch x (−100…100) while keeping current y; result clamped to the stage. */
+  | { type: "setXPct"; x: SerializedNumExpr }
   /** Add to current Scratch y (−100…100); result clamped to the stage. */
-  | { type: "changeYPctBy"; deltaPct: number }
-  | { type: "glideTo"; secs: number; xPct: number; yPct: number }
+  | { type: "changeYPctBy"; deltaPct: SerializedNumExpr }
+  | {
+      type: "glideTo";
+      secs: SerializedNumExpr;
+      xPct: SerializedNumExpr;
+      yPct: SerializedNumExpr;
+    }
   /**
    * Vertical hop: glide up in Scratch y by `peakYPct`, then back (same Scratch x).
    * Used by “play animation → jump”.
    */
-  | { type: "jumpArc"; peakYPct: number; halfSecs: number }
+  | { type: "jumpArc"; peakYPct: SerializedNumExpr; halfSecs: SerializedNumExpr }
   | { type: "bounceEdge" }
-  | { type: "say"; text: string; ms: number }
+  | { type: "say"; text: string; ms: SerializedNumExpr }
   /** Speech bubble with text from Text / Join / variables / math at Run time. */
-  | { type: "sayDynamic"; expr: SerializedStringExpr; ms: number }
-  | { type: "think"; text: string; ms: number }
+  | { type: "sayDynamic"; expr: SerializedStringExpr; ms: SerializedNumExpr }
+  | { type: "think"; text: string; ms: SerializedNumExpr }
   | {
       type: "setSpeechBubbleColor";
       expr: SerializedColorExpr;
@@ -170,9 +177,9 @@ export type OllieAction =
   /**
    * Scratch-style size: 100 = default. `deltaPct` is added to the current size % (grow positive, shrink negative).
    */
-  | { type: "changeSize"; deltaPct: number }
+  | { type: "changeSize"; deltaPct: SerializedNumExpr }
   /** Set display size to an absolute percent (Scratch-style; 100 = default). */
-  | { type: "setSizePct"; sizePct: number }
+  | { type: "setSizePct"; sizePct: SerializedNumExpr }
   | { type: "scene"; id: OllieSceneId }
   /** Advance to the next backdrop in catalog order (wraps). */
   | { type: "nextScene" }
@@ -180,7 +187,7 @@ export type OllieAction =
   | { type: "setVisible"; visible: boolean }
   | { type: "sound"; id: OllieSoundId }
   | { type: "soundWait"; id: OllieSoundId; ms: number }
-  | { type: "wait"; ms: number }
+  | { type: "wait"; ms: SerializedNumExpr }
   /** Scratch-style message — handled by the stage runtime, not queued as sprite motion. */
   | { type: "broadcast"; message: string }
   | { type: "broadcastWait"; message: string }

@@ -3,7 +3,10 @@ import { SignedInAppHeader } from "@/components/app/SignedInAppHeader";
 import { Footer } from "@/components/landing/Footer";
 import { LearningHubExplore } from "@/components/lms/LearningHubExplore";
 import { fetchPublishedLearningGuides } from "@/lib/lms/learningGuides";
-import { getMergedPublishedLessonsForLearnHub } from "@/lib/lms/publishedLessons";
+import {
+  getMergedPublishedLessons,
+  getPopularHubLessons,
+} from "@/lib/lms/publishedLessons";
 import { fetchFavoriteLessonIds } from "@/lib/supabase/lmsUserData";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -16,7 +19,8 @@ function HubLoadingFallback() {
 }
 
 export default async function LearnPage() {
-  const lessons = await getMergedPublishedLessonsForLearnHub();
+  const lessons = await getMergedPublishedLessons();
+  const popularLessons = await getPopularHubLessons(lessons, 10);
 
   const supabase = await createSupabaseServerClient();
   let favoriteLessonIds: string[] | undefined;
@@ -39,6 +43,7 @@ export default async function LearnPage() {
         <Suspense fallback={<HubLoadingFallback />}>
           <LearningHubExplore
             lessons={lessons}
+            popularLessons={popularLessons}
             guides={guides}
             favoriteLessonIds={favoriteLessonIds}
           />

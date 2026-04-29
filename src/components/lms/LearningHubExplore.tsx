@@ -42,7 +42,7 @@ type SortId =
   | "level-asc";
 
 const SORT_OPTIONS: { id: SortId; label: string }[] = [
-  { id: "relevant", label: "Recently updated" },
+  { id: "relevant", label: "Date added (newest)" },
   { id: "title-asc", label: "Title A–Z" },
   { id: "title-desc", label: "Title Z–A" },
   { id: "duration-asc", label: "Shortest time" },
@@ -102,11 +102,14 @@ type HubTab = "lessons" | "guides";
 
 export function LearningHubExplore({
   lessons,
+  /** Carousel only; main list uses `lessons` order (e.g. by creation date). */
+  popularLessons,
   guides,
   /** When set (signed-in user), star buttons save favorite lessons on `/profile`. */
   favoriteLessonIds,
 }: {
   lessons: LessonCatalogEntry[];
+  popularLessons: LessonCatalogEntry[];
   guides: readonly LearningGuideListItem[];
   favoriteLessonIds?: readonly string[];
 }) {
@@ -215,7 +218,11 @@ export function LearningHubExplore({
   const showListShowLess =
     results.length > LIST_PREVIEW_COUNT && lessonListExpanded;
 
-  const featured = useMemo(() => lessons.slice(0, 10), [lessons]);
+  const featured = useMemo(
+    () =>
+      popularLessons.length > 0 ? popularLessons : lessons.slice(0, 10),
+    [popularLessons, lessons],
+  );
 
   const guideSections = useMemo(
     () => groupLearningGuidesForHub([...guides]),

@@ -28,7 +28,7 @@ function lessonFromPublishedRow(row: {
 }
 
 /**
- * Published rows in `lms_lessons` only. Newest `updated_at` first.
+ * Published rows in `lms_lessons` only. Newest `created_at` first (stable catalog order for the hub list).
  */
 export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]> {
   const supabase = await createSupabaseServerClient();
@@ -38,7 +38,7 @@ export async function getMergedPublishedLessons(): Promise<LessonCatalogEntry[]>
     .from("lms_lessons")
     .select("id, payload, published, updated_at")
     .eq("published", true)
-    .order("updated_at", { ascending: false });
+    .order("created_at", { ascending: false });
 
   if (error || !data?.length) return [];
 
@@ -60,19 +60,21 @@ type LessonHubActivationCountRow = {
 };
 
 /**
- * Same catalog as {@link getMergedPublishedLessons}, ordered by hub workspace activations
- * (desc), then by the default `updated_at` order for ties. Used on `/learn` so “Popular”
- * reflects real opens; falls back to `updated_at` order if counts are unavailable.
+ * Up to `limit` lessons for the Learning Hub “Popular” carousel: hub activation count
+ * (desc), then catalog order from {@link getMergedPublishedLessons} for ties. The main
+ * hub list should use unsorted `lessons` from that function instead.
  */
-export async function getMergedPublishedLessonsForLearnHub(): Promise<
-  LessonCatalogEntry[]
-> {
-  const lessons = await getMergedPublishedLessons();
+export async function getPopularHubLessons(
+  lessons: readonly LessonCatalogEntry[],
+  limit = 10,
+): Promise<LessonCatalogEntry[]> {
+  if (lessons.length === 0) return [];
+  const cap = Math.min(limit, lessons.length);
   const supabase = await createSupabaseServerClient();
-  if (!supabase || lessons.length === 0) return lessons;
+  if (!supabase) return lessons.slice(0, cap);
 
   const { data, error } = await supabase.rpc("lesson_hub_activation_counts");
-  if (error || !Array.isArray(data)) return lessons;
+  if (error || !Array.isArray(data)) return lessons.slice(0, cap);
 
   const counts = new Map(
     (data as LessonHubActivationCountRow[]).map((row) => [
@@ -81,12 +83,13 @@ export async function getMergedPublishedLessonsForLearnHub(): Promise<
     ]),
   );
   const orderIndex = new Map(lessons.map((l, i) => [l.id, i]));
-  return [...lessons].sort((a, b) => {
+  const sorted = [...lessons].sort((a, b) => {
     const ca = counts.get(a.id) ?? 0;
     const cb = counts.get(b.id) ?? 0;
     if (cb !== ca) return cb - ca;
     return (orderIndex.get(a.id) ?? 0) - (orderIndex.get(b.id) ?? 0);
   });
+  return sorted.slice(0, cap);
 }
 
 export async function getLessonByIdMerged(

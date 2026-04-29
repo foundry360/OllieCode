@@ -285,6 +285,33 @@ function renderShape(
   ctx.restore();
 }
 
+/**
+ * Raster bitmap + finished shapes only. The on-screen display canvas also draws
+ * {@link drawSelectionOverlay} (resize/move dots), which must not appear in saved PNGs.
+ */
+function compositePaintLayersForPngExport(
+  rasterEl: HTMLCanvasElement | null,
+  shapes: ShapeRecord[],
+): HTMLCanvasElement {
+  const out = document.createElement("canvas");
+  out.width = CANVAS_W;
+  out.height = CANVAS_H;
+  const ctx = out.getContext("2d");
+  if (!ctx) return out;
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+  if (rasterEl) ctx.drawImage(rasterEl, 0, 0);
+  for (const s of shapes) {
+    renderShape(ctx, s.kind, s.x0, s.y0, s.x1, s.y1, {
+      fillColor: s.fillColor,
+      strokeColor: s.strokeColor,
+      lineWidth: s.lineWidth,
+      fillClosed: s.fillClosed,
+      preview: false,
+    });
+  }
+  return out;
+}
+
 const HANDLE_HIT_PX = 12;
 
 function distanceToSegment(
@@ -1034,9 +1061,9 @@ export function CostumePaintModal({
   }, [clearPaintContent, snapshot]);
 
   const handleSave = useCallback(async () => {
-    const c = canvasRef.current;
     const supabase = getSupabaseBrowserClient();
-    if (!c || !supabase) {
+    const rasterEl = rasterCanvasRef.current;
+    if (!rasterEl || !supabase) {
       setError(!supabase ? "Sign in to save painted costumes." : "Canvas missing.");
       return;
     }
@@ -1052,8 +1079,12 @@ export function CostumePaintModal({
         setSaving(false);
         return;
       }
+      const exportCanvas = compositePaintLayersForPngExport(
+        rasterEl,
+        shapesRef.current,
+      );
       const blob = await new Promise<Blob | null>((resolve) =>
-        c.toBlob((b) => resolve(b), "image/png"),
+        exportCanvas.toBlob((b) => resolve(b), "image/png"),
       );
       if (!blob) {
         setError("Could not export image.");
@@ -1265,14 +1296,12 @@ export function CostumePaintModal({
               </PaintToolbarTooltip>
             </div>
             <div className="flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-[#cbd5e1] p-2 sm:p-3">
-              <div
-                className="relative w-full min-w-0 max-w-full overflow-hidden rounded border-2 border-solid border-[#334155] shadow-sm"
-                style={{
-                  aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
-                  maxWidth: CANVAS_W,
-                  maxHeight: "100%",
-                }}
-              >
+              {/*
+                Size the bitmap with uniform scale (max-w/max-h + w-auto h-auto). A fixed
+                aspect-ratio box with w-full + max-height could become non-16:9; h-full w-full
+                on the canvas then stretched 800×450 art and distorted lines/shapes.
+              */}
+              <div className="relative inline-block max-h-full max-w-full overflow-hidden rounded border-2 border-solid border-[#334155] shadow-sm">
                 <div
                   className="pointer-events-none absolute inset-0 z-0"
                   style={DOT_WORKSPACE_LAYER_STYLE}
@@ -1289,9 +1318,16 @@ export function CostumePaintModal({
                   ref={canvasRef}
                   width={CANVAS_W}
                   height={CANVAS_H}
-                  className={`relative z-[1] block h-full w-full touch-none bg-transparent ${
+                  className={`relative z-[1] block h-auto w-auto max-h-full max-w-full touch-none bg-transparent ${
                     tool === "select" ? "cursor-default" : "cursor-crosshair"
                   }`}
+                  style={{
+                    width: "auto",
+                    height: "auto",
+                    maxWidth: "min(100%, 800px)",
+                    maxHeight: "100%",
+                    aspectRatio: `${CANVAS_W} / ${CANVAS_H}`,
+                  }}
                   onPointerDown={onCanvasPointerDown}
                   onPointerMove={onCanvasPointerMove}
                   onPointerUp={(e) => endStroke(e)}

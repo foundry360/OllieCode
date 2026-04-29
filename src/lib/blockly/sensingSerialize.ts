@@ -349,7 +349,8 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       if (!v || !lo || !hi) return null;
       return { k: "constrain", v, lo, hi };
     }
-    case "math_random_int": {
+    case "math_random_int":
+    case "ollie_pick_random": {
       const a = serializeNumExpr(block.getInputTargetBlock("FROM"));
       const b = serializeNumExpr(block.getInputTargetBlock("TO"));
       if (!a || !b) return null;

@@ -23,9 +23,22 @@ import { getAnimationPresetActions } from "@/lib/canvas/ollieAnimationPresets";
 import type {
   OllieAction,
   SerializedBoolExpr,
+  SerializedNumExpr,
   SerializedStringExpr,
   SpriteScriptPlan,
 } from "@/types/ollie";
+
+function numLit(v: number): SerializedNumExpr {
+  return { k: "n", v };
+}
+
+function mulNum(a: SerializedNumExpr, factor: number): SerializedNumExpr {
+  return { k: "arith", op: "MULTIPLY", a, b: { k: "n", v: factor } };
+}
+
+function secsToMsExpr(secs: SerializedNumExpr): SerializedNumExpr {
+  return mulNum(secs, 1000);
+}
 
 /**
  * Interprets Ollie stack blocks (Motion / Looks / Sound / Control / Events).
@@ -67,58 +80,76 @@ function walkStatementChain(
   while (current) {
     switch (current.type) {
       case "ollie_move_forward": {
-        const steps = Number(current.getFieldValue("STEPS")) || 0;
-        const distance = steps * BASE_STEP_PX;
-        /** Same as “play animation → walk” one stride: bob + sprite-sheet frames. */
-        actions.push({
-          type: "moveWithBob",
-          distance,
-          style: "walk",
-        });
+        const stepsSer =
+          serializeNumExpr(current.getInputTargetBlock("STEPS")) ?? numLit(10);
+        if (stepsSer.k === "n") {
+          actions.push({
+            type: "moveWithBob",
+            distance: numLit(stepsSer.v * BASE_STEP_PX),
+            style: "walk",
+          });
+        } else {
+          actions.push({
+            type: "moveWithBob",
+            distance: mulNum(stepsSer, BASE_STEP_PX),
+            style: "walk",
+          });
+        }
         break;
       }
       case "ollie_turn": {
-        const angle = Number(current.getFieldValue("ANGLE")) || 0;
+        const angle =
+          serializeNumExpr(current.getInputTargetBlock("ANGLE")) ?? numLit(0);
         actions.push({ type: "rotate", degrees: angle });
         break;
       }
       case "ollie_turn_left": {
-        const angle = Number(current.getFieldValue("ANGLE")) || 15;
-        actions.push({ type: "rotate", degrees: -Math.abs(angle) });
+        const angleSer =
+          serializeNumExpr(current.getInputTargetBlock("ANGLE")) ?? numLit(15);
+        if (angleSer.k === "n") {
+          actions.push({
+            type: "rotate",
+            degrees: numLit(-Math.abs(angleSer.v)),
+          });
+        } else {
+          actions.push({
+            type: "rotate",
+            degrees: { k: "neg", a: { k: "single", op: "ABS", a: angleSer } },
+          });
+        }
         break;
       }
       case "ollie_turn_right": {
-        const angle = Number(current.getFieldValue("ANGLE")) || 15;
-        actions.push({ type: "rotate", degrees: Math.abs(angle) });
+        const angleSer =
+          serializeNumExpr(current.getInputTargetBlock("ANGLE")) ?? numLit(15);
+        if (angleSer.k === "n") {
+          actions.push({
+            type: "rotate",
+            degrees: numLit(Math.abs(angleSer.v)),
+          });
+        } else {
+          actions.push({
+            type: "rotate",
+            degrees: { k: "single", op: "ABS", a: angleSer },
+          });
+        }
         break;
       }
       case "ollie_point_in_direction": {
-        const angle = Number(current.getFieldValue("ANGLE")) || 0;
+        const angle =
+          serializeNumExpr(current.getInputTargetBlock("ANGLE")) ?? numLit(0);
         actions.push({ type: "setHeading", degrees: angle });
         break;
       }
       case "ollie_set_point_toward_aim": {
-        let forwardPx = 0;
-        let lateralPx: number | undefined;
-        let lateralPct: number | undefined;
-        if (current.getField("OFFPCT")) {
-          lateralPct = Number(current.getFieldValue("OFFPCT")) || 0;
-        } else if (current.getField("OFFSET")) {
-          lateralPx = Number(current.getFieldValue("OFFSET")) || 0;
-        } else if (current.getField("LEFT") && current.getField("RIGHT")) {
-          const left = Number(current.getFieldValue("LEFT")) || 0;
-          const right = Number(current.getFieldValue("RIGHT")) || 0;
-          lateralPx = right - left;
-        } else {
-          forwardPx = Number(current.getFieldValue("FWD")) || 0;
-          lateralPx = Number(current.getFieldValue("LAT")) || 0;
-        }
+        const lateralSer =
+          serializeNumExpr(current.getInputTargetBlock("OFFPCT")) ?? numLit(0);
         actions.push({
           type: "setPointTowardAim",
           origin: "custom",
-          forwardPx,
-          lateralPx,
-          lateralPct,
+          forwardPx: 0,
+          lateralPx: undefined,
+          lateralPct: lateralSer,
         });
         break;
       }
@@ -136,16 +167,18 @@ function walkStatementChain(
               : dir === "left"
                 ? -90
                 : 0;
-        actions.push({ type: "setHeading", degrees: deg });
+        actions.push({ type: "setHeading", degrees: numLit(deg) });
         break;
       }
       case "ollie_go_to_xy": {
-        const x = Number(current.getFieldValue("XPCT")) ?? 0;
-        const y = Number(current.getFieldValue("YPCT")) ?? 0;
+        const xSer =
+          serializeNumExpr(current.getInputTargetBlock("XPCT")) ?? numLit(0);
+        const ySer =
+          serializeNumExpr(current.getInputTargetBlock("YPCT")) ?? numLit(0);
         actions.push({
           type: "goTo",
-          xPct: Math.min(100, Math.max(-100, x)),
-          yPct: Math.min(100, Math.max(-100, y)),
+          xPct: { k: "constrain", v: xSer, lo: numLit(-100), hi: numLit(100) },
+          yPct: { k: "constrain", v: ySer, lo: numLit(-100), hi: numLit(100) },
         });
         break;
       }
@@ -159,31 +192,54 @@ function walkStatementChain(
       case "ollie_go_to_random_position":
         actions.push({ type: "goToTarget", target: "random" });
         break;
+      case "ollie_set_x_to": {
+        const ser = serializeNumExpr(current.getInputTargetBlock("XPCT"));
+        actions.push({
+          type: "setXPct",
+          x: ser ?? { k: "n", v: 0 },
+        });
+        break;
+      }
       case "ollie_change_x_by": {
-        const d = Number(current.getFieldValue("DX")) || 0;
+        const dSer =
+          serializeNumExpr(current.getInputTargetBlock("DX")) ?? numLit(0);
         actions.push({
           type: "changeXPctBy",
-          deltaPct: Math.min(200, Math.max(-200, d)),
+          deltaPct: {
+            k: "constrain",
+            v: dSer,
+            lo: numLit(-200),
+            hi: numLit(200),
+          },
         });
         break;
       }
       case "ollie_change_y_by": {
-        const d = Number(current.getFieldValue("DY")) || 0;
+        const dSer =
+          serializeNumExpr(current.getInputTargetBlock("DY")) ?? numLit(0);
         actions.push({
           type: "changeYPctBy",
-          deltaPct: Math.min(200, Math.max(-200, d)),
+          deltaPct: {
+            k: "constrain",
+            v: dSer,
+            lo: numLit(-200),
+            hi: numLit(200),
+          },
         });
         break;
       }
       case "ollie_glide_to": {
-        const secs = Number(current.getFieldValue("SECS")) || 1;
-        const x = Number(current.getFieldValue("XPCT")) ?? 0;
-        const y = Number(current.getFieldValue("YPCT")) ?? 0;
+        const secsSer =
+          serializeNumExpr(current.getInputTargetBlock("SECS")) ?? numLit(1);
+        const xSer =
+          serializeNumExpr(current.getInputTargetBlock("XPCT")) ?? numLit(0);
+        const ySer =
+          serializeNumExpr(current.getInputTargetBlock("YPCT")) ?? numLit(0);
         actions.push({
           type: "glideTo",
-          secs: Math.min(15, Math.max(0.1, secs)),
-          xPct: Math.min(100, Math.max(-100, x)),
-          yPct: Math.min(100, Math.max(-100, y)),
+          secs: { k: "constrain", v: secsSer, lo: numLit(0.1), hi: numLit(15) },
+          xPct: { k: "constrain", v: xSer, lo: numLit(-100), hi: numLit(100) },
+          yPct: { k: "constrain", v: ySer, lo: numLit(-100), hi: numLit(100) },
         });
         break;
       }
@@ -192,31 +248,34 @@ function walkStatementChain(
         break;
       case "ollie_say": {
         const text = String(current.getFieldValue("TEXT") ?? "");
-        const secs = Number(current.getFieldValue("SECS")) || 2;
+        const secsSer =
+          serializeNumExpr(current.getInputTargetBlock("SECS")) ?? numLit(2);
         actions.push({
           type: "say",
           text: text.slice(0, 120),
-          ms: Math.max(100, secs * 1000),
+          ms: secsToMsExpr(secsSer),
         });
         break;
       }
       case "ollie_say_value": {
-        const secs = Number(current.getFieldValue("SECS")) || 2;
+        const secsSer =
+          serializeNumExpr(current.getInputTargetBlock("SECS")) ?? numLit(2);
         const expr = serializeStringExpr(current.getInputTargetBlock("TEXT"));
         actions.push({
           type: "sayDynamic",
           expr,
-          ms: Math.max(100, secs * 1000),
+          ms: secsToMsExpr(secsSer),
         });
         break;
       }
       case "ollie_think": {
         const text = String(current.getFieldValue("TEXT") ?? "");
-        const secs = Number(current.getFieldValue("SECS")) || 2;
+        const secsSer =
+          serializeNumExpr(current.getInputTargetBlock("SECS")) ?? numLit(2);
         actions.push({
           type: "think",
           text: text.slice(0, 120),
-          ms: Math.max(100, secs * 1000),
+          ms: secsToMsExpr(secsSer),
         });
         break;
       }
@@ -247,15 +306,42 @@ function walkStatementChain(
         actions.push({ type: "nextCostume" });
         break;
       case "ollie_grow_size": {
-        const raw = Number(current.getFieldValue("PCT")) || 10;
-        const pct = Math.min(200, Math.max(1, Math.round(raw)));
-        actions.push({ type: "changeSize", deltaPct: pct });
+        const pctSer =
+          serializeNumExpr(current.getInputTargetBlock("PCT")) ?? numLit(10);
+        const rounded: SerializedNumExpr = {
+          k: "round",
+          op: "ROUND",
+          a: pctSer,
+        };
+        actions.push({
+          type: "changeSize",
+          deltaPct: {
+            k: "constrain",
+            v: rounded,
+            lo: numLit(1),
+            hi: numLit(200),
+          },
+        });
         break;
       }
       case "ollie_shrink_size": {
-        const raw = Number(current.getFieldValue("PCT")) || 10;
-        const pct = Math.min(200, Math.max(1, Math.round(raw)));
-        actions.push({ type: "changeSize", deltaPct: -pct });
+        const pctSer =
+          serializeNumExpr(current.getInputTargetBlock("PCT")) ?? numLit(10);
+        const rounded: SerializedNumExpr = {
+          k: "round",
+          op: "ROUND",
+          a: pctSer,
+        };
+        const pos = {
+          k: "constrain",
+          v: rounded,
+          lo: numLit(1),
+          hi: numLit(200),
+        } as SerializedNumExpr;
+        actions.push({
+          type: "changeSize",
+          deltaPct: { k: "neg", a: pos },
+        });
         break;
       }
       case "ollie_switch_scene": {
@@ -273,15 +359,41 @@ function walkStatementChain(
         actions.push({ type: "setVisible", visible: false });
         break;
       case "ollie_change_size_by": {
-        const raw = Number(current.getFieldValue("DELTA")) || 0;
-        const d = Math.min(500, Math.max(-500, Math.round(raw)));
-        actions.push({ type: "changeSize", deltaPct: d });
+        const dSer =
+          serializeNumExpr(current.getInputTargetBlock("DELTA")) ?? numLit(0);
+        const rounded: SerializedNumExpr = {
+          k: "round",
+          op: "ROUND",
+          a: dSer,
+        };
+        actions.push({
+          type: "changeSize",
+          deltaPct: {
+            k: "constrain",
+            v: rounded,
+            lo: numLit(-500),
+            hi: numLit(500),
+          },
+        });
         break;
       }
       case "ollie_set_size_to": {
-        const raw = Number(current.getFieldValue("PCT")) || 100;
-        const pct = Math.min(500, Math.max(5, Math.round(raw)));
-        actions.push({ type: "setSizePct", sizePct: pct });
+        const pctSer =
+          serializeNumExpr(current.getInputTargetBlock("PCT")) ?? numLit(100);
+        const rounded: SerializedNumExpr = {
+          k: "round",
+          op: "ROUND",
+          a: pctSer,
+        };
+        actions.push({
+          type: "setSizePct",
+          sizePct: {
+            k: "constrain",
+            v: rounded,
+            lo: numLit(5),
+            hi: numLit(500),
+          },
+        });
         break;
       }
       case "ollie_play_animation": {
@@ -309,8 +421,15 @@ function walkStatementChain(
         break;
       }
       case "ollie_wait": {
-        const secs = Number(current.getFieldValue("SECS")) || 0;
-        actions.push({ type: "wait", ms: Math.max(0, secs * 1000) });
+        const secsSer =
+          serializeNumExpr(current.getInputTargetBlock("SECS")) ?? numLit(0);
+        const secsNonNeg = {
+          k: "constrain",
+          v: secsSer,
+          lo: numLit(0),
+          hi: numLit(600),
+        } as SerializedNumExpr;
+        actions.push({ type: "wait", ms: mulNum(secsNonNeg, 1000) });
         break;
       }
       case "ollie_wait_until": {
@@ -332,15 +451,36 @@ function walkStatementChain(
         break;
       }
       case "ollie_repeat": {
-        const raw = Math.floor(Number(current.getFieldValue("TIMES")) || 1);
-        const times = Math.min(
-          MAX_REPEAT_UNROLL,
-          Math.max(1, raw),
-        );
         const inner = current.getInputTargetBlock("DO");
-        for (let i = 0; i < times; i += 1) {
-          if (actions.length >= MAX_OLLIE_ACTIONS) return;
-          walkStatementChain(inner, actions);
+        if (!inner) break;
+        const timesBlock = current.getInputTargetBlock("TIMES");
+        const ser = serializeNumExpr(timesBlock);
+        if (ser) {
+          if (ser.k === "n") {
+            const times = Math.min(
+              MAX_REPEAT_UNROLL,
+              Math.max(1, Math.floor(ser.v)),
+            );
+            for (let i = 0; i < times; i += 1) {
+              if (actions.length >= MAX_OLLIE_ACTIONS) return;
+              walkStatementChain(inner, actions);
+            }
+          } else {
+            actions.push({
+              type: "repeatDynamic",
+              times: ser,
+              body: collectChainActions(inner),
+            });
+          }
+        } else {
+          const raw = Math.floor(
+            Math.abs(evaluateNumber(timesBlock)),
+          );
+          const times = Math.min(MAX_REPEAT_UNROLL, Math.max(1, raw));
+          for (let i = 0; i < times; i += 1) {
+            if (actions.length >= MAX_OLLIE_ACTIONS) return;
+            walkStatementChain(inner, actions);
+          }
         }
         break;
       }

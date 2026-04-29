@@ -4,6 +4,33 @@ import { ollieToolboxCategoryCssconfig } from "@/lib/blockly/toolboxCategoryIcon
 
 const B = (type: string) => ({ kind: "block" as const, type });
 
+type NumberShadowInputs = Record<
+  string,
+  { shadow: { type: string; fields: { NUM: number } } }
+>;
+
+/** Default `math_number` shadows for one or more Number sockets (e.g. mouse x, variables). */
+function blockWithNumberShadows(
+  type: string,
+  shadows: Record<string, number>,
+): ReturnType<typeof B> & { inputs: NumberShadowInputs } {
+  const inputs: NumberShadowInputs = {};
+  for (const [name, num] of Object.entries(shadows)) {
+    inputs[name] = {
+      shadow: { type: "math_number", fields: { NUM: num } },
+    };
+  }
+  return { kind: "block", type, inputs };
+}
+
+function blockWithNumberShadow(
+  type: string,
+  inputName: string,
+  shadowNum = 0,
+): ReturnType<typeof B> & { inputs: NumberShadowInputs } {
+  return blockWithNumberShadows(type, { [inputName]: shadowNum });
+}
+
 /**
  * Scratch-style Ollie categories (see scratch.mit.edu Getting Started) + Blockly library blocks.
  */
@@ -31,18 +58,23 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColor.motion,
       cssconfig: ollieToolboxCategoryCssconfig("motion"),
       contents: [
-        B("ollie_move_forward"),
-        B("ollie_turn"),
-        B("ollie_turn_left"),
-        B("ollie_turn_right"),
-        B("ollie_point_in_direction"),
+        blockWithNumberShadow("ollie_move_forward", "STEPS", 10),
+        blockWithNumberShadow("ollie_turn", "ANGLE", 90),
+        blockWithNumberShadow("ollie_turn_left", "ANGLE", 15),
+        blockWithNumberShadow("ollie_turn_right", "ANGLE", 15),
+        blockWithNumberShadow("ollie_point_in_direction", "ANGLE", 90),
         B("ollie_point_towards"),
-        B("ollie_set_point_toward_aim"),
-        B("ollie_go_to_xy"),
+        blockWithNumberShadow("ollie_set_point_toward_aim", "OFFPCT", 0),
+        blockWithNumberShadows("ollie_go_to_xy", { XPCT: 0, YPCT: 0 }),
         B("ollie_go_to_target"),
-        B("ollie_change_x_by"),
-        B("ollie_change_y_by"),
-        B("ollie_glide_to"),
+        blockWithNumberShadow("ollie_set_x_to", "XPCT", 0),
+        blockWithNumberShadow("ollie_change_x_by", "DX", 10),
+        blockWithNumberShadow("ollie_change_y_by", "DY", 10),
+        blockWithNumberShadows("ollie_glide_to", {
+          SECS: 1,
+          XPCT: 0,
+          YPCT: 0,
+        }),
         B("ollie_if_on_edge_bounce"),
       ],
     },
@@ -52,18 +84,18 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColor.looks,
       cssconfig: ollieToolboxCategoryCssconfig("looks"),
       contents: [
-        B("ollie_say"),
-        B("ollie_say_value"),
-        B("ollie_think"),
+        blockWithNumberShadow("ollie_say", "SECS", 2),
+        blockWithNumberShadow("ollie_say_value", "SECS", 2),
+        blockWithNumberShadow("ollie_think", "SECS", 2),
         B("ollie_set_speech_bubble_color"),
         B("ollie_switch_costume"),
         B("ollie_next_costume"),
         B("ollie_show"),
         B("ollie_hide"),
-        B("ollie_grow_size"),
-        B("ollie_shrink_size"),
-        B("ollie_change_size_by"),
-        B("ollie_set_size_to"),
+        blockWithNumberShadow("ollie_grow_size", "PCT", 10),
+        blockWithNumberShadow("ollie_shrink_size", "PCT", 10),
+        blockWithNumberShadow("ollie_change_size_by", "DELTA", 10),
+        blockWithNumberShadow("ollie_set_size_to", "PCT", 100),
         B("ollie_switch_scene"),
         B("ollie_next_scene"),
         B("ollie_play_animation"),
@@ -99,9 +131,9 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColor.control,
       cssconfig: ollieToolboxCategoryCssconfig("control"),
       contents: [
-        B("ollie_wait"),
+        blockWithNumberShadow("ollie_wait", "SECS", 1),
         B("ollie_wait_until"),
-        B("ollie_repeat"),
+        blockWithNumberShadow("ollie_repeat", "TIMES", 10),
         B("ollie_forever"),
         B("controls_whileUntil"),
         B("controls_repeat_ext"),
@@ -146,6 +178,7 @@ export const OLLIE_TOOLBOX = {
       colour: scratchToolboxCategoryColor.math,
       cssconfig: ollieToolboxCategoryCssconfig("math"),
       contents: [
+        blockWithNumberShadows("ollie_pick_random", { FROM: 1, TO: 10 }),
         B("math_number"),
         B("math_arithmetic"),
         B("math_single"),

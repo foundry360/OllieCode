@@ -34,17 +34,21 @@ export function getAnimationPresetActions(id: string): OllieAction[] {
   switch (id) {
     case "wave":
       return [
-        { type: "rotate", degrees: -18 },
-        { type: "wait", ms: 90 },
-        { type: "rotate", degrees: 36 },
-        { type: "wait", ms: 90 },
-        { type: "rotate", degrees: -18 },
+        { type: "rotate", degrees: { k: "n", v: -18 } },
+        { type: "wait", ms: { k: "n", v: 90 } },
+        { type: "rotate", degrees: { k: "n", v: 36 } },
+        { type: "wait", ms: { k: "n", v: 90 } },
+        { type: "rotate", degrees: { k: "n", v: -18 } },
       ];
     case "walk": {
       const step = 5 * STEP_PX;
       const out: OllieAction[] = [];
       for (let i = 0; i < 4; i += 1) {
-        out.push({ type: "moveWithBob", distance: step, style: "walk" });
+        out.push({
+          type: "moveWithBob",
+          distance: { k: "n", v: step },
+          style: "walk",
+        });
       }
       return out;
     }
@@ -52,7 +56,11 @@ export function getAnimationPresetActions(id: string): OllieAction[] {
       const step = 9 * STEP_PX;
       const out: OllieAction[] = [];
       for (let i = 0; i < 6; i += 1) {
-        out.push({ type: "moveWithBob", distance: step, style: "run" });
+        out.push({
+          type: "moveWithBob",
+          distance: { k: "n", v: step },
+          style: "run",
+        });
       }
       return out;
     }
@@ -60,8 +68,8 @@ export function getAnimationPresetActions(id: string): OllieAction[] {
       return [
         {
           type: "jumpArc",
-          peakYPct: 38,
-          halfSecs: 0.2,
+          peakYPct: { k: "n", v: 38 },
+          halfSecs: { k: "n", v: 0.2 },
         },
       ];
     default:

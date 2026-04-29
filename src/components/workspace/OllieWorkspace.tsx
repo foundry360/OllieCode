@@ -1151,8 +1151,14 @@ export function OllieWorkspace() {
       const prev = Events.getGroup();
       try {
         Events.setGroup(true);
-        block.setFieldValue(String(xr), "XPCT");
-        block.setFieldValue(String(yr), "YPCT");
+        const xBlk = block.getInput("XPCT")?.connection?.targetBlock();
+        const yBlk = block.getInput("YPCT")?.connection?.targetBlock();
+        if (xBlk?.type === "math_number") {
+          xBlk.setFieldValue(String(xr), "NUM");
+        }
+        if (yBlk?.type === "math_number") {
+          yBlk.setFieldValue(String(yr), "NUM");
+        }
       } finally {
         Events.setGroup(prev);
       }
@@ -2556,7 +2562,7 @@ export function OllieWorkspace() {
               setCostumePaintOpen(true);
             }}
             title="Create sprite"
-            aria-label="Create a new costume for the selected sprite"
+            aria-label="Paint a new sprite and add it to the project"
           >
             <Paintbrush
               className={ICON_SM}
@@ -3339,31 +3345,29 @@ export function OllieWorkspace() {
                               {actor.label}
                             </button>
                           </div>
-                          {sel ? (
-                            <div className="grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border border-[#e5e7eb] bg-[#f3f4f6] p-px text-[10px] font-semibold leading-none">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  spritePickerIntentRef.current = "new";
-                                  setSpritePickerOpen(true);
-                                }}
-                                className="flex min-h-0 w-full aspect-square items-center justify-center overflow-hidden rounded-[3px] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
-                                aria-label="Add a new sprite"
-                                title="Add sprite"
-                              >
-                                +
-                              </button>
-                              <div
-                                className="w-full px-0 py-px text-center text-[10px] font-semibold leading-none"
-                                aria-hidden
-                              >
-                                &nbsp;
-                              </div>
-                            </div>
-                          ) : null}
                         </Fragment>
                       );
                     })}
+                    <div className="grid w-[4.75rem] shrink-0 grid-rows-[auto_auto] gap-0 rounded-md border border-[#e5e7eb] bg-[#f3f4f6] p-px text-[10px] font-semibold leading-none">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          spritePickerIntentRef.current = "new";
+                          setSpritePickerOpen(true);
+                        }}
+                        className="flex min-h-0 w-full aspect-square items-center justify-center overflow-hidden rounded-[3px] text-2xl font-light leading-none text-[#9ca3af] transition hover:bg-[#e8eaed] hover:text-[#6b7280] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                        aria-label="Add a new sprite"
+                        title="Add sprite"
+                      >
+                        +
+                      </button>
+                      <div
+                        className="w-full px-0 py-px text-center text-[10px] font-semibold leading-none"
+                        aria-hidden
+                      >
+                        &nbsp;
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -3537,21 +3541,30 @@ export function OllieWorkspace() {
         }
         onClose={() => setCostumePaintOpen(false)}
         onSaved={({ publicUrl, storagePath, label }) => {
-          setActors((prev) =>
-            prev.map((a) =>
-              a.id === activeActorId
-                ? {
-                    ...a,
-                    paintedCostumeUrl: publicUrl,
-                    paintedCostumeStoragePath: storagePath,
-                    label,
-                  }
-                : a,
-            ),
-          );
+          const displayName = label.trim().slice(0, SPRITE_LABEL_MAX_LEN);
+          if (costumePaintMode === "create") {
+            addSpriteWithUploadedPng(publicUrl, label, storagePath);
+            setStatus("New sprite added!");
+            setTimeout(() => setStatus(""), 2500);
+          } else {
+            setActors((prev) =>
+              prev.map((a) =>
+                a.id === activeActorId
+                  ? {
+                      ...a,
+                      paintedCostumeUrl: publicUrl,
+                      paintedCostumeStoragePath: storagePath,
+                      label: displayName,
+                    }
+                  : a,
+              ),
+            );
+            setStatus("Sprite image updated!");
+            setTimeout(() => setStatus(""), 2500);
+          }
           void registerSpriteInCloudLibrary({
             storagePath,
-            displayName: label.trim().slice(0, SPRITE_LABEL_MAX_LEN),
+            displayName,
             source: "paint",
           });
         }}
