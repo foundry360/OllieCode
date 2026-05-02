@@ -158,6 +158,8 @@ export type OllieAction =
   | { type: "changeXPctBy"; deltaPct: SerializedNumExpr }
   /** Set Scratch x (−100…100) while keeping current y; result clamped to the stage. */
   | { type: "setXPct"; x: SerializedNumExpr }
+  /** Set Scratch y (−100…100) while keeping current x; result clamped to the stage. */
+  | { type: "setYPct"; y: SerializedNumExpr }
   /** Add to current Scratch y (−100…100); result clamped to the stage. */
   | { type: "changeYPctBy"; deltaPct: SerializedNumExpr }
   | {
@@ -315,6 +317,10 @@ export type SerializedNumExpr =
   | { k: "n"; v: number }
   | { k: "mx" }
   | { k: "my" }
+  /** This sprite’s Scratch x (−100…100), same frame as `set x to` / `go to x: y:`. */
+  | { k: "sx" }
+  /** This sprite’s Scratch y (−100…100), same frame as `set y to` / `go to x: y:`. */
+  | { k: "sy" }
   | { k: "distMouse" }
   | { k: "timer" }
   | {
@@ -402,6 +408,19 @@ export type UserSceneProjectEntry = {
   display_name: string;
 };
 
+/**
+ * Scratch-style variable readout on the stage for one sprite workspace.
+ * `id` is Blockly’s variable id (`FieldVariable` value); `name` is kept in sync for display.
+ */
+export type VariableStageMonitor = {
+  id: string;
+  name: string;
+  /** Scratch stage x (−100…100), anchor at monitor center. */
+  xPct: number;
+  /** Scratch stage y (−100…100). */
+  yPct: number;
+};
+
 export type ProjectPayload = {
   /** Blockly workspace JSON — legacy single-sprite save; used if `workspacesByActorId` absent */
   workspace: Record<string, unknown>;
@@ -419,4 +438,6 @@ export type ProjectPayload = {
   updatedAt: string;
   /** Optional: adventures with saved progress (for the Adventures list + cloud sync). */
   savedMissionProgress?: SavedMissionProgressEntry[];
+  /** Per-sprite variable monitors shown on the stage (Scratch-style). */
+  variableMonitorsByActorId?: Record<string, VariableStageMonitor[]>;
 };

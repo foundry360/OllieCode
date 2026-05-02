@@ -13,6 +13,7 @@ import {
 } from "react";
 import { useIsClient } from "@/hooks/useIsClient";
 import {
+  ContextMenuRegistry,
   Events,
   Scrollbar,
   Xml,
@@ -146,6 +147,7 @@ import {
   type ProjectPayload,
   type SavedMissionProgressEntry,
   type StageActor,
+  type VariableStageMonitor,
 } from "@/types/ollie";
 import { WorkspaceHeaderNavLinks } from "@/components/app/WorkspaceHeaderNavLinks";
 import {
@@ -176,9 +178,11 @@ import {
   Blocks,
   Braces,
   Briefcase,
+  CircleAlert,
   ChevronDown,
   CopyPlus,
   Expand,
+  Gauge,
   ImageUp,
   LogOut,
   Maximize2,
@@ -206,6 +210,52 @@ const ICON_STROKE = 2;
 /** Max PNG size for user-uploaded sprite images (same order of magnitude as painted costume uploads). */
 const SPRITE_LABEL_MAX_LEN = 48;
 const CREATE_SPRITE_PAINT_DEFAULT_NAME = "Untitled Sprite";
+
+function blocklyConfirmDialogTitle(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("variable")) return "Delete variable";
+  if (lower.includes("block")) return "Delete blocks";
+  return "Confirm";
+}
+
+function blocklyConfirmDialogSubtitle(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("variable")) {
+    return "This removes every block that uses this variable for the current sprite.";
+  }
+  if (lower.includes("all") && lower.includes("block")) {
+    return "This clears every block on the workspace for the current sprite.";
+  }
+  return "Use Edit → Undo afterward if you need to reverse this.";
+}
+
+function blocklyConfirmPrimaryLabel(message: string): string {
+  const lower = message.toLowerCase();
+  if (lower.includes("all") && lower.includes("block")) return "Delete all";
+  return "Delete";
+}
+
+/** Blockly blocks whose VAR field can drive a stage readout (getter or setter). */
+function blockTypeSupportsVariableStageMonitor(type: string): boolean {
+  return (
+    type === "variables_get" ||
+    type === "variables_get_dynamic" ||
+    type === "variables_set" ||
+    type === "variables_set_dynamic"
+  );
+}
+
+/** Stagger default positions so multiple readouts do not stack exactly on top of each other. */
+function defaultMonitorStagePosition(existingCount: number): {
+  xPct: number;
+  yPct: number;
+} {
+  const col = existingCount % 5;
+  const row = Math.floor(existingCount / 5);
+  const xPct = Math.round(Math.min(-35, Math.max(-90, -82 + col * 10)));
+  const yPct = Math.round(Math.min(90, Math.max(40, 78 - row * 12)));
+  return { xPct, yPct };
+}
 
 const ADVENTURE_STAGE_SIZE_STORAGE_KEY = "ollie_workspace_adventure_stage";
 
@@ -430,6 +480,14 @@ export function OllieWorkspace() {
   const [activeActorId, setActiveActorId] = useState(() => ACTOR_ROBOT_ID);
   const activeActorIdRef = useRef(activeActorId);
   activeActorIdRef.current = activeActorId;
+  const [variableMonitorsByActorId, setVariableMonitorsByActorId] = useState<
+    Record<string, VariableStageMonitor[]>
+  >({});
+  const variableMonitorsByActorIdRef = useRef(variableMonitorsByActorId);
+  variableMonitorsByActorIdRef.current = variableMonitorsByActorId;
+  const [variableReadoutsOpen, setVariableReadoutsOpen] = useState(false);
+  const [readoutsListNonce, setReadoutsListNonce] = useState(0);
+  const readoutsAnchorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setTouchingSpriteDropdownActors(
@@ -618,6 +676,34 @@ export function OllieWorkspace() {
     commitBlocklyPrompt(null);
   }, [commitBlocklyPrompt]);
 
+  /** Blockly `dialog.alert` (duplicate variable name, etc.) — replaces `window.alert`. */
+  const [blocklyAlertMessage, setBlocklyAlertMessage] = useState<string | null>(
+    null,
+  );
+  const blocklyAlertDismissRef = useRef<(() => void) | null>(null);
+
+  const dismissBlocklyAlert = useCallback(() => {
+    const done = blocklyAlertDismissRef.current;
+    blocklyAlertDismissRef.current = null;
+    setBlocklyAlertMessage(null);
+    done?.();
+  }, []);
+
+  /** Blockly `dialog.confirm` (delete variable, delete all blocks, etc.) — replaces `window.confirm`. */
+  const [blocklyConfirmMessage, setBlocklyConfirmMessage] = useState<
+    string | null
+  >(null);
+  const blocklyConfirmCallbackRef = useRef<
+    ((result: boolean) => void) | null
+  >(null);
+
+  const finishBlocklyConfirm = useCallback((result: boolean) => {
+    const cb = blocklyConfirmCallbackRef.current;
+    blocklyConfirmCallbackRef.current = null;
+    setBlocklyConfirmMessage(null);
+    cb?.(result);
+  }, []);
+
   useEffect(() => {
     if (!blocklyMounted) return;
     dialog.setPrompt((message, defaultValue, callback) => {
@@ -625,8 +711,18 @@ export function OllieWorkspace() {
       setBlocklyPromptInput(defaultValue);
       setBlocklyPrompt({ message, defaultValue });
     });
+    dialog.setAlert((message, callback) => {
+      blocklyAlertDismissRef.current = callback ?? null;
+      setBlocklyAlertMessage(message);
+    });
+    dialog.setConfirm((message, callback) => {
+      blocklyConfirmCallbackRef.current = callback;
+      setBlocklyConfirmMessage(message);
+    });
     return () => {
       dialog.setPrompt(undefined);
+      dialog.setAlert(undefined);
+      dialog.setConfirm(undefined);
     };
   }, [blocklyMounted]);
 
@@ -645,6 +741,30 @@ export function OllieWorkspace() {
       window.removeEventListener("keydown", onKey);
     };
   }, [blocklyPrompt, cancelBlocklyPrompt]);
+
+  useEffect(() => {
+    if (!blocklyAlertMessage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        dismissBlocklyAlert();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [blocklyAlertMessage, dismissBlocklyAlert]);
+
+  useEffect(() => {
+    if (!blocklyConfirmMessage) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        finishBlocklyConfirm(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [blocklyConfirmMessage, finishBlocklyConfirm]);
 
   useEffect(() => {
     if (!askOverlay) return;
@@ -1221,6 +1341,235 @@ export function OllieWorkspace() {
     return () => ws.removeChangeListener(onCreate);
   }, [blocklyMounted, blocklyInjectKey]);
 
+  /** Sync variable monitor labels / removals with Blockly’s variable model. */
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const onVar = (e: Events.Abstract) => {
+      if (!Events.isEnabled()) return;
+      if (e.type === Events.VAR_RENAME) {
+        const id = (e as { varId?: string }).varId;
+        const newName = (e as { newName?: string }).newName ?? "";
+        if (!id) return;
+        const aid = activeActorIdRef.current;
+        setVariableMonitorsByActorId((prev) => {
+          const list = prev[aid];
+          if (!list?.some((m) => m.id === id)) return prev;
+          return {
+            ...prev,
+            [aid]: list.map((m) =>
+              m.id === id ? { ...m, name: newName } : m,
+            ),
+          };
+        });
+      } else if (e.type === Events.VAR_DELETE) {
+        const id = (e as { varId?: string }).varId;
+        if (!id) return;
+        const aid = activeActorIdRef.current;
+        setVariableMonitorsByActorId((prev) => {
+          const list = prev[aid];
+          if (!list?.some((m) => m.id === id)) return prev;
+          return { ...prev, [aid]: list.filter((m) => m.id !== id) };
+        });
+      }
+    };
+    ws.addChangeListener(onVar);
+    return () => ws.removeChangeListener(onVar);
+  }, [blocklyMounted, blocklyInjectKey]);
+
+  useEffect(() => {
+    if (!blocklyMounted) return;
+    const reg = ContextMenuRegistry.registry;
+    const OLLIE_MON_SHOW = "ollie_ctx_var_monitor_show";
+    const OLLIE_MON_HIDE = "ollie_ctx_var_monitor_hide";
+    const registerSafe = (item: ContextMenuRegistry.RegistryItem) => {
+      try {
+        reg.register(item);
+      } catch {
+        /* duplicate id (e.g. Strict Mode) */
+      }
+    };
+    const unregisterSafe = (id: string) => {
+      try {
+        reg.unregister(id);
+      } catch {
+        /* already gone */
+      }
+    };
+    registerSafe({
+      id: OLLIE_MON_SHOW,
+      scopeType: ContextMenuRegistry.ScopeType.BLOCK,
+      weight: 6.45,
+      displayText: "Show value on stage",
+      preconditionFn(scope) {
+        const b = scope.block;
+        if (!b || b.isInFlyout) {
+          return "hidden";
+        }
+        const t = b.type;
+        if (!blockTypeSupportsVariableStageMonitor(t)) {
+          return "hidden";
+        }
+        const varId = b.getFieldValue("VAR");
+        if (!varId) return "hidden";
+        const aid = activeActorIdRef.current;
+        const list = variableMonitorsByActorIdRef.current[aid] ?? [];
+        if (list.some((m) => m.id === varId)) return "hidden";
+        return "enabled";
+      },
+      callback(scope) {
+        const b = scope.block;
+        if (!b) return;
+        const varId = b.getFieldValue("VAR");
+        if (!varId) return;
+        const model = b.workspace.getVariableMap().getVariableById(varId);
+        const name = model?.getName()?.trim() || "?";
+        const aid = activeActorIdRef.current;
+        setVariableMonitorsByActorId((prev) => {
+          const cur = prev[aid] ?? [];
+          if (cur.some((m) => m.id === varId)) return prev;
+          const pos = defaultMonitorStagePosition(cur.length);
+          return {
+            ...prev,
+            [aid]: [...cur, { id: varId, name, xPct: pos.xPct, yPct: pos.yPct }],
+          };
+        });
+      },
+    });
+    registerSafe({
+      id: OLLIE_MON_HIDE,
+      scopeType: ContextMenuRegistry.ScopeType.BLOCK,
+      weight: 6.46,
+      displayText: "Hide value from stage",
+      preconditionFn(scope) {
+        const b = scope.block;
+        if (!b || b.isInFlyout) {
+          return "hidden";
+        }
+        const t = b.type;
+        if (!blockTypeSupportsVariableStageMonitor(t)) {
+          return "hidden";
+        }
+        const varId = b.getFieldValue("VAR");
+        if (!varId) return "hidden";
+        const aid = activeActorIdRef.current;
+        const list = variableMonitorsByActorIdRef.current[aid] ?? [];
+        if (!list.some((m) => m.id === varId)) return "hidden";
+        return "enabled";
+      },
+      callback(scope) {
+        const b = scope.block;
+        if (!b) return;
+        const varId = b.getFieldValue("VAR");
+        if (!varId) return;
+        const aid = activeActorIdRef.current;
+        setVariableMonitorsByActorId((prev) => {
+          const list = prev[aid] ?? [];
+          if (!list.some((m) => m.id === varId)) return prev;
+          return { ...prev, [aid]: list.filter((m) => m.id !== varId) };
+        });
+      },
+    });
+    return () => {
+      unregisterSafe(OLLIE_MON_SHOW);
+      unregisterSafe(OLLIE_MON_HIDE);
+    };
+  }, [blocklyMounted, blocklyInjectKey]);
+
+  const handleVariableMonitorMove = useCallback(
+    (variableId: string, xPct: number, yPct: number) => {
+      const aid = activeActorIdRef.current;
+      setVariableMonitorsByActorId((prev) => {
+        const list = prev[aid];
+        if (!list) return prev;
+        return {
+          ...prev,
+          [aid]: list.map((m) =>
+            m.id === variableId ? { ...m, xPct, yPct } : m,
+          ),
+        };
+      });
+    },
+    [],
+  );
+
+  const toggleVariableStageReadout = useCallback(
+    (varId: string, nextOnStage: boolean) => {
+      const ws = workspaceRef.current;
+      if (!ws) return;
+      const model = ws.getVariableMap().getVariableById(varId);
+      const name = model?.getName()?.trim() || "?";
+      const aid = activeActorIdRef.current;
+      setVariableMonitorsByActorId((prev) => {
+        const list = prev[aid] ?? [];
+        if (nextOnStage) {
+          if (list.some((m) => m.id === varId)) return prev;
+          const pos = defaultMonitorStagePosition(list.length);
+          return {
+            ...prev,
+            [aid]: [...list, { id: varId, name, xPct: pos.xPct, yPct: pos.yPct }],
+          };
+        }
+        if (!list.some((m) => m.id === varId)) return prev;
+        return { ...prev, [aid]: list.filter((m) => m.id !== varId) };
+      });
+    },
+    [],
+  );
+
+  const workspaceVariablesForReadoutsPanel = useMemo(() => {
+    if (!blocklyMounted) return [];
+    const ws = workspaceRef.current;
+    if (!ws) return [];
+    try {
+      return [...ws.getVariableMap().getAllVariables()].sort((a, b) =>
+        a.getName().localeCompare(b.getName(), undefined, {
+          sensitivity: "base",
+        }),
+      );
+    } catch {
+      return [];
+    }
+  }, [blocklyMounted, blocklyInjectKey, activeActorId, readoutsListNonce]);
+
+  useEffect(() => {
+    setReadoutsListNonce((n) => n + 1);
+  }, [activeActorId]);
+
+  useEffect(() => {
+    if (!variableReadoutsOpen || !blocklyMounted) return;
+    const ws = workspaceRef.current;
+    if (!ws) return;
+    const bump = () => setReadoutsListNonce((k) => k + 1);
+    ws.addChangeListener(bump);
+    return () => ws.removeChangeListener(bump);
+  }, [variableReadoutsOpen, blocklyMounted, blocklyInjectKey]);
+
+  useEffect(() => {
+    if (!variableReadoutsOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = readoutsAnchorRef.current;
+      if (el && !el.contains(e.target as Node)) {
+        setVariableReadoutsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDown, true);
+    return () => document.removeEventListener("mousedown", onDown, true);
+  }, [variableReadoutsOpen]);
+
+  useEffect(() => {
+    if (!variableReadoutsOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setVariableReadoutsOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [variableReadoutsOpen]);
+
   const switchActor = useCallback(
     (nextId: string) => {
       const ws = workspaceRef.current;
@@ -1305,6 +1654,17 @@ export function OllieWorkspace() {
         else next.push(newActor);
         return next;
       });
+      setVariableMonitorsByActorId((prev) => {
+        const src = prev[sourceId] ?? [];
+        return {
+          ...prev,
+          [newId]: src.map((m) => ({
+            ...m,
+            xPct: Math.min(100, Math.max(-100, m.xPct + 6)),
+            yPct: Math.min(100, Math.max(-100, m.yPct + 6)),
+          })),
+        };
+      });
       setSpriteStripContextMenu(null);
       switchActor(newId);
     },
@@ -1344,6 +1704,11 @@ export function OllieWorkspace() {
       spriteWorkspacesRef.current[activeActorId] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
       delete spriteWorkspacesRef.current[actorId];
+      setVariableMonitorsByActorId((prev) => {
+        const next = { ...prev };
+        delete next[actorId];
+        return next;
+      });
       const nextActors = actors.filter((a) => a.id !== actorId);
       setActors(nextActors);
       if (activeActorId === actorId) {
@@ -1606,6 +1971,7 @@ export function OllieWorkspace() {
             unknown
           >,
         };
+        setVariableMonitorsByActorId({});
         p5Ref.current?.resetSprite();
         return;
       }
@@ -1630,6 +1996,7 @@ export function OllieWorkspace() {
           unknown
         >,
       };
+      setVariableMonitorsByActorId({});
       p5Ref.current?.resetSprite();
     },
     [activeMission, blankLessonCanvas],
@@ -1681,6 +2048,7 @@ export function OllieWorkspace() {
       name: "My Ollie Project",
       updatedAt: new Date().toISOString(),
       savedMissionProgress: mergedMissionProgress,
+      variableMonitorsByActorId: { ...variableMonitorsByActorId },
     };
     const snapshotMissionId =
       opts?.missionRecord?.missionId ??
@@ -1763,6 +2131,7 @@ export function OllieWorkspace() {
       topStageSceneId,
       userSceneRuntimeList,
       rawLessonId,
+      variableMonitorsByActorId,
     ],
   );
 
@@ -2076,6 +2445,21 @@ export function OllieWorkspace() {
         return { ...n, id, label };
       });
       setActors(migratedActors);
+      {
+        const rawMon = payload.variableMonitorsByActorId ?? {};
+        const mon: Record<string, VariableStageMonitor[]> = { ...rawMon };
+        if (rawMon[LEGACY_ACTOR_OLLIE_ID] && !rawMon[ACTOR_ROBOT_ID]) {
+          mon[ACTOR_ROBOT_ID] = rawMon[LEGACY_ACTOR_OLLIE_ID];
+          delete mon[LEGACY_ACTOR_OLLIE_ID];
+        }
+        const allowed = new Set(migratedActors.map((a) => a.id));
+        const filtered: Record<string, VariableStageMonitor[]> = {};
+        for (const [k, v] of Object.entries(mon)) {
+          if (!allowed.has(k) || !Array.isArray(v)) continue;
+          filtered[k] = v;
+        }
+        setVariableMonitorsByActorId(filtered);
+      }
       spriteWorkspacesRef.current = wsRaw;
       const firstId = migratedActors[0].id;
       setActiveActorId(firstId);
@@ -2145,6 +2529,18 @@ export function OllieWorkspace() {
       setActiveActorId(ACTOR_ROBOT_ID);
       spriteWorkspacesRef.current[ACTOR_ROBOT_ID] =
         serialization.workspaces.save(ws) as Record<string, unknown>;
+      {
+        const rawMon = payload.variableMonitorsByActorId ?? {};
+        const mon: Record<string, VariableStageMonitor[]> = { ...rawMon };
+        if (rawMon[LEGACY_ACTOR_OLLIE_ID] && !rawMon[ACTOR_ROBOT_ID]) {
+          mon[ACTOR_ROBOT_ID] = rawMon[LEGACY_ACTOR_OLLIE_ID];
+          delete mon[LEGACY_ACTOR_OLLIE_ID];
+        }
+        const rob = mon[ACTOR_ROBOT_ID];
+        setVariableMonitorsByActorId(
+          Array.isArray(rob) ? { [ACTOR_ROBOT_ID]: rob } : {},
+        );
+      }
       void (async () => {
         const sb = getSupabaseBrowserClient();
         if (!sb) return;
@@ -2872,7 +3268,7 @@ export function OllieWorkspace() {
           >
             <div className="flex shrink-0 items-center justify-between gap-2 rounded-t-2xl border-b border-[#e5e7eb] bg-[#ecfccb] px-3 py-2 text-sm font-semibold text-[#365314] sm:px-4">
               <span
-                className="flex min-w-0 items-center gap-2"
+                className="flex min-w-0 flex-1 items-center gap-2"
                 title={canvasMissionTooltip}
               >
                 <Mountain
@@ -2882,49 +3278,153 @@ export function OllieWorkspace() {
                 />
                 <span className="min-w-0 truncate">{canvasMissionLabel}</span>
               </span>
-              <div
-                className="flex shrink-0 items-center gap-px rounded-md border border-[#e2e8f0]/90 bg-[#f8fafc]/70 p-px"
-                role="group"
-                aria-label="Stage size"
-              >
-                <button
-                  type="button"
-                  onClick={() => setAdventureStageSize("default")}
-                  aria-pressed={adventureStageSize === "default"}
-                  aria-label="Standard stage — larger preview"
-                  title="Standard stage — larger preview"
-                  className={[
-                    "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
-                    adventureStageSize === "default"
-                      ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
-                      : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
-                  ].join(" ")}
+              <div className="flex shrink-0 items-center gap-1.5">
+                <div ref={readoutsAnchorRef} className="relative">
+                  <WorkspaceHeaderTooltip text="Variable readouts — show values on the stage">
+                    <button
+                      type="button"
+                      id="ollie-var-readouts-trigger"
+                      aria-label="Variable readouts on stage"
+                      aria-expanded={variableReadoutsOpen}
+                      aria-controls="ollie-var-readouts-panel"
+                      onClick={() => setVariableReadoutsOpen((o) => !o)}
+                      className={[
+                        "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
+                        variableReadoutsOpen
+                          ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
+                          : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
+                      ].join(" ")}
+                    >
+                      <Gauge
+                        className="size-3 shrink-0 opacity-90"
+                        strokeWidth={1.75}
+                        aria-hidden
+                      />
+                    </button>
+                  </WorkspaceHeaderTooltip>
+                  {variableReadoutsOpen ? (
+                    <div
+                      id="ollie-var-readouts-panel"
+                      role="region"
+                      aria-labelledby="ollie-var-readouts-trigger"
+                      className="absolute right-0 top-full z-50 mt-1 w-[min(280px,calc(100vw-2rem))] overflow-hidden rounded-xl border border-[#e5e7eb] bg-white py-2 text-left shadow-lg ring-1 ring-black/5"
+                    >
+                      <div className="border-b border-[#f3f4f6] px-3 pb-2 pt-0.5">
+                        <p className="text-[11px] font-bold uppercase tracking-wide text-[#6b7280]">
+                          On-stage readouts
+                        </p>
+                        <p className="mt-0.5 text-xs leading-snug text-[#6b7280]">
+                          Like Scratch monitors — you can drag them on the stage
+                          after you turn them on. You can also use{" "}
+                          <strong className="text-[#374151]">
+                            Show value on stage
+                          </strong>{" "}
+                          on a variable block’s right‑click menu.
+                        </p>
+                      </div>
+                      <div className="max-h-52 overflow-y-auto px-2 pb-1 pt-1">
+                        {workspaceVariablesForReadoutsPanel.length === 0 ? (
+                          <p className="px-2 py-3 text-xs leading-relaxed text-[#6b7280]">
+                            Add a variable in the{" "}
+                            <strong className="text-[#374151]">Variables</strong>{" "}
+                            category of the toolbox first.
+                          </p>
+                        ) : (
+                          workspaceVariablesForReadoutsPanel.map((v) => {
+                            const vid = v.getId();
+                            const hasMonitor = (
+                              variableMonitorsByActorId[activeActorId] ?? []
+                            ).some((m) => m.id === vid);
+                            return (
+                              <div
+                                key={vid}
+                                className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[#f9fafb]"
+                              >
+                                <span
+                                  className="min-w-0 truncate text-xs font-semibold text-[#111827]"
+                                  title={v.getName()}
+                                >
+                                  {v.getName()}
+                                </span>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-checked={hasMonitor}
+                                  aria-label={
+                                    hasMonitor
+                                      ? `Hide ${v.getName()} from stage`
+                                      : `Show ${v.getName()} on stage`
+                                  }
+                                  onClick={() =>
+                                    toggleVariableStageReadout(vid, !hasMonitor)
+                                  }
+                                  className={[
+                                    "relative h-6 w-11 shrink-0 rounded-full border-2 transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-1",
+                                    hasMonitor
+                                      ? "border-[#65a30d] bg-[#84cc16]"
+                                      : "border-[#e5e7eb] bg-[#f3f4f6]",
+                                  ].join(" ")}
+                                >
+                                  <span
+                                    className={[
+                                      "absolute top-0.5 size-4 rounded-full bg-white shadow transition-[left]",
+                                      hasMonitor ? "left-5" : "left-0.5",
+                                    ].join(" ")}
+                                    aria-hidden
+                                  />
+                                </button>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+                <div
+                  className="flex shrink-0 items-center gap-px rounded-md border border-[#e2e8f0]/90 bg-[#f8fafc]/70 p-px"
+                  role="group"
+                  aria-label="Stage size"
                 >
-                  <Expand
-                    className="size-3 shrink-0 opacity-90"
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setAdventureStageSize("compact")}
-                  aria-pressed={adventureStageSize === "compact"}
-                  aria-label="Compact stage — more room for blocks"
-                  title="Compact stage — more room for blocks"
-                  className={[
-                    "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
-                    adventureStageSize === "compact"
-                      ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
-                      : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
-                  ].join(" ")}
-                >
-                  <Shrink
-                    className="size-3 shrink-0 opacity-90"
-                    strokeWidth={1.75}
-                    aria-hidden
-                  />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdventureStageSize("default")}
+                    aria-pressed={adventureStageSize === "default"}
+                    aria-label="Standard stage — larger preview"
+                    title="Standard stage — larger preview"
+                    className={[
+                      "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
+                      adventureStageSize === "default"
+                        ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
+                        : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
+                    ].join(" ")}
+                  >
+                    <Expand
+                      className="size-3 shrink-0 opacity-90"
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setAdventureStageSize("compact")}
+                    aria-pressed={adventureStageSize === "compact"}
+                    aria-label="Compact stage — more room for blocks"
+                    title="Compact stage — more room for blocks"
+                    className={[
+                      "flex h-6 w-6 items-center justify-center rounded-[5px] transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126]/40 focus-visible:ring-offset-1",
+                      adventureStageSize === "compact"
+                        ? "bg-white/90 text-[#475569] shadow-[inset_0_0_0_1px_rgba(132,193,38,0.25)]"
+                        : "text-slate-400/90 hover:bg-white/60 hover:text-slate-500",
+                    ].join(" ")}
+                  >
+                    <Shrink
+                      className="size-3 shrink-0 opacity-90"
+                      strokeWidth={1.75}
+                      aria-hidden
+                    />
+                  </button>
+                </div>
               </div>
             </div>
             <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -3121,6 +3621,130 @@ export function OllieWorkspace() {
                   </form>
                 </div>
               ) : null}
+              {blocklyAlertMessage ? (
+                <div
+                  className="fixed inset-0 z-[100010] flex items-center justify-center p-4 sm:p-6"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="ollie-blockly-alert-title"
+                  aria-describedby="ollie-blockly-alert-message"
+                >
+                  <button
+                    type="button"
+                    className="absolute inset-0 cursor-default bg-gradient-to-b from-[#0f172a]/55 via-[#0f172a]/45 to-[#0f172a]/60 backdrop-blur-[3px]"
+                    aria-label="Close dialog"
+                    onClick={dismissBlocklyAlert}
+                  />
+                  <div className="relative z-10 w-full max-w-md">
+                    <div className="overflow-hidden rounded-2xl border border-[#d9f99d]/80 bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25),0_0_0_1px_rgba(132,193,38,0.12)] ring-1 ring-[#84c126]/20">
+                      <div className="flex items-center gap-2.5 border-b border-[#ecfccb] bg-gradient-to-r from-[#ecfccb] via-[#f7fee7] to-[#ecfccb] px-4 py-3.5">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/90 shadow-sm ring-1 ring-[#84c126]/25">
+                          <CircleAlert
+                            className="size-5 text-[#b45309]"
+                            strokeWidth={ICON_STROKE}
+                            aria-hidden
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            id="ollie-blockly-alert-title"
+                            className="font-display text-xs font-bold uppercase tracking-wide text-[#4d7c0f]"
+                          >
+                            Variable
+                          </p>
+                          <p className="text-[11px] font-medium text-[#3f6212]/80">
+                            That name is already in use. Pick another name for
+                            this variable.
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-4 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+                        <p
+                          id="ollie-blockly-alert-message"
+                          className="text-sm font-medium leading-relaxed text-[#374151]"
+                        >
+                          {blocklyAlertMessage}
+                        </p>
+                        <div className="flex justify-end pt-1">
+                          <button
+                            type="button"
+                            autoFocus
+                            onClick={dismissBlocklyAlert}
+                            className="rounded-xl border-2 border-[#65a30d] bg-gradient-to-b from-[#a3e635] to-[#84cc16] px-5 py-2.5 text-sm font-bold text-[#1a2e05] shadow-md transition hover:from-[#bef264] hover:to-[#a3e635] active:scale-[0.99] active:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                          >
+                            OK
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+              {blocklyConfirmMessage ? (
+                <div
+                  className="fixed inset-0 z-[100010] flex items-center justify-center p-4 sm:p-6"
+                  role="alertdialog"
+                  aria-modal="true"
+                  aria-labelledby="ollie-blockly-confirm-title"
+                  aria-describedby="ollie-blockly-confirm-message"
+                >
+                  <button
+                    type="button"
+                    className="absolute inset-0 cursor-default bg-gradient-to-b from-[#0f172a]/55 via-[#0f172a]/45 to-[#0f172a]/60 backdrop-blur-[3px]"
+                    aria-label="Cancel"
+                    onClick={() => finishBlocklyConfirm(false)}
+                  />
+                  <div className="relative z-10 w-full max-w-md">
+                    <div className="overflow-hidden rounded-2xl border border-[#d9f99d]/80 bg-white shadow-[0_25px_50px_-12px_rgba(0,0,0,0.25),0_0_0_1px_rgba(132,193,38,0.12)] ring-1 ring-[#84c126]/20">
+                      <div className="flex items-center gap-2.5 border-b border-[#ecfccb] bg-gradient-to-r from-[#ecfccb] via-[#f7fee7] to-[#ecfccb] px-4 py-3.5">
+                        <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-white/90 shadow-sm ring-1 ring-red-200/80">
+                          <Trash2
+                            className="size-5 text-red-600"
+                            strokeWidth={ICON_STROKE}
+                            aria-hidden
+                          />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p
+                            id="ollie-blockly-confirm-title"
+                            className="font-display text-xs font-bold uppercase tracking-wide text-[#4d7c0f]"
+                          >
+                            {blocklyConfirmDialogTitle(blocklyConfirmMessage)}
+                          </p>
+                          <p className="text-[11px] font-medium text-[#3f6212]/80">
+                            {blocklyConfirmDialogSubtitle(blocklyConfirmMessage)}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="space-y-4 px-4 pb-4 pt-3 sm:px-5 sm:pb-5">
+                        <p
+                          id="ollie-blockly-confirm-message"
+                          className="text-sm font-medium leading-relaxed text-[#374151]"
+                        >
+                          {blocklyConfirmMessage}
+                        </p>
+                        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end sm:gap-3">
+                          <button
+                            type="button"
+                            autoFocus
+                            onClick={() => finishBlocklyConfirm(false)}
+                            className="rounded-xl border-2 border-[#e5e7eb] bg-white px-4 py-2.5 text-sm font-bold text-[#4b5563] shadow-sm transition hover:border-[#d1d5db] hover:bg-[#f9fafb] active:scale-[0.99] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => finishBlocklyConfirm(true)}
+                            className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition hover:bg-red-700 active:scale-[0.99] active:shadow-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-red-600 focus-visible:ring-offset-2"
+                          >
+                            {blocklyConfirmPrimaryLabel(blocklyConfirmMessage)}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <P5Canvas
                 ref={p5Ref}
                 className="min-h-0 min-w-0 w-full flex-1"
@@ -3186,6 +3810,10 @@ export function OllieWorkspace() {
                   )
                 }
                 requestNumberInput={requestNumberInput}
+                variableMonitors={
+                  variableMonitorsByActorId[activeActorId] ?? []
+                }
+                onVariableMonitorMove={handleVariableMonitorMove}
               />
               <div
                 className={[

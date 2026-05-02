@@ -374,6 +374,10 @@ export function serializeNumExpr(block: Block | null): SerializedNumExpr | null 
       return { k: "mx" };
     case "ollie_sensing_mouse_y":
       return { k: "my" };
+    case "ollie_x_position":
+      return { k: "sx" };
+    case "ollie_y_position":
+      return { k: "sy" };
     case "ollie_sensing_distance":
       return { k: "distMouse" };
     case "ollie_sensing_timer":
@@ -582,6 +586,10 @@ export function evalSerializedNum(
       return scratchMouseX(ctx.mouseX, ctx.cw);
     case "my":
       return scratchMouseY(ctx.mouseY, ctx.ch);
+    case "sx":
+      return scratchMouseX(ctx.spriteX, ctx.cw);
+    case "sy":
+      return scratchMouseY(ctx.spriteY, ctx.ch);
     case "distMouse":
       return distanceSpriteToMouse(ctx);
     case "timer":

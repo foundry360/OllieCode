@@ -68,8 +68,11 @@ export const OLLIE_TOOLBOX = {
         blockWithNumberShadows("ollie_go_to_xy", { XPCT: 0, YPCT: 0 }),
         B("ollie_go_to_target"),
         blockWithNumberShadow("ollie_set_x_to", "XPCT", 0),
+        blockWithNumberShadow("ollie_set_y_to", "YPCT", 0),
         blockWithNumberShadow("ollie_change_x_by", "DX", 10),
         blockWithNumberShadow("ollie_change_y_by", "DY", 10),
+        B("ollie_x_position"),
+        B("ollie_y_position"),
         blockWithNumberShadows("ollie_glide_to", {
           SECS: 1,
           XPCT: 0,

@@ -45,7 +45,11 @@ import {
 } from "@/lib/canvas/actorCostumeDisplay";
 import { nonTransparentPixelBounds } from "@/lib/canvas/paintedCostumeBounds";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
-import type { PointTowardsAimOrigin, StageActor } from "@/types/ollie";
+import type {
+  PointTowardsAimOrigin,
+  StageActor,
+  VariableStageMonitor,
+} from "@/types/ollie";
 import { playOllieSound, stopOllieSounds } from "@/lib/sounds/ollieSounds";
 
 export type StageActorPaint = {
@@ -144,6 +148,14 @@ export type P5CanvasProps = {
     message: string,
     numberOnly: boolean,
   ) => Promise<number>;
+  /** Scratch-style variable readouts for the active sprite workspace. */
+  variableMonitors?: readonly VariableStageMonitor[];
+  /** Persist monitor position after drag (Scratch-style −100…100). */
+  onVariableMonitorMove?: (
+    variableId: string,
+    xPct: number,
+    yPct: number,
+  ) => void;
 };
 
 type Sprite = {
@@ -294,18 +306,22 @@ async function maybeApplyChromaKey(
 ): Promise<p5Types.Image> {
   const key = getChromaKeyForSpriteSrc(url);
   if (!key || !img.width) return img;
-  /**
-   * p5’s internal `img.elt` is not always a valid `CanvasImageSource` for
-   * `drawImage` (p5 v2). Decode the same URL with `Image()` for chroma keying.
-   */
-  const domImg = await loadImageElement(url);
-  if (!domImg || domImg.naturalWidth === 0) return img;
-  const w = domImg.naturalWidth;
-  const h = domImg.naturalHeight;
-  const c = applyCostumeChromaKeyToCanvas(domImg, w, h, key);
-  const dataUrl = canvasToPngDataUrl(c);
-  const next = await p.loadImage(dataUrl);
-  return next && next.width > 0 ? next : img;
+  try {
+    /**
+     * p5’s internal `img.elt` is not always a valid `CanvasImageSource` for
+     * `drawImage` (p5 v2). Decode the same URL with `Image()` for chroma keying.
+     */
+    const domImg = await loadImageElement(url);
+    if (!domImg || domImg.naturalWidth === 0) return img;
+    const w = domImg.naturalWidth;
+    const h = domImg.naturalHeight;
+    const c = applyCostumeChromaKeyToCanvas(domImg, w, h, key);
+    const dataUrl = canvasToPngDataUrl(c);
+    const next = await p.loadImage(dataUrl);
+    return next && next.width > 0 ? next : img;
+  } catch {
+    return img;
+  }
 }
 
 async function loadStageImage(
@@ -313,10 +329,17 @@ async function loadStageImage(
   url: string,
   stageImages: Map<string, p5Types.Image>,
 ) {
+  async function withChroma(orig: p5Types.Image) {
+    try {
+      return await maybeApplyChromaKey(p, url, orig);
+    } catch {
+      return orig;
+    }
+  }
   try {
     const img = await p.loadImage(url);
     if (img && img.width > 0) {
-      stageImages.set(url, await maybeApplyChromaKey(p, url, img));
+      stageImages.set(url, await withChroma(img));
       return;
     }
   } catch {
@@ -324,7 +347,7 @@ async function loadStageImage(
   }
   const fallback = await loadSvgOrRasterViaDom(p, url);
   if (fallback) {
-    stageImages.set(url, await maybeApplyChromaKey(p, url, fallback));
+    stageImages.set(url, await withChroma(fallback));
   }
 }
 
@@ -574,6 +597,21 @@ function ensurePaintedCostumeImage(
     });
 }
 
+/** Catalog PNG/SVG not yet in the map (preload miss or new costume after mount). */
+function ensureCatalogCostumeImage(
+  p: p5Types,
+  url: string | undefined,
+  images: Map<string, p5Types.Image>,
+  pending: Set<string>,
+) {
+  const u = url?.trim();
+  if (!u || images.has(u) || pending.has(u)) return;
+  pending.add(u);
+  void loadStageImage(p, u, images).finally(() => {
+    pending.delete(u);
+  });
+}
+
 type SpriteDrawOrient = { rotationDeg: number; mirrorX: boolean };
 
 /**
@@ -651,6 +689,92 @@ function pixelToScratchStage(
     xPct: Math.min(100, Math.max(-100, xPct)),
     yPct: Math.min(100, Math.max(-100, yPct)),
   };
+}
+
+const STAGE_MONITOR_W_PX = 118;
+const STAGE_MONITOR_H_PX = 36;
+const STAGE_MONITOR_PAD_PX = 7;
+
+function mergeMonitorDragPreview(
+  monitors: readonly VariableStageMonitor[] | undefined,
+  preview: { varId: string; xPct: number; yPct: number } | null,
+): VariableStageMonitor[] {
+  const list = monitors ?? [];
+  if (!preview) return [...list];
+  return list.map((m) =>
+    m.id === preview.varId
+      ? { ...m, xPct: preview.xPct, yPct: preview.yPct }
+      : m,
+  );
+}
+
+function hitVariableMonitorAt(
+  mx: number,
+  my: number,
+  cw: number,
+  ch: number,
+  monitors: readonly { id: string; xPct: number; yPct: number }[],
+): string | null {
+  const hw = STAGE_MONITOR_W_PX / 2;
+  const hh = STAGE_MONITOR_H_PX / 2;
+  for (let i = monitors.length - 1; i >= 0; i--) {
+    const m = monitors[i]!;
+    const pos = scratchStageToPixel(m.xPct, m.yPct, cw, ch);
+    if (
+      mx >= pos.x - hw &&
+      mx <= pos.x + hw &&
+      my >= pos.y - hh &&
+      my <= pos.y + hh
+    ) {
+      return m.id;
+    }
+  }
+  return null;
+}
+
+function formatMonitorNumberValue(n: number): string {
+  if (!Number.isFinite(n)) return "0";
+  if (Number.isInteger(n)) return String(n);
+  return String(Math.round(n * 100) / 100);
+}
+
+function drawVariableStageMonitorsLayer(
+  p: p5Types,
+  cw: number,
+  ch: number,
+  monitors: readonly VariableStageMonitor[],
+  values: Record<string, number>,
+) {
+  if (monitors.length === 0) return;
+  p.push();
+  p.resetMatrix();
+  const halfW = STAGE_MONITOR_W_PX / 2;
+  const halfH = STAGE_MONITOR_H_PX / 2;
+  for (const m of monitors) {
+    const pos = scratchStageToPixel(m.xPct, m.yPct, cw, ch);
+    const bx = pos.x - halfW;
+    const by = pos.y - halfH;
+    p.stroke(251, 146, 60);
+    p.strokeWeight(2);
+    p.fill(255, 251, 235);
+    p.rect(bx, by, STAGE_MONITOR_W_PX, STAGE_MONITOR_H_PX, 6);
+    const label =
+      m.name.length > 12 ? `${m.name.slice(0, 10)}…` : m.name;
+    const valStr = formatMonitorNumberValue(
+      readVarValue(values, m.id, m.name) ?? 0,
+    );
+    p.noStroke();
+    p.textAlign(p.LEFT, p.TOP);
+    p.textSize(10);
+    p.fill(120, 53, 15);
+    p.text(label, bx + STAGE_MONITOR_PAD_PX, by + 5);
+    p.textSize(13);
+    p.fill(15, 23, 42);
+    p.textStyle(p.BOLD);
+    p.text(valStr, bx + STAGE_MONITOR_PAD_PX, by + 17);
+    p.textStyle(p.NORMAL);
+  }
+  p.pop();
 }
 
 /**
@@ -1021,6 +1145,8 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       editorSelectedActorId = null,
       onActorSizePctChange,
       requestNumberInput,
+      variableMonitors,
+      onVariableMonitorMove,
     },
     ref,
   ) {
@@ -1069,6 +1195,21 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     onActorSizePctChangeRef.current = onActorSizePctChange;
     const editorSelectedActorIdRef = useRef(editorSelectedActorId);
     editorSelectedActorIdRef.current = editorSelectedActorId;
+    const variableMonitorsRef = useRef<readonly VariableStageMonitor[]>([]);
+    variableMonitorsRef.current = variableMonitors ?? [];
+    const onVariableMonitorMoveRef = useRef(onVariableMonitorMove);
+    onVariableMonitorMoveRef.current = onVariableMonitorMove;
+    const runVarsSnapshotRef = useRef<Record<string, number>>({});
+    const variableMonitorDragRef = useRef<{
+      varId: string;
+      grabXPct: number;
+      grabYPct: number;
+    } | null>(null);
+    const variableMonitorDragPreviewRef = useRef<{
+      varId: string;
+      xPct: number;
+      yPct: number;
+    } | null>(null);
     const dragActorIdRef = useRef<string | null>(null);
     const dragOffsetRef = useRef({ dx: 0, dy: 0 });
     const resizeActorIdRef = useRef<string | null>(null);
@@ -1314,6 +1455,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         runningRef.current = true;
         abortRunRef.current = false;
         const runVars: Record<string, number> = Object.create(null);
+        runVarsSnapshotRef.current = Object.create(null);
         let broadcastDepth = 0;
         let cloneSpawnSeq = 0;
         let stopAllScripts = false;
@@ -1531,6 +1673,14 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               nx = Math.min(100, Math.max(-100, nx));
               const { yPct } = pixelToScratchStage(s.x, s.y, cw, ch);
               const pos = scratchStageToPixel(nx, yPct, cw, ch);
+              s.x = pos.x;
+              s.y = pos.y;
+              await waitNextAnimationFrame(shouldCancel);
+            } else if (a.type === "setYPct") {
+              let ny = evalSerializedNum(a.y, ctx);
+              ny = Math.min(100, Math.max(-100, ny));
+              const { xPct } = pixelToScratchStage(s.x, s.y, cw, ch);
+              const pos = scratchStageToPixel(xPct, ny, cw, ch);
               s.x = pos.x;
               s.y = pos.y;
               await waitNextAnimationFrame(shouldCancel);
@@ -1881,6 +2031,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 return;
               }
             }
+            Object.assign(runVarsSnapshotRef.current, runVars);
           }
         }
 
@@ -1975,6 +2126,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         const p5 = P5.default;
 
         const paintedLoadPending = new Set<string>();
+        const catalogLoadPending = new Set<string>();
 
         const sketch = (p: p5Types) => {
           p.setup = async () => {
@@ -1991,7 +2143,9 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               .filter(Boolean);
             await Promise.all(
               [...urls, ...userUrls].map((url) =>
-                loadStageImage(p, url, stageImages),
+                loadStageImage(p, url, stageImages).catch(() => {
+                  /* One bad URL must not skip the rest of setup (sprites never appear). */
+                }),
               ),
             );
             currentSceneRef.current = latestSceneIdRef.current;
@@ -2074,6 +2228,17 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 stageImages,
                 paintedLoadPending,
               );
+              if (!s.paintedCostumeSrc?.trim()) {
+                const cdef = getCostumeById(s.costume);
+                if (cdef?.kind === "image") {
+                  ensureCatalogCostumeImage(
+                    p,
+                    cdef.src,
+                    stageImages,
+                    catalogLoadPending,
+                  );
+                }
+              }
               p.push();
               p.translate(s.x, s.y);
               const o = spriteDrawOrient(s);
@@ -2115,6 +2280,17 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 );
               }
             }
+            const mergedMon = mergeMonitorDragPreview(
+              variableMonitorsRef.current,
+              variableMonitorDragPreviewRef.current,
+            );
+            drawVariableStageMonitorsLayer(
+              p,
+              p.width,
+              p.height,
+              mergedMon,
+              runVarsSnapshotRef.current,
+            );
           };
 
           p.windowResized = () => {
@@ -2144,6 +2320,45 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             if (runningRef.current) {
               stageClickHandlerRef.current?.();
               return;
+            }
+            const mergedMon = mergeMonitorDragPreview(
+              variableMonitorsRef.current,
+              variableMonitorDragPreviewRef.current,
+            );
+            if (onVariableMonitorMoveRef.current && mergedMon.length > 0) {
+              const hit = hitVariableMonitorAt(
+                p.mouseX,
+                p.mouseY,
+                p.width,
+                p.height,
+                mergedMon,
+              );
+              if (hit) {
+                const m = mergedMon.find((x) => x.id === hit);
+                if (m) {
+                  const cur = pixelToScratchStage(
+                    p.mouseX,
+                    p.mouseY,
+                    p.width,
+                    p.height,
+                  );
+                  variableMonitorDragRef.current = {
+                    varId: hit,
+                    grabXPct: cur.xPct - m.xPct,
+                    grabYPct: cur.yPct - m.yPct,
+                  };
+                  variableMonitorDragPreviewRef.current = {
+                    varId: hit,
+                    xPct: Math.round(
+                      Math.min(100, Math.max(-100, m.xPct)),
+                    ),
+                    yPct: Math.round(
+                      Math.min(100, Math.max(-100, m.yPct)),
+                    ),
+                  };
+                  return;
+                }
+              }
             }
             const list = actorsRef.current;
             const map = spritesByIdRef.current;
@@ -2183,6 +2398,27 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
 
           p.mouseDragged = () => {
             if (runningRef.current) return;
+            const vmd = variableMonitorDragRef.current;
+            if (vmd && p.width > 0) {
+              const cur = pixelToScratchStage(
+                p.mouseX,
+                p.mouseY,
+                p.width,
+                p.height,
+              );
+              const nx = Math.round(
+                Math.min(100, Math.max(-100, cur.xPct - vmd.grabXPct)),
+              );
+              const ny = Math.round(
+                Math.min(100, Math.max(-100, cur.yPct - vmd.grabYPct)),
+              );
+              variableMonitorDragPreviewRef.current = {
+                varId: vmd.varId,
+                xPct: nx,
+                yPct: ny,
+              };
+              return;
+            }
             const rsz = resizeActorIdRef.current;
             if (rsz) {
               const s = spritesByIdRef.current.get(rsz);
@@ -2212,6 +2448,18 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           };
 
           p.mouseReleased = () => {
+            const vdrag = variableMonitorDragRef.current;
+            const vpre = variableMonitorDragPreviewRef.current;
+            if (vdrag && vpre && vpre.varId === vdrag.varId) {
+              variableMonitorDragRef.current = null;
+              variableMonitorDragPreviewRef.current = null;
+              onVariableMonitorMoveRef.current?.(
+                vpre.varId,
+                vpre.xPct,
+                vpre.yPct,
+              );
+              return;
+            }
             const rsz = resizeActorIdRef.current;
             if (rsz) {
               resizeActorIdRef.current = null;

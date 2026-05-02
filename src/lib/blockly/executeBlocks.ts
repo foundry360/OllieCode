@@ -200,6 +200,14 @@ function walkStatementChain(
         });
         break;
       }
+      case "ollie_set_y_to": {
+        const ser = serializeNumExpr(current.getInputTargetBlock("YPCT"));
+        actions.push({
+          type: "setYPct",
+          y: ser ?? { k: "n", v: 0 },
+        });
+        break;
+      }
       case "ollie_change_x_by": {
         const dSer =
           serializeNumExpr(current.getInputTargetBlock("DX")) ?? numLit(0);

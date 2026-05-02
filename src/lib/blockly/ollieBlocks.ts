@@ -325,6 +325,23 @@ export function getOllieBlockDefinitions(): Parameters<
       "Set horizontal position in Scratch coordinates (x: −100 to 100). Plug in mouse x, variables, or math. Keeps the current y.",
   },
   {
+    type: "ollie_set_y_to",
+    message0: "set y to %1",
+    args0: [
+      {
+        type: "input_value",
+        name: "YPCT",
+        check: "Number",
+      },
+    ],
+    inputsInline: true,
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_motion",
+    tooltip:
+      "Set vertical position in Scratch coordinates (y: −100 bottom to +100 top). Plug in mouse y, variables, or math. Keeps the current x.",
+  },
+  {
     type: "ollie_change_x_by",
     message0: "change x by %1",
     args0: [
@@ -357,6 +374,24 @@ export function getOllieBlockDefinitions(): Parameters<
     style: "scratch_motion",
     tooltip:
       "Move vertically in Scratch coordinates (adds to y: up +100 to down −100).",
+  },
+  {
+    type: "ollie_x_position",
+    message0: "x position",
+    output: "Number",
+    style: "scratch_motion",
+    tooltip:
+      "This sprite’s horizontal position in Scratch coordinates (−100 left to +100 right).",
+    helpUrl: "",
+  },
+  {
+    type: "ollie_y_position",
+    message0: "y position",
+    output: "Number",
+    style: "scratch_motion",
+    tooltip:
+      "This sprite’s vertical position in Scratch coordinates (−100 bottom to +100 top).",
+    helpUrl: "",
   },
   {
     type: "ollie_glide_to",
