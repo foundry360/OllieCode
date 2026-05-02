@@ -198,6 +198,11 @@ export type OllieAction =
   | { type: "nextScene" }
   /** Show or hide the sprite on the stage. */
   | { type: "setVisible"; visible: boolean }
+  /**
+   * Stack order among stage sprites (not clones): 1 = drawn first (behind others),
+   * N = drawn last in front when there are N sprites. Clamped at run time.
+   */
+  | { type: "goToLayer"; layer: SerializedNumExpr }
   | { type: "sound"; id: OllieSoundId }
   | { type: "soundWait"; id: OllieSoundId; ms: number }
   | { type: "wait"; ms: SerializedNumExpr }
@@ -409,8 +414,9 @@ export type UserSceneProjectEntry = {
 };
 
 /**
- * Scratch-style variable readout on the stage for one sprite workspace.
- * `id` is Blockly’s variable id (`FieldVariable` value); `name` is kept in sync for display.
+ * Scratch-style variable readout on the stage. Stored per sprite (`id` is Blockly’s variable id);
+ * the workspace merges readouts by name so the stage shows every “on stage” variable regardless
+ * of which sprite’s scripts are open.
  */
 export type VariableStageMonitor = {
   id: string;
@@ -438,6 +444,6 @@ export type ProjectPayload = {
   updatedAt: string;
   /** Optional: adventures with saved progress (for the Adventures list + cloud sync). */
   savedMissionProgress?: SavedMissionProgressEntry[];
-  /** Per-sprite variable monitors shown on the stage (Scratch-style). */
+  /** Per-sprite monitor config; the stage merges these so readouts stay visible when switching sprites. */
   variableMonitorsByActorId?: Record<string, VariableStageMonitor[]>;
 };

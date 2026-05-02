@@ -556,6 +556,24 @@ export function getOllieBlockDefinitions(): Parameters<
     helpUrl: "",
   },
   {
+    type: "ollie_go_to_layer",
+    message0: "go to %1 layer",
+    args0: [
+      {
+        type: "input_value",
+        name: "LAYER",
+        check: "Number",
+      },
+    ],
+    inputsInline: true,
+    previousStatement: null,
+    nextStatement: null,
+    style: "scratch_looks",
+    tooltip:
+      "Move this sprite in the stack: 1 is behind everyone, higher numbers move toward the front. Same order as the sprite list below the stage.",
+    helpUrl: "",
+  },
+  {
     type: "ollie_change_size_by",
     message0: "change size by %1 %",
     args0: [

@@ -5,6 +5,7 @@ import {
   useEffect,
   useImperativeHandle,
   useLayoutEffect,
+  useMemo,
   useRef,
 } from "react";
 import type p5Types from "p5";
@@ -38,6 +39,7 @@ import {
   normalizeSceneLayerIdsFromPayload,
   pointTowardsForwardOffsetPxForCostumeId,
 } from "@/lib/canvas/stageAssets";
+import { reorderActorToOneBasedLayer } from "@/lib/canvas/stageActorLayerOrder";
 import { isUserSceneLayerId } from "@/lib/canvas/userSceneIds";
 import {
   PAINTED_COSTUME_FIT_BOX_PX,
@@ -136,10 +138,18 @@ export type P5CanvasProps = {
     stageXPct: number,
     stageYPct: number,
   ) => void;
-  /** Sprite selected in the workspace — used to show the on-canvas resize nub when not running. */
+  /**
+   * Sprite selected in the workspace (e.g. sprite strip). When this changes, any on-canvas
+   * resize chrome is cleared so the resize nub is not tied to strip selection alone.
+   */
   editorSelectedActorId?: string | null;
   /** Persist size after the learner drags the stage resize handle (Scratch-style %). */
   onActorSizePctChange?: (actorId: string, sizePct: number) => void;
+  /**
+   * Reorder sprites (bottom → top draw). `layerOneBased` is rounded and clamped 1…spriteCount;
+   * ignored for runtime clones.
+   */
+  onActorGoToLayer?: (actorId: string, layerOneBased: number) => void;
   /**
    * When set, `ask` / number prompts use this instead of `window.prompt`
    * (e.g. in-app modal over the stage).
@@ -1114,12 +1124,12 @@ function spritesTouchingForSensing(
 function pickDraggableActorIdAt(
   mx: number,
   my: number,
-  actorsList: StageActorPaint[],
+  orderedActorIds: readonly string[],
   map: Map<string, Sprite>,
   images: Map<string, p5Types.Image>,
 ): string | null {
-  for (let i = actorsList.length - 1; i >= 0; i--) {
-    const id = actorsList[i]!.id;
+  for (let i = orderedActorIds.length - 1; i >= 0; i--) {
+    const id = orderedActorIds[i]!;
     const s = map.get(id);
     if (!s || s.visible === false) continue;
     const r = spriteHitRadiusPx(s, images);
@@ -1144,6 +1154,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       onActorStagePositionChange,
       editorSelectedActorId = null,
       onActorSizePctChange,
+      onActorGoToLayer,
       requestNumberInput,
       variableMonitors,
       onVariableMonitorMove,
@@ -1188,13 +1199,26 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
     onActorCostumeChangeRef.current = onActorCostumeChange;
     onActorPointTowardAimChangeRef.current = onActorPointTowardAimChange;
     actorsRef.current = actors;
+    const actorOrderSig = useMemo(
+      () => actors.map((a) => a.id).join(","),
+      [actors],
+    );
+    const actorDrawOrderIdsRef = useRef<string[]>([]);
+    useLayoutEffect(() => {
+      actorDrawOrderIdsRef.current = actors.map((a) => a.id);
+    }, [actorOrderSig, actors]);
 
     const onActorStagePositionChangeRef = useRef(onActorStagePositionChange);
     onActorStagePositionChangeRef.current = onActorStagePositionChange;
     const onActorSizePctChangeRef = useRef(onActorSizePctChange);
     onActorSizePctChangeRef.current = onActorSizePctChange;
-    const editorSelectedActorIdRef = useRef(editorSelectedActorId);
-    editorSelectedActorIdRef.current = editorSelectedActorId;
+    const onActorGoToLayerRef = useRef(onActorGoToLayer);
+    onActorGoToLayerRef.current = onActorGoToLayer;
+    /** Sprite the learner last picked on the stage — resize nub only shows for this (not strip-only). */
+    const stageResizeChromeActorIdRef = useRef<string | null>(null);
+    useEffect(() => {
+      stageResizeChromeActorIdRef.current = null;
+    }, [editorSelectedActorId]);
     const variableMonitorsRef = useRef<readonly VariableStageMonitor[]>([]);
     variableMonitorsRef.current = variableMonitors ?? [];
     const onVariableMonitorMoveRef = useRef(onVariableMonitorMove);
@@ -1783,6 +1807,16 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               );
             } else if (a.type === "setVisible") {
               s.visible = a.visible;
+            } else if (a.type === "goToLayer") {
+              if (!spriteId.startsWith("ollie-clone-")) {
+                const layerVal = evalSerializedNum(a.layer, ctx);
+                actorDrawOrderIdsRef.current = reorderActorToOneBasedLayer(
+                  actorDrawOrderIdsRef.current.map((id) => ({ id })),
+                  spriteId,
+                  layerVal,
+                ).map((o) => o.id);
+                onActorGoToLayerRef.current?.(spriteId, layerVal);
+              }
             } else if (a.type === "setPointTowardAim") {
               s.pointTowardsAimOrigin = a.origin;
               if (a.origin === "custom") {
@@ -2213,7 +2247,7 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             if (sceneMeta.grid) {
               drawDotsBackground(p);
             }
-            const actorIds = actorsRef.current.map((a) => a.id);
+            const actorIds = [...actorDrawOrderIdsRef.current];
             const cloneIds = [...spritesByIdRef.current.keys()].filter(
               (id) =>
                 id.startsWith("ollie-clone-") && !actorIds.includes(id),
@@ -2249,9 +2283,9 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               p.pop();
             }
             if (!runningRef.current) {
-              const sel = editorSelectedActorIdRef.current;
-              if (sel) {
-                const s = spritesByIdRef.current.get(sel);
+              const chrome = stageResizeChromeActorIdRef.current;
+              if (chrome) {
+                const s = spritesByIdRef.current.get(chrome);
                 if (s && s.visible !== false) {
                   const { wx, wy } = spriteResizeHandleWorld(s, stageImages);
                   p.push();
@@ -2360,33 +2394,44 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 }
               }
             }
-            const list = actorsRef.current;
             const map = spritesByIdRef.current;
-            const sel = editorSelectedActorIdRef.current;
-            if (sel) {
-              const sSel = map.get(sel);
+            const chrome = stageResizeChromeActorIdRef.current;
+            if (chrome) {
+              const sChrome = map.get(chrome);
               if (
-                sSel &&
-                sSel.visible !== false &&
-                hitSpriteResizeHandle(p.mouseX, p.mouseY, sSel, stageImages)
+                sChrome &&
+                sChrome.visible !== false &&
+                hitSpriteResizeHandle(
+                  p.mouseX,
+                  p.mouseY,
+                  sChrome,
+                  stageImages,
+                )
               ) {
-                resizeActorIdRef.current = sel;
+                resizeActorIdRef.current = chrome;
                 resizeStartDistRef.current = Math.max(
                   14,
-                  Math.hypot(p.mouseX - sSel.x, p.mouseY - sSel.y),
+                  Math.hypot(
+                    p.mouseX - sChrome.x,
+                    p.mouseY - sChrome.y,
+                  ),
                 );
-                resizeStartSizePctRef.current = sSel.sizePct ?? 100;
+                resizeStartSizePctRef.current = sChrome.sizePct ?? 100;
                 return;
               }
             }
             const id = pickDraggableActorIdAt(
               p.mouseX,
               p.mouseY,
-              list,
+              actorDrawOrderIdsRef.current,
               map,
               stageImages,
             );
-            if (!id) return;
+            if (!id) {
+              stageResizeChromeActorIdRef.current = null;
+              return;
+            }
+            stageResizeChromeActorIdRef.current = id;
             const s = map.get(id);
             if (!s) return;
             dragActorIdRef.current = id;

@@ -366,6 +366,19 @@ function walkStatementChain(
       case "ollie_hide":
         actions.push({ type: "setVisible", visible: false });
         break;
+      case "ollie_go_to_layer": {
+        const layerSer =
+          serializeNumExpr(current.getInputTargetBlock("LAYER")) ?? numLit(1);
+        actions.push({
+          type: "goToLayer",
+          layer: {
+            k: "round",
+            op: "ROUND",
+            a: layerSer,
+          },
+        });
+        break;
+      }
       case "ollie_change_size_by": {
         const dSer =
           serializeNumExpr(current.getInputTargetBlock("DELTA")) ?? numLit(0);

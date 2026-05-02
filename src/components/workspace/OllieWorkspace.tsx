@@ -75,6 +75,7 @@ import {
   normalizeSceneLayerIdsFromPayload,
   userSceneIdSetFromPayload,
 } from "@/lib/canvas/stageAssets";
+import { reorderActorToOneBasedLayer } from "@/lib/canvas/stageActorLayerOrder";
 import { makeUserSceneLayerId } from "@/lib/canvas/userSceneIds";
 import type { OllieSceneId, OllieSpriteCostumeId } from "@/lib/canvas/stageAssets";
 import { P5Canvas, type P5CanvasHandle } from "@/components/workspace/P5Canvas";
@@ -255,6 +256,35 @@ function defaultMonitorStagePosition(existingCount: number): {
   const xPct = Math.round(Math.min(-35, Math.max(-90, -82 + col * 10)));
   const yPct = Math.round(Math.min(90, Math.max(40, 78 - row * 12)));
   return { xPct, yPct };
+}
+
+/**
+ * Stage readouts stay visible while switching sprites. Each actor keeps its own Blockly variable
+ * ids; we dedupe by display name so two sprites with a "Score" each do not draw two identical boxes
+ * (the runner already keeps one value per variable name).
+ */
+function mergeVariableMonitorsForStageAllSprites(
+  byActor: Record<string, VariableStageMonitor[]>,
+  actorOrder: readonly { id: string }[],
+): VariableStageMonitor[] {
+  const seenName = new Set<string>();
+  const out: VariableStageMonitor[] = [];
+  const push = (list: VariableStageMonitor[] | undefined) => {
+    for (const m of list ?? []) {
+      const nk = m.name.trim().toLowerCase();
+      if (seenName.has(nk)) continue;
+      seenName.add(nk);
+      out.push(m);
+    }
+  };
+  for (const a of actorOrder) {
+    push(byActor[a.id]);
+  }
+  for (const aid of Object.keys(byActor)) {
+    if (actorOrder.some((x) => x.id === aid)) continue;
+    push(byActor[aid]);
+  }
+  return out;
 }
 
 const ADVENTURE_STAGE_SIZE_STORAGE_KEY = "ollie_workspace_adventure_stage";
@@ -485,6 +515,15 @@ export function OllieWorkspace() {
   >({});
   const variableMonitorsByActorIdRef = useRef(variableMonitorsByActorId);
   variableMonitorsByActorIdRef.current = variableMonitorsByActorId;
+  const stageActorOrderKey = actors.map((a) => a.id).join("\0");
+  const variableMonitorsMergedForStage = useMemo(
+    () =>
+      mergeVariableMonitorsForStageAllSprites(
+        variableMonitorsByActorId,
+        actors,
+      ),
+    [variableMonitorsByActorId, stageActorOrderKey],
+  );
   const [variableReadoutsOpen, setVariableReadoutsOpen] = useState(false);
   const [readoutsListNonce, setReadoutsListNonce] = useState(0);
   const readoutsAnchorRef = useRef<HTMLDivElement>(null);
@@ -1479,16 +1518,18 @@ export function OllieWorkspace() {
 
   const handleVariableMonitorMove = useCallback(
     (variableId: string, xPct: number, yPct: number) => {
-      const aid = activeActorIdRef.current;
       setVariableMonitorsByActorId((prev) => {
-        const list = prev[aid];
-        if (!list) return prev;
-        return {
-          ...prev,
-          [aid]: list.map((m) =>
+        let touched = false;
+        const next: Record<string, VariableStageMonitor[]> = { ...prev };
+        for (const aid of Object.keys(next)) {
+          const list = next[aid];
+          if (!list?.some((m) => m.id === variableId)) continue;
+          next[aid] = list.map((m) =>
             m.id === variableId ? { ...m, xPct, yPct } : m,
-          ),
-        };
+          );
+          touched = true;
+        }
+        return touched ? next : prev;
       });
     },
     [],
@@ -2748,20 +2789,16 @@ export function OllieWorkspace() {
       const progress = getSavedMissionProgress().find(
         (e) => e.missionId === missionId,
       );
-      const lessonFromProgress =
+      /** Only the opened adventure’s stored hub link — do not reuse `?lesson=` from a prior URL (e.g. hub activation). */
+      const lessonParam =
         progress?.hubLessonId &&
         progress.hubLessonId !== WORKSPACE_NO_LESSON_QUERY
           ? progress.hubLessonId.trim()
           : "";
-      const lessonParam =
-        rawLessonId.length > 0 &&
-        rawLessonId !== WORKSPACE_NO_LESSON_QUERY
-          ? rawLessonId
-          : lessonFromProgress;
       appendHubLessonToWorkspaceQuery(q, lessonParam);
       router.replace(`/workspace?${q.toString()}`, { scroll: false });
     },
-    [router, openMissionWorkspace, rawLessonId],
+    [router, openMissionWorkspace],
   );
 
   const handleNewMission = useCallback(() => {
@@ -3809,10 +3846,13 @@ export function OllieWorkspace() {
                     ),
                   )
                 }
-                requestNumberInput={requestNumberInput}
-                variableMonitors={
-                  variableMonitorsByActorId[activeActorId] ?? []
+                onActorGoToLayer={(actorId, layerOneBased) =>
+                  setActors((prev) =>
+                    reorderActorToOneBasedLayer(prev, actorId, layerOneBased),
+                  )
                 }
+                requestNumberInput={requestNumberInput}
+                variableMonitors={variableMonitorsMergedForStage}
                 onVariableMonitorMove={handleVariableMonitorMove}
               />
               <div

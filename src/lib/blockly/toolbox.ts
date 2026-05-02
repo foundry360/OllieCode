@@ -95,6 +95,7 @@ export const OLLIE_TOOLBOX = {
         B("ollie_next_costume"),
         B("ollie_show"),
         B("ollie_hide"),
+        blockWithNumberShadow("ollie_go_to_layer", "LAYER", 2),
         blockWithNumberShadow("ollie_grow_size", "PCT", 10),
         blockWithNumberShadow("ollie_shrink_size", "PCT", 10),
         blockWithNumberShadow("ollie_change_size_by", "DELTA", 10),
