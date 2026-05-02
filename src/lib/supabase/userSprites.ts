@@ -1,6 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { StageActor } from "@/types/ollie";
-import { mintProjectsObjectSignedUrl } from "@/lib/supabase/costumePaintStorage";
+import {
+  deleteProjectsBucketObject,
+  mintProjectsObjectSignedUrl,
+} from "@/lib/supabase/costumePaintStorage";
 
 export type UserSpriteSource = "paint" | "upload";
 
@@ -87,6 +90,30 @@ export async function insertUserSpriteRow(
     return { error: new Error(error.message) };
   }
   return { error: null };
+}
+
+/**
+ * Remove a row from `user_sprites` (if present) and delete the PNG from Storage.
+ * Safe when the sprite exists only in the current project (no library row).
+ */
+export async function deleteUserSpriteFromLibrary(
+  supabase: SupabaseClient,
+  userId: string,
+  storagePath: string,
+): Promise<{ error: Error | null }> {
+  const path = storagePath.trim();
+  if (!path) {
+    return { error: new Error("Storage path is empty") };
+  }
+  const { error: rowErr } = await supabase
+    .from("user_sprites")
+    .delete()
+    .eq("user_id", userId)
+    .eq("storage_path", path);
+  if (rowErr) {
+    return { error: new Error(rowErr.message) };
+  }
+  return deleteProjectsBucketObject(supabase, path);
 }
 
 export type UserSpritePickerEntryShape = {

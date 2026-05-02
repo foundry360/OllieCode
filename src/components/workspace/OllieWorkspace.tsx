@@ -88,7 +88,10 @@ import { DeleteMissionModal } from "@/components/workspace/DeleteMissionModal";
 import { MissionCompleteModal } from "@/components/workspace/MissionCompleteModal";
 import { SaveMissionNameModal } from "@/components/workspace/SaveMissionNameModal";
 import { SavedMissionsModal } from "@/components/workspace/SavedMissionsModal";
-import { SpritePickerModal } from "@/components/workspace/SpritePickerModal";
+import {
+  SpritePickerModal,
+  type UserSpritePickerEntry,
+} from "@/components/workspace/SpritePickerModal";
 import { SpriteUploadModal } from "@/components/workspace/SpriteUploadModal";
 import { StageActorCostumePreview } from "@/components/workspace/SpritePreview";
 import { CostumePaintModal } from "@/components/workspace/CostumePaintModal";
@@ -131,6 +134,7 @@ import {
   type UserSceneRuntimeEntry,
 } from "@/lib/supabase/userScenes";
 import {
+  deleteUserSpriteFromLibrary,
   fetchUserSpriteLibrary,
   insertUserSpriteRow,
   mergeUserSpritePickerEntries,
@@ -453,6 +457,9 @@ export function OllieWorkspace() {
     | { type: "scene" }
     | { type: "sprite"; actorId: string; label: string }
   >(null);
+  /** My Sprites row in Choose a Sprite; user confirms removal in `ConfirmDeleteModal`. */
+  const [userSpriteLibraryDeleteConfirm, setUserSpriteLibraryDeleteConfirm] =
+    useState<UserSpritePickerEntry | null>(null);
   /** Right-click menu on a sprite strip tile (below canvas). */
   const [spriteStripContextMenu, setSpriteStripContextMenu] = useState<
     null | { clientX: number; clientY: number; actorId: string }
@@ -821,6 +828,53 @@ export function OllieWorkspace() {
     },
     [runAuthSerialized],
   );
+
+  const handleDeleteUserSpriteFromPicker = useCallback(
+    (entry: UserSpritePickerEntry) => {
+      if (!entry.paintedCostumeStoragePath?.trim()) return;
+      setUserSpriteLibraryDeleteConfirm(entry);
+    },
+    [],
+  );
+
+  const confirmDeleteUserSpriteFromLibrary = useCallback(() => {
+    const entry = userSpriteLibraryDeleteConfirm;
+    if (!entry) return;
+    const path = entry.paintedCostumeStoragePath?.trim();
+    if (!path) {
+      setUserSpriteLibraryDeleteConfirm(null);
+      return;
+    }
+    setUserSpriteLibraryDeleteConfirm(null);
+    void runAuthSerialized(async () => {
+      const sb = getSupabaseBrowserClient();
+      if (!sb) return;
+      const {
+        data: { session },
+      } = await sb.auth.getSession();
+      const user = session?.user;
+      if (!user) return;
+      const { error } = await deleteUserSpriteFromLibrary(sb, user.id, path);
+      if (error) {
+        console.warn("[user_sprites] delete failed:", error.message);
+        return;
+      }
+      const lib = await fetchUserSpriteLibrary(sb, user.id);
+      setLibraryUserSprites(lib);
+      setActors((prev) =>
+        prev.map((a) =>
+          a.paintedCostumeStoragePath?.trim() === path
+            ? {
+                ...a,
+                costumeId: DEFAULT_COSTUME_ID,
+                paintedCostumeUrl: undefined,
+                paintedCostumeStoragePath: undefined,
+              }
+            : a,
+        ),
+      );
+    });
+  }, [runAuthSerialized, userSpriteLibraryDeleteConfirm]);
 
   const handleUserSceneUploadSuccess = useCallback(
     (payload: {
@@ -3083,6 +3137,7 @@ export function OllieWorkspace() {
                   pointTowardsLateralPct: a.pointTowardsLateralPct,
                   stageXPct: a.stageXPct,
                   stageYPct: a.stageYPct,
+                  sizePct: a.sizePct,
                 }))}
                 pauseActorCostumePropSync={programRunning}
                 onSceneChange={(id) => setStageSceneLayers([id])}
@@ -3119,6 +3174,14 @@ export function OllieWorkspace() {
                   setActors((prev) =>
                     prev.map((a) =>
                       a.id === actorId ? { ...a, stageXPct, stageYPct } : a,
+                    ),
+                  )
+                }
+                editorSelectedActorId={activeActorId}
+                onActorSizePctChange={(actorId, sizePct) =>
+                  setActors((prev) =>
+                    prev.map((a) =>
+                      a.id === actorId ? { ...a, sizePct } : a,
                     ),
                   )
                 }
@@ -3485,6 +3548,11 @@ export function OllieWorkspace() {
           setCostumePaintMode("create");
           setCostumePaintOpen(true);
         }}
+        onDeleteUserSprite={
+          userCodename && getSupabaseBrowserClient()
+            ? handleDeleteUserSpriteFromPicker
+            : undefined
+        }
         onSelect={(pick) => {
           if (pick.kind === "catalog") {
             const id = pick.costumeId;
@@ -3646,6 +3714,18 @@ export function OllieWorkspace() {
           else if (deleteConfirm?.type === "sprite")
             confirmRemoveSprite(deleteConfirm.actorId);
         }}
+      />
+      <ConfirmDeleteModal
+        open={userSpriteLibraryDeleteConfirm !== null}
+        onClose={() => setUserSpriteLibraryDeleteConfirm(null)}
+        title={
+          userSpriteLibraryDeleteConfirm
+            ? `Delete “${userSpriteLibraryDeleteConfirm.label}” from My Sprites?`
+            : ""
+        }
+        message="This removes the image from your library and from storage. Any sprite in this project that uses it will switch to the default costume."
+        confirmLabel="Delete"
+        onConfirm={confirmDeleteUserSpriteFromLibrary}
       />
     </div>
   );

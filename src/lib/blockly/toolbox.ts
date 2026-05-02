@@ -174,7 +174,7 @@ export const OLLIE_TOOLBOX = {
     },
     {
       kind: "category",
-      name: "Math",
+      name: "Numbers",
       colour: scratchToolboxCategoryColor.math,
       cssconfig: ollieToolboxCategoryCssconfig("math"),
       contents: [

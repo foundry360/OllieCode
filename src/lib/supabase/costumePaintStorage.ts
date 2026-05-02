@@ -59,6 +59,17 @@ export function inferProjectsBucketObjectPathFromUrl(
   return null;
 }
 
+/** Remove one object from the private `projects` bucket (painted costumes, user sprites, etc.). */
+export async function deleteProjectsBucketObject(
+  supabase: SupabaseClient,
+  path: string,
+): Promise<{ error: Error | null }> {
+  const trimmed = path.trim();
+  if (!trimmed) return { error: new Error("Storage path is empty") };
+  const { error } = await supabase.storage.from(BUCKET).remove([trimmed]);
+  return { error: error ? new Error(error.message) : null };
+}
+
 /** User-uploaded backdrop PNGs: `{userId}/user-scenes/{sceneUuid}.png` */
 export async function uploadUserScenePng(
   supabase: SupabaseClient,

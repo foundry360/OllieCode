@@ -62,6 +62,8 @@ export type StageActorPaint = {
   /** Scratch coords from last drag or project load — syncs sprite on the stage. */
   stageXPct?: number;
   stageYPct?: number;
+  /** Scratch-style size % (100 default); editor resize handle + project save. */
+  sizePct?: number;
 };
 
 export type P5CanvasHandle = {
@@ -130,6 +132,10 @@ export type P5CanvasProps = {
     stageXPct: number,
     stageYPct: number,
   ) => void;
+  /** Sprite selected in the workspace — used to show the on-canvas resize nub when not running. */
+  editorSelectedActorId?: string | null;
+  /** Persist size after the learner drags the stage resize handle (Scratch-style %). */
+  onActorSizePctChange?: (actorId: string, sizePct: number) => void;
   /**
    * When set, `ask` / number prompts use this instead of `window.prompt`
    * (e.g. in-app modal over the stage).
@@ -226,6 +232,18 @@ const CANVAS_MAX_PX = 4096;
 /** Scratch-style size % — clamped when changing with grow/shrink blocks. */
 const MIN_SPRITE_SIZE_PCT = 5;
 const MAX_SPRITE_SIZE_PCT = 500;
+/** Editor resize handle: offset past costume corner in local space (before mirror/rotate). */
+const SPRITE_RESIZE_HANDLE_PAD = 8;
+/** Hit radius in **stage px** for the resize nub. */
+const SPRITE_RESIZE_HANDLE_HIT_PX = 14;
+
+function clampSpriteSizePct(n: number): number {
+  if (!Number.isFinite(n)) return 100;
+  return Math.min(
+    MAX_SPRITE_SIZE_PCT,
+    Math.max(MIN_SPRITE_SIZE_PCT, Math.round(n)),
+  );
+}
 /** Cap for `repeat` when count comes from variables / runtime math. */
 const MAX_REPEAT_DYNAMIC_ITER = 2_000;
 /** Cap for `while` / `until` with live conditions. */
@@ -857,39 +875,92 @@ function drawSpriteForCostume(
   }
 }
 
-/** Rough hit radius (px) for drag picking — circle around costume center. */
-function spriteHitRadiusPx(
+/** Logical draw width/height inside {@link drawSpriteForCostume} before `scale(size%)`. */
+function spriteUnscaledDrawSize(
   s: Sprite,
   images: Map<string, p5Types.Image>,
-): number {
-  const sc = spriteSizeScale(s);
+): { w: number; h: number } {
   const painted = s.paintedCostumeSrc?.trim();
   if (painted) {
     const img = images.get(painted);
     if (img && img.width > 0) {
       const b = paintedContentBoundsForKey(painted, img);
-      const { w, h } = paintedCostumeFitInBox(
+      return paintedCostumeFitInBox(
         b.sw,
         b.sh,
         PAINTED_COSTUME_FIT_BOX_PX,
       );
-      return Math.hypot(w / 2, h / 2) * sc;
     }
-    return 34 * sc;
+    return { w: 52, h: 60 };
   }
   const def =
     getCostumeById(s.costume) ?? getCostumeById(DEFAULT_COSTUME_ID)!;
   const img = images.get(def.src);
   if (img && img.width > 0) {
+    if (def.src.endsWith(".gif")) {
+      const w = def.width;
+      const h = w * (img.height / img.width);
+      return { w, h };
+    }
     const cols = def.spriteSheet?.columns ?? 1;
     const rows = def.spriteSheet?.rows ?? 1;
     const cellW = Math.floor(img.width / cols);
     const cellH = Math.floor(img.height / rows);
     const w = def.width;
     const h = w * (cellH / cellW);
-    return Math.hypot(w / 2, h / 2) * sc;
+    return { w, h };
   }
-  return 34 * sc;
+  return { w: 52, h: 60 };
+}
+
+function spriteLocalHalfExtentsAfterScale(
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): { hx: number; hy: number } {
+  const sc = spriteSizeScale(s);
+  const { w, h } = spriteUnscaledDrawSize(s, images);
+  return { hx: (w * sc) / 2, hy: (h * sc) / 2 };
+}
+
+/** Stage (canvas) coords of the resize nub for the given sprite. */
+function spriteResizeHandleWorld(
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): { wx: number; wy: number } {
+  const { hx, hy } = spriteLocalHalfExtentsAfterScale(s, images);
+  const lx = hx + SPRITE_RESIZE_HANDLE_PAD;
+  const ly = hy + SPRITE_RESIZE_HANDLE_PAD;
+  const o = spriteDrawOrient(s);
+  let x = lx;
+  let y = ly;
+  if (o.mirrorX) x = -x;
+  const rad = (o.rotationDeg * Math.PI) / 180;
+  const c = Math.cos(rad);
+  const sn = Math.sin(rad);
+  const wx = x * c - y * sn;
+  const wy = x * sn + y * c;
+  return { wx: s.x + wx, wy: s.y + wy };
+}
+
+function hitSpriteResizeHandle(
+  mx: number,
+  my: number,
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): boolean {
+  const { wx, wy } = spriteResizeHandleWorld(s, images);
+  return (
+    Math.hypot(mx - wx, my - wy) <= SPRITE_RESIZE_HANDLE_HIT_PX
+  );
+}
+
+/** Rough hit radius (px) for drag picking — circle around costume center. */
+function spriteHitRadiusPx(
+  s: Sprite,
+  images: Map<string, p5Types.Image>,
+): number {
+  const { hx, hy } = spriteLocalHalfExtentsAfterScale(s, images);
+  return Math.hypot(hx, hy);
 }
 
 /**
@@ -947,6 +1018,8 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
       onActorCostumeChange,
       onActorPointTowardAimChange,
       onActorStagePositionChange,
+      editorSelectedActorId = null,
+      onActorSizePctChange,
       requestNumberInput,
     },
     ref,
@@ -992,8 +1065,15 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
 
     const onActorStagePositionChangeRef = useRef(onActorStagePositionChange);
     onActorStagePositionChangeRef.current = onActorStagePositionChange;
+    const onActorSizePctChangeRef = useRef(onActorSizePctChange);
+    onActorSizePctChangeRef.current = onActorSizePctChange;
+    const editorSelectedActorIdRef = useRef(editorSelectedActorId);
+    editorSelectedActorIdRef.current = editorSelectedActorId;
     const dragActorIdRef = useRef<string | null>(null);
     const dragOffsetRef = useRef({ dx: 0, dy: 0 });
+    const resizeActorIdRef = useRef<string | null>(null);
+    const resizeStartDistRef = useRef(1);
+    const resizeStartSizePctRef = useRef(100);
 
     const requestNumberInputRef = useRef<
       typeof requestNumberInput | undefined
@@ -1119,7 +1199,6 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
         const nextPainted = a.paintedCostumeUrl?.trim() || undefined;
         const existing = map.get(a.id);
         if (existing) {
-          existing.sizePct = existing.sizePct ?? 100;
           existing.visible = a.visible !== false;
           existing.paintedCostumeSrc = nextPainted;
           /**
@@ -1128,6 +1207,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
            * so relying on it alone let this effect overwrite script-driven aim from stale props.
            */
           if (!runningRef.current) {
+            existing.sizePct =
+              typeof a.sizePct === "number" && Number.isFinite(a.sizePct)
+                ? clampSpriteSizePct(a.sizePct)
+                : clampSpriteSizePct(existing.sizePct ?? 100);
             existing.pointTowardsAimOrigin = a.pointTowardsAimOrigin;
             existing.pointTowardsForwardPx = a.pointTowardsForwardPx;
             existing.pointTowardsLateralPx = a.pointTowardsLateralPx;
@@ -1157,7 +1240,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             costume: a.costumeId,
             paintedCostumeSrc: nextPainted,
             sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
-            sizePct: 100,
+            sizePct:
+              typeof a.sizePct === "number" && Number.isFinite(a.sizePct)
+                ? clampSpriteSizePct(a.sizePct)
+                : 100,
             visible: a.visible !== false,
             pointTowardsAimOrigin: a.pointTowardsAimOrigin,
             pointTowardsForwardPx: a.pointTowardsForwardPx,
@@ -1203,7 +1289,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           s.costume = a.costumeId;
           s.paintedCostumeSrc = a.paintedCostumeUrl?.trim() || undefined;
           s.sheetFrame = defaultSheetFrameForCostumeId(a.costumeId);
-          s.sizePct = 100;
+          s.sizePct =
+            typeof a.sizePct === "number" && Number.isFinite(a.sizePct)
+              ? clampSpriteSizePct(a.sizePct)
+              : 100;
           s.visible = a.visible !== false;
           s.pointTowardsAimOrigin = a.pointTowardsAimOrigin;
           s.pointTowardsForwardPx = a.pointTowardsForwardPx;
@@ -1922,7 +2011,10 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
                 costume: a.costumeId,
                 paintedCostumeSrc: a.paintedCostumeUrl?.trim() || undefined,
                 sheetFrame: defaultSheetFrameForCostumeId(a.costumeId),
-                sizePct: 100,
+                sizePct:
+                  typeof a.sizePct === "number" && Number.isFinite(a.sizePct)
+                    ? clampSpriteSizePct(a.sizePct)
+                    : 100,
                 visible: a.visible !== false,
                 pointTowardsAimOrigin: a.pointTowardsAimOrigin,
                 pointTowardsForwardPx: a.pointTowardsForwardPx,
@@ -1991,6 +2083,21 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
               drawSpriteForCostume(p, s, stageImages);
               p.pop();
             }
+            if (!runningRef.current) {
+              const sel = editorSelectedActorIdRef.current;
+              if (sel) {
+                const s = spritesByIdRef.current.get(sel);
+                if (s && s.visible !== false) {
+                  const { wx, wy } = spriteResizeHandleWorld(s, stageImages);
+                  p.push();
+                  p.stroke(37, 99, 235);
+                  p.strokeWeight(2);
+                  p.fill(255);
+                  p.circle(wx, wy, 12);
+                  p.pop();
+                }
+              }
+            }
             for (const id of drawOrder) {
               const s = spritesByIdRef.current.get(id);
               if (
@@ -2040,6 +2147,23 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
             }
             const list = actorsRef.current;
             const map = spritesByIdRef.current;
+            const sel = editorSelectedActorIdRef.current;
+            if (sel) {
+              const sSel = map.get(sel);
+              if (
+                sSel &&
+                sSel.visible !== false &&
+                hitSpriteResizeHandle(p.mouseX, p.mouseY, sSel, stageImages)
+              ) {
+                resizeActorIdRef.current = sel;
+                resizeStartDistRef.current = Math.max(
+                  14,
+                  Math.hypot(p.mouseX - sSel.x, p.mouseY - sSel.y),
+                );
+                resizeStartSizePctRef.current = sSel.sizePct ?? 100;
+                return;
+              }
+            }
             const id = pickDraggableActorIdAt(
               p.mouseX,
               p.mouseY,
@@ -2058,8 +2182,24 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           };
 
           p.mouseDragged = () => {
+            if (runningRef.current) return;
+            const rsz = resizeActorIdRef.current;
+            if (rsz) {
+              const s = spritesByIdRef.current.get(rsz);
+              if (!s) return;
+              const d = Math.hypot(p.mouseX - s.x, p.mouseY - s.y);
+              const d0 = resizeStartDistRef.current;
+              const ratio = Math.max(0.2, Math.min(5, d / Math.max(d0, 1e-6)));
+              const next =
+                resizeStartSizePctRef.current * ratio;
+              s.sizePct = Math.min(
+                MAX_SPRITE_SIZE_PCT,
+                Math.max(MIN_SPRITE_SIZE_PCT, next),
+              );
+              return;
+            }
             const id = dragActorIdRef.current;
-            if (!id || runningRef.current) return;
+            if (!id) return;
             const s = spritesByIdRef.current.get(id);
             if (!s) return;
             let nx = p.mouseX + dragOffsetRef.current.dx;
@@ -2072,6 +2212,17 @@ export const P5Canvas = forwardRef<P5CanvasHandle, P5CanvasProps>(
           };
 
           p.mouseReleased = () => {
+            const rsz = resizeActorIdRef.current;
+            if (rsz) {
+              resizeActorIdRef.current = null;
+              const s = spritesByIdRef.current.get(rsz);
+              if (s && p.width > 0) {
+                const pct = clampSpriteSizePct(s.sizePct ?? 100);
+                s.sizePct = pct;
+                onActorSizePctChangeRef.current?.(rsz, pct);
+              }
+              return;
+            }
             const id = dragActorIdRef.current;
             if (!id) return;
             dragActorIdRef.current = null;

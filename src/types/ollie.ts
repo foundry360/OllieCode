@@ -49,6 +49,11 @@ export type StageActor = {
    */
   stageXPct?: number;
   stageYPct?: number;
+  /**
+   * Scratch-style display size (100 = default). Updated by Looks blocks at Run time and by the
+   * stage resize handle while editing; persisted in project saves.
+   */
+  sizePct?: number;
   /** When false, the stage does not draw this actor until scripts or the learner show it. */
   visible?: boolean;
 };
@@ -66,6 +71,7 @@ export function normalizeStageActor(
     pointTowardsLateralPct?: number;
     stageXPct?: number;
     stageYPct?: number;
+    sizePct?: number;
     visible?: boolean;
   },
 ): StageActor {
@@ -103,6 +109,11 @@ export function normalizeStageActor(
       : {}),
     ...(typeof raw.stageXPct === "number" ? { stageXPct: raw.stageXPct } : {}),
     ...(typeof raw.stageYPct === "number" ? { stageYPct: raw.stageYPct } : {}),
+    ...(typeof raw.sizePct === "number" &&
+    Number.isFinite(raw.sizePct) &&
+    raw.sizePct > 0
+      ? { sizePct: raw.sizePct }
+      : {}),
     ...(raw.visible === false ? { visible: false as const } : {}),
   };
 }

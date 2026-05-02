@@ -15,7 +15,7 @@ import type {
   SpriteCategoryId,
 } from "@/lib/canvas/stageAssets";
 import type { StageActor } from "@/types/ollie";
-import { ImageUp, Plus } from "lucide-react";
+import { ImageUp, Plus, Trash2 } from "lucide-react";
 import { SpritePreview, StageActorCostumePreview } from "@/components/workspace/SpritePreview";
 
 /** User-uploaded or painted costumes from the current project (deduped by image URL). */
@@ -48,6 +48,11 @@ type SpritePickerModalProps = {
   onOpenUpload?: () => void;
   /** Shown as the first tile under “My Sprites” — opens paint / create-sprite flow. */
   onOpenCreateSprite?: () => void;
+  /**
+   * When set, user tiles with {@link UserSpritePickerEntry.paintedCostumeStoragePath} show a
+   * delete control (catalog sprites never delete).
+   */
+  onDeleteUserSprite?: (entry: UserSpritePickerEntry) => void;
 };
 
 type FilterValue = SpriteCategoryId | "all";
@@ -61,6 +66,7 @@ export function SpritePickerModal({
   onSelect,
   onOpenUpload,
   onOpenCreateSprite,
+  onDeleteUserSprite,
 }: SpritePickerModalProps) {
   const titleId = useId();
   const filterRegionId = useId();
@@ -271,33 +277,55 @@ export function SpritePickerModal({
                 const selected =
                   Boolean(selectedPaintedCostumeUrl) &&
                   entry.paintedCostumeUrl === selectedPaintedCostumeUrl;
+                const storagePath = entry.paintedCostumeStoragePath?.trim();
+                const showDelete =
+                  Boolean(onDeleteUserSprite) && Boolean(storagePath);
                 return (
-                  <button
+                  <div
                     key={key}
-                    type="button"
-                    onClick={() => {
-                      onSelect({
-                        kind: "user",
-                        label: entry.label,
-                        paintedCostumeUrl: entry.paintedCostumeUrl,
-                        paintedCostumeStoragePath: entry.paintedCostumeStoragePath,
-                      });
-                      onClose();
-                    }}
                     className={[
-                      "flex min-w-0 flex-col overflow-hidden rounded-lg border-2 text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-offset-2",
+                      "relative min-w-0 overflow-hidden rounded-lg border-2 text-left transition",
                       selected
                         ? "border-[#84c126] bg-[#f7fee7] shadow-sm"
                         : "border-[#e5e7eb] bg-white hover:border-[#cbd5e1] hover:shadow-sm",
                     ].join(" ")}
                   >
-                    <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
-                      <StageActorCostumePreview actor={previewActor} fillCard />
-                    </div>
-                    <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
-                      {entry.label}
-                    </span>
-                  </button>
+                    {showDelete ? (
+                      <button
+                        type="button"
+                        title={`Delete “${entry.label}”`}
+                        aria-label={`Delete sprite ${entry.label}`}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          onDeleteUserSprite?.(entry);
+                        }}
+                        className="absolute right-1 top-1 z-20 flex size-7 items-center justify-center rounded-md border border-[#e5e7eb] bg-white/95 text-[#64748b] shadow-sm backdrop-blur-sm transition hover:border-red-200 hover:bg-red-50 hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-1"
+                      >
+                        <Trash2 className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelect({
+                          kind: "user",
+                          label: entry.label,
+                          paintedCostumeUrl: entry.paintedCostumeUrl,
+                          paintedCostumeStoragePath: entry.paintedCostumeStoragePath,
+                        });
+                        onClose();
+                      }}
+                      className="flex min-w-0 w-full flex-col overflow-hidden rounded-[inherit] text-left transition focus:outline-none focus-visible:ring-2 focus-visible:ring-[#84c126] focus-visible:ring-inset"
+                    >
+                      <div className="relative aspect-square w-full min-w-0 overflow-hidden rounded-md bg-[#f1f5f9] p-1.5">
+                        <StageActorCostumePreview actor={previewActor} fillCard />
+                      </div>
+                      <span className="truncate px-1 py-1.5 text-center text-[10px] font-semibold leading-tight text-[#111827] sm:text-[11px]">
+                        {entry.label}
+                      </span>
+                    </button>
+                  </div>
                 );
               })}
             </div>

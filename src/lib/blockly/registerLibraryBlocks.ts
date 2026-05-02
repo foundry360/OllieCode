@@ -10,7 +10,7 @@ import { Blocks, Events, type Block } from "blockly/core";
 
 /**
  * Stock Blockly assigns `math_change` to `variable_blocks` (orange). In Ollie we
- * surface it in the Math toolbox — use `math_blocks` so it matches other math.
+ * surface it in the Numbers toolbox — use `math_blocks` so it matches other math blocks.
  * Patch `init` instead of re-registering the block (avoids “overwrites previous definition”).
  */
 function restyleMathChangeAsMathCategory(): void {

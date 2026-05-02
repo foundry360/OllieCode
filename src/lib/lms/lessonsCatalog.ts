@@ -452,7 +452,7 @@ export const LESSONS: LessonCatalogEntry[] = [
     summary:
       "Build a two-sprite pong-style game: backdrop, paddle, and a ball from the sprite catalog—then add score, balls left, and a Game Over message with color-coded blocks.",
     bodyHtml:
-      "<p><strong>Pandle Pong</strong> uses exactly <strong>one backdrop</strong> and <strong>two sprites</strong> on the stage. Follow each module in order while your workspace is open.</p><p><strong>How to read block colors</strong> (they match the toolbox categories): <span style='color:#FFBF00'><strong>Events</strong></span> · <span style='color:#59C059'><strong>Motion</strong></span> · <span style='color:#9966FF'><strong>Looks</strong></span> · <span style='color:#FFAB19'><strong>Control</strong></span> · <span style='color:#5CB1D6'><strong>Sensing</strong></span> · <span style='color:#4C97FF'><strong>Logic</strong></span> · <span style='color:#59C059'><strong>Math</strong></span> · <span style='color:#FF8C1A'><strong>Variables</strong></span> · <span style='color:#9966FF'><strong>Text</strong></span> (join messages).</p>",
+      "<p><strong>Pandle Pong</strong> uses exactly <strong>one backdrop</strong> and <strong>two sprites</strong> on the stage. Follow each module in order while your workspace is open.</p><p><strong>How to read block colors</strong> (they match the toolbox categories): <span style='color:#FFBF00'><strong>Events</strong></span> · <span style='color:#59C059'><strong>Motion</strong></span> · <span style='color:#9966FF'><strong>Looks</strong></span> · <span style='color:#FFAB19'><strong>Control</strong></span> · <span style='color:#5CB1D6'><strong>Sensing</strong></span> · <span style='color:#4C97FF'><strong>Logic</strong></span> · <span style='color:#59C059'><strong>Numbers</strong></span> · <span style='color:#FF8C1A'><strong>Variables</strong></span> · <span style='color:#9966FF'><strong>Text</strong></span> (join messages).</p>",
     skillLevel: 1,
     workspaceHref:
       "/workspace?mission=first-move&lesson=lvl1-pandle-pong",
@@ -515,7 +515,7 @@ export const LESSONS: LessonCatalogEntry[] = [
         durationMins: 7,
         steps: 5,
         detail:
-          "<p>On the <strong>Ball</strong> sprite: <span style='color:#FFBF00'><strong>When Run clicked</strong></span> → <span style='color:#59C059'><strong>go to x: y:</strong></span> (start near the top center using <span style='color:#59C059'><strong>number</strong></span> blocks from <strong>Math</strong>).</p><p>Add <span style='color:#FFAB19'><strong>forever</strong></span>. Inside: <span style='color:#59C059'><strong>move forward</strong></span> (or small <strong>change x / change y</strong>) and <span style='color:#59C059'><strong>if on edge, bounce</strong></span> so the ball stays in the court.</p>",
+          "<p>On the <strong>Ball</strong> sprite: <span style='color:#FFBF00'><strong>When Run clicked</strong></span> → <span style='color:#59C059'><strong>go to x: y:</strong></span> (start near the top center using <span style='color:#59C059'><strong>number</strong></span> blocks from <strong>Numbers</strong>).</p><p>Add <span style='color:#FFAB19'><strong>forever</strong></span>. Inside: <span style='color:#59C059'><strong>move forward</strong></span> (or small <strong>change x / change y</strong>) and <span style='color:#59C059'><strong>if on edge, bounce</strong></span> so the ball stays in the court.</p>",
       },
       {
         id: "pandle-m7",
